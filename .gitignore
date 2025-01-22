@@ -1,1 +1,3 @@
 backend/env
+backend/dns_records.db
+backend/*.zone
