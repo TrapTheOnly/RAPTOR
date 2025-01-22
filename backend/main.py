@@ -1,88 +1,126 @@
-# import os
+import os
 import sqlite3
 import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import paramiko
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ---------------------------------------------------------
-# 1) Utility function: Parse zone file into record list
+# Utility function: parse zone file into record list
 # ---------------------------------------------------------
-def parse_bind_zone_file(filepath):
+def parse_bind_zone_file(filepath, hostname):
     """
     Naive parser for a BIND zone file.
     Returns a list of dictionaries. Each dictionary has keys:
       - name
-      - ttl
-      - record_class (usually 'IN')
-      - record_type (e.g. SOA, NS, A, MX, etc.)
-      - data (string containing the remainder of the record)
+      - source (WAF, Nginx, Cloud)
+      - ip address
     """
     records = []
-    # Simple regex to match resource records: name [TTL] class type data
-    # This won't handle every corner case, but suffices as a demonstration.
     rr_pattern = re.compile(
-        r'^(\S+)\s+(\d+)?\s*(IN)?\s+(SOA|NS|A|AAAA|CNAME|MX|TXT|PTR|SRV|CAA)\s+(.+)$',
-        re.IGNORECASE
+        r'^(\S+)\s+(\d+)?\s*(IN)?\s+A\s+(.+)$', re.IGNORECASE
     )
-
-    # We'll also want to capture the $TTL if present
-    ttl_pattern = re.compile(r'^\$TTL\s+(\d+)', re.IGNORECASE)
-
-    # Default TTL (can be overridden by $TTL)
-    default_ttl = 3600
 
     with open(filepath, 'r') as f:
         for line in f:
-            # Remove comments
             line = line.split(';', 1)[0].strip()
             if not line:
                 continue
 
-            # Check if there's a $TTL directive
-            ttl_match = ttl_pattern.match(line)
-            if ttl_match:
-                default_ttl = int(ttl_match.group(1))
-                continue
-
-            # Match resource record lines
             match = rr_pattern.match(line)
             if match:
-                name = match.group(1)
-                ttl = match.group(2)
-                if ttl is None:
-                    ttl = default_ttl
-                else:
-                    ttl = int(ttl)
-                record_class = match.group(3) or 'IN'
-                record_type = match.group(4).upper()
-                data = match.group(5).strip()
+                name = match.group(1)  # Record name
+                ip = match.group(4)    # IP Address
+                source = determine_source(ip)
+                full_name = f"{name}.{hostname}"
                 record = {
-                    'name': name,
-                    'ttl': ttl,
-                    'record_class': record_class,
-                    'record_type': record_type,
-                    'data': data
+                    "name": full_name,
+                    "ip_address": ip,
+                    "source": source
                 }
                 records.append(record)
 
     return records
 
 # ---------------------------------------------------------
-# 2) Utility function: fetch file via SSH if requested
+# Utility function: fetch file via SSH if requested
 # ---------------------------------------------------------
-def fetch_zone_file_via_ssh(
-    hostname, username, password, remote_path, local_path='remote.zone'
-):
+import os
+import shutil
+import datetime
+
+def fetch_zone_file_via_ssh(hostname, username, remote_path, local_path=None, key_path=None):
     """
-    Fetches a file from a remote server via SSH/SFTP using Paramiko
-    Saves it locally as local_path.
+    Fetches a file from a remote server via SSH/SFTP using Paramiko with public key authentication.
+    Saves it locally with the same name as the source file, managing backups intelligently:
+    - Only keep track of changes in the backup folder.
+    - Delete duplicates if the file is identical to the most recent backup.
+    - Keep a maximum of 100 backup files, deleting the oldest when necessary.
     """
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(hostname, username=username, password=password)
 
+        # Use the private key if specified, otherwise fallback to the default path
+        private_key = paramiko.RSAKey.from_private_key_file(key_path or '~/.ssh/id_rsa')
+
+        ssh.connect(hostname, username=username, pkey=private_key)
+
+        # Automatically determine the local file name if not provided
+        if local_path is None:
+            local_path = os.path.basename(remote_path)
+
+        # Create backup folder if it doesn't exist
+        backup_folder = "backup"
+        os.makedirs(backup_folder, exist_ok=True)
+
+        # Backup old file if it exists
+        if os.path.exists(local_path):
+            # Get the most recent backup file, if any
+            backups = sorted(
+                [f for f in os.listdir(backup_folder) if f.startswith(local_path)],
+                key=lambda x: os.path.getmtime(os.path.join(backup_folder, x)),
+                reverse=True
+            )
+            most_recent_backup = os.path.join(backup_folder, backups[0]) if backups else None
+
+            # Compare old file with the most recent backup
+            with open(local_path, 'rb') as old_file:
+                old_file_data = old_file.read()
+
+            if most_recent_backup and os.path.exists(most_recent_backup):
+                with open(most_recent_backup, 'rb') as recent_backup_file:
+                    recent_backup_data = recent_backup_file.read()
+                if old_file_data == recent_backup_data:
+                    # Old file is identical to the most recent backup, delete it
+                    os.remove(local_path)
+                    print(f"Old file {local_path} matches the most recent backup. File deleted.")
+                else:
+                    # Move the old file to the backup folder
+                    timestamp = datetime.datetime.now().strftime("%d.%m.%Y")
+                    backup_name = f"{local_path}-{timestamp}"
+                    backup_path = os.path.join(backup_folder, backup_name)
+                    shutil.move(local_path, backup_path)
+                    print(f"Old file {local_path} moved to {backup_path}")
+            else:
+                # Move the old file to the backup folder (no backups exist)
+                timestamp = datetime.datetime.now().strftime("%d.%m.%Y")
+                backup_name = f"{local_path}-{timestamp}"
+                backup_path = os.path.join(backup_folder, backup_name)
+                shutil.move(local_path, backup_path)
+                print(f"Old file {local_path} moved to {backup_path}")
+
+            # Manage the number of backup files
+            if len(backups) >= 100:
+                oldest_backup = os.path.join(backup_folder, backups[-1])
+                os.remove(oldest_backup)
+                print(f"Oldest backup {oldest_backup} deleted to maintain limit of 100 files.")
+
+        # Fetch the new file from the remote server
         sftp = ssh.open_sftp()
         sftp.get(remote_path, local_path)
         sftp.close()
@@ -94,11 +132,11 @@ def fetch_zone_file_via_ssh(
         raise
 
 # ---------------------------------------------------------
-# 3) Utility: create & populate SQLite DB
+# Utility function: create & populate SQLite DB
 # ---------------------------------------------------------
 def init_db(db_path='dns_records.db'):
     """
-    Create the table if it doesn't exist.
+    Create the table for A records only.
     """
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -106,10 +144,11 @@ def init_db(db_path='dns_records.db'):
         CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            ttl INTEGER NOT NULL,
-            record_class TEXT NOT NULL,
-            record_type TEXT NOT NULL,
-            data TEXT NOT NULL
+            ip_address TEXT NOT NULL,
+            source TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'unchanged',
+            creation_date TEXT NOT NULL,
+            last_modification_date TEXT
         )
     """)
     conn.commit()
@@ -117,26 +156,147 @@ def init_db(db_path='dns_records.db'):
 
 def store_records_in_db(records, db_path='dns_records.db'):
     """
-    Insert or update the DNS records in the database.
-    For simplicity, we insert all records each time in this example.
+    Merge new data into the database:
+    - Add new records with their source.
+    - Update IP for existing records and mark them as 'updated'.
+    - Mark records as 'missing' if they are not in the new dataset.
+    - Mark records as 'unchanged' if nothing changed.
     """
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
 
-    # Clear out old records or you could do merges, etc.
-    c.execute("DELETE FROM records")
+    # Fetch existing records
+    c.execute("SELECT name, ip_address, status FROM records")
+    existing_records = {row[0]: {'ip_address': row[1], 'status': row[2]} for row in c.fetchall()}
+    # print(existing_records)
 
+    # Set of current domain names for comparison
+    current_names = {record['name'] for record in records}
+
+    # Add or update records
     for record in records:
-        c.execute("""
-            INSERT INTO records (name, ttl, record_class, record_type, data)
-            VALUES (?, ?, ?, ?, ?)
-        """, (record['name'], record['ttl'], record['record_class'],
-              record['record_type'], record['data']))
+        if record['name'] in existing_records:
+            if existing_records[record['name']]['ip_address'] != record['ip_address']:
+                print(f"IP changed for {record['name']}: {existing_records[record['name']]['ip_address']} -> {record['ip_address']}")
+                # Update IP and mark as 'updated'
+                c.execute("""
+                    UPDATE records
+                    SET ip_address = ?, status = 'updated', last_modification_date = datetime('now', '+4 hours')
+                    WHERE name = ?
+                """, (record['ip_address'], record['name']))
+            else:
+                # print(f"IP unchanged for {record['name']}: {record['ip_address']}")
+                # No changes, mark as 'unchanged'
+                c.execute("""
+                    UPDATE records
+                    SET status = 'unchanged'
+                    WHERE name = ?
+                """, (record['name'],))
+        else:
+            # Insert new record
+            c.execute("""
+                INSERT INTO records (name, ip_address, source, status, creation_date)
+                VALUES (?, ?, ?, 'unchanged', datetime('now', '+4 hours'))
+            """, (record['name'], record['ip_address'], record['source']))
+            print(f"Inserted new record for {record['name']}")
+
+    # Mark records as 'missing' if not in the current dataset
+    c.execute("""
+        UPDATE records
+        SET status = 'missing'
+        WHERE name NOT IN ({})
+    """.format(','.join('?' * len(current_names))), tuple(current_names))
+
     conn.commit()
     conn.close()
 
 # ---------------------------------------------------------
-# 4) Flask App for serving & updating the DB
+# Utility function: parse .env to get WAF and Nginx IPs
+# ---------------------------------------------------------
+# Parse .env to get WAF and Nginx IPs
+WAF_IPS = os.getenv("WAF", "").split(",")
+NGINX_IPS = os.getenv("NGINX", "").split(",")
+
+def determine_source(ip):
+    """
+    Determine the source based on the IP address.
+    """
+    if ip in WAF_IPS:
+        return "WAF"
+    elif ip in NGINX_IPS:
+        return "Nginx"
+    else:
+        return "Cloud"
+    
+
+# ---------------------------------------------------------
+# Utility function: update source file every day
+# ---------------------------------------------------------
+import threading
+import time
+
+def periodic_update(interval, update_function):
+    """
+    Runs the update function periodically in a separate thread.
+    
+    Args:
+        interval (int): Time in seconds between updates.
+        update_function (callable): The function to run periodically.
+    """
+    def wrapper():
+        update_function()
+        # Restart the timer after the interval
+        threading.Timer(interval, wrapper).start()
+    
+    # Start the initial timer
+    threading.Timer(interval, wrapper).start()
+
+def update_data():
+    """
+    Function to gather data (e.g., fetch zone file, update DB).
+    This function supports both local and remote file fetching with public key authentication.
+    """
+    try:
+        print(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # Use remote details if specified, otherwise default to local file
+        remote_details = {
+            'hostname': os.getenv('REMOTE_HOST', ''),
+            'username': os.getenv('REMOTE_USER', ''),
+            'remote_path': os.getenv('REMOTE_PATH', ''),
+            'key_path': os.getenv('REMOTE_KEY_PATH', '')  
+        }
+
+        local_file = os.getenv('DNS_HOSTNAME')
+        use_remote = os.getenv("USE_REMOTE", "false").lower() == "true"
+
+        if use_remote:
+            # Fetch the zone file from remote server via SSH
+            fetch_zone_file_via_ssh(
+                hostname=remote_details['hostname'],
+                username=remote_details['username'],
+                remote_path=remote_details['remote_path'],
+                key_path=remote_details['key_path']
+            )
+            zone_file_path = os.path.basename(remote_details['remote_path'])
+        else:
+            # Use local file
+            zone_file_path = local_file
+
+        # Parse the zone file into records
+        hostname = os.path.basename(zone_file_path)  # Extract hostname
+        records = parse_bind_zone_file(zone_file_path, hostname=hostname)
+
+        # Store the records in the database
+        store_records_in_db(records)
+
+        print(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    except Exception as e:
+        print(f"Error during data update: {e}")
+
+# ---------------------------------------------------------
+# Flask App for serving & updating the DB
 # ---------------------------------------------------------
 app = Flask(__name__)
 CORS(app, origins="http://localhost:3000") # Enable CORS for localhost
@@ -162,12 +322,12 @@ def get_records():
 def update_record(record_id):
     """
     POST /records/<record_id>
-    Body JSON: { "name": "...", "ttl": ..., "record_class": "...", "record_type": "...", "data": "..." }
+    Body JSON: { "name": "...", "ip_address": "...", "source": "..." }
     Updates a single DNS record in the DB after sanitization.
     """
     data = request.get_json(force=True)
 
-    # --- Basic Input Sanitization (example) ---
+    # --- Basic Input Sanitization ---
     # Remove any suspicious characters from string fields.
     # In real scenario, you might do stricter validations or use parameterized queries carefully.
     def sanitize_string(s):
@@ -176,83 +336,88 @@ def update_record(record_id):
 
     try:
         name = sanitize_string(data.get('name', ''))
-        ttl = int(data.get('ttl', 3600))
-        record_class = sanitize_string(data.get('record_class', 'IN'))
-        record_type = sanitize_string(data.get('record_type', 'A'))
-        record_data = sanitize_string(data.get('data', ''))
+        record_ip_address = sanitize_string(data.get('ip_address', ''))
+        record_source = sanitize_string(data.get('source', '')) 
 
         conn = sqlite3.connect('dns_records.db')
         c = conn.cursor()
         c.execute("""
             UPDATE records
             SET name = ?,
-                ttl = ?,
-                record_class = ?,
-                record_type = ?,
-                data = ?
+                ip_address = ?,
+                source = ?,
+                last_modification_date = datetime('now', '+4 hours')
             WHERE id = ?
-        """, (name, ttl, record_class, record_type, record_data, record_id))
+        """, (name, record_ip_address, record_source, record_id))
         conn.commit()
         conn.close()
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+    
+@app.route('/records/<int:record_id>', methods=['DELETE'])
+def delete_record(record_id):
+    """
+    DELETE /records/<record_id>
+    Deletes a single DNS record from the DB.
+    """
+    try:
+        conn = sqlite3.connect('dns_records.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM records WHERE id = ?", (record_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": f"Record {record_id} deleted"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 # ---------------------------------------------------------
-# 5) Command-line entry point to parse local/remote and store
+# Main function to start the Flask server
 # ---------------------------------------------------------
-def run_parser_and_serve(local_file=None, remote_info=None):
-    """
-    local_file: path to local zone file
-    remote_info: dict with keys: hostname, username, password, remote_path
-    """
-    init_db()  # Ensure DB and table exist
+if __name__ == '__main__':
+    # This block ensures the code below is executed only for the main process
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        try:
+            # Step 1: Initialize the database
+            init_db()
 
-    # If remote_info is provided, fetch the file from remote
-    if remote_info:
-        fetched_local = 'fetched_zone.zone'
-        fetch_zone_file_via_ssh(
-            hostname=remote_info['hostname'],
-            username=remote_info['username'],
-            password=remote_info['password'],
-            remote_path=remote_info['remote_path'],
-            local_path=fetched_local
-        )
-        zone_file_path = fetched_local
-    else:
-        zone_file_path = local_file
+            # Step 2: Populate initial records
+            local_file = os.getenv("DNS_HOSTNAME")
+            use_remote = os.getenv("USE_REMOTE", "false").lower() == "true"
 
-    # Parse the zone file into records
-    records = parse_bind_zone_file(zone_file_path)
-    # Store in DB
-    store_records_in_db(records)
+            if use_remote:
+                # Fetch the initial zone file via SSH
+                remote_details = {
+                    'hostname': os.getenv('REMOTE_HOST', ''),
+                    'username': os.getenv('REMOTE_USER', ''),
+                    'remote_path': os.getenv('REMOTE_PATH', ''),
+                    'key_path': os.getenv('REMOTE_KEY_PATH', '')
+                }
 
-    # Start the Flask server
+                fetch_zone_file_via_ssh(
+                    hostname=remote_details['hostname'],
+                    username=remote_details['username'],
+                    remote_path=remote_details['remote_path'],
+                    key_path=remote_details['key_path']
+                )
+                zone_file_path = os.path.basename(remote_details['remote_path'])
+            else:
+                # Use the local file
+                zone_file_path = local_file
+
+            # Parse the initial zone file and write to the database
+            hostname = os.path.basename(zone_file_path)
+            records = parse_bind_zone_file(zone_file_path, hostname=hostname)
+            store_records_in_db(records)
+
+            print(f"Initial records written to the database.")
+
+            # Step 3: Start periodic updates every day
+            periodic_update(int(os.getenv('UPDATE_TIME', 86400)), update_data)
+
+        except Exception as e:
+            print(f"Error during startup: {e}")
+
+    # Step 4: Start the Flask server (always run, regardless of reloader process)
     print("Starting Flask server on http://127.0.0.1:5000...")
     app.run(debug=True)
-
-if __name__ == '__main__':
-    import sys
-    
-    # Example usage:
-    # 1) Parse local file "example.com.zone" and serve
-    #    python main.py local
-    #
-    # 2) Fetch remote file and serve
-    #    python main.py remote
-    
-    mode = sys.argv[1] if len(sys.argv) > 1 else 'local'
-    if mode == 'local':
-        local_zone_file = 'example.com.zone'
-        run_parser_and_serve(local_file=local_zone_file)
-    elif mode == 'remote':
-        # Hard-coded or you can read from environment variables or user input
-        remote_details = {
-            'hostname': '1.2.3.4',
-            'username': 'root',
-            'password': 'secret',
-            'remote_path': '/etc/bind/example.com.zone'
-        }
-        run_parser_and_serve(remote_info=remote_details)
-    else:
-        print("Unknown mode. Use 'local' or 'remote'.")

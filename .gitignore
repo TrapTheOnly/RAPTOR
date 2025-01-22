@@ -1,3 +1,4 @@
 backend/env
 backend/dns_records.db
-backend/*.zone
+.env
+.DS_Store
