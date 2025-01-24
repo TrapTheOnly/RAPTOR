@@ -10,6 +10,8 @@ RUN echo 'Acquire::HTTP::Proxy "http://proxy.azercell.com:8080";' > /etc/apt/apt
        openssh-server \
     && rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /run/sshd
+
 # Create sftp group and sftp user
 RUN groupadd sftpusers && \
     useradd -m -g sftpusers -s /usr/sbin/nologin sftpuser

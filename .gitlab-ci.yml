@@ -21,6 +21,8 @@ build_dev:
     - docker build -t wams-dev -f Dockerfile .
     - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-dev -f Dockerfile.sftp .
     - echo "Docker images built locally on dev01."
+  tags:
+    - callisto
     
 deploy_dev:
   stage: deploy
@@ -50,6 +52,8 @@ build_prod:
     - docker build -t wams-prod -f Dockerfile .
     - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-prod -f Dockerfile.sftp .
     - echo "Docker images built locally on kali01."
+  tags:
+    - prod-kali
     
 deploy_prod:
   stage: deploy
