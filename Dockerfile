@@ -27,7 +27,7 @@ WORKDIR /usr/src/app
 COPY backend/ /usr/app/src/backend/
 
 # Install Python dependencies
-RUN pip install --proxy http://proxy.azercell.com:8080 --user --no-cache-dir -r /usr/app/src/backend/requirements.txt
+RUN pip install --proxy http://proxy.azercell.com:8080 --no-cache-dir -r /usr/app/src/backend/requirements.txt
 
 # Copy the frontend build from the previous stage
 # into a folder that Flask can serve, e.g. `backend/static`
