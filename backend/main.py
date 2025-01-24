@@ -149,7 +149,9 @@ def init_db(db_path=DB_PATH):
     Create the table for A records if not existing.
     """
     # Ensure the parent directory exists
+    print("Initializing database...")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    print(f"Using database at {db_path}")
 
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
