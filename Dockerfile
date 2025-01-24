@@ -33,6 +33,9 @@ RUN pip install --proxy http://proxy.azercell.com:8080 --no-cache-dir -r /usr/ap
 # into a folder that Flask can serve, e.g. `backend/static`
 COPY --from=frontend_builder /app/build/ /usr/app/src/backend/static/
 
+# Create the shared folder and set ownership to myappuser
+RUN mkdir -p /usr/src/app/shared && chown myappuser:myappuser /usr/src/app/shared
+
 # Create a user for security (optional, but recommended)
 RUN useradd -m myappuser
 
@@ -44,7 +47,7 @@ EXPOSE 5000
 
 # The shared volume location (for DNS record uploads, etc.)
 # We'll mount this in docker-compose.
-VOLUME [ "/usr/src/app/shared" ]
+# VOLUME [ "/usr/src/app/shared" ]
 
 # Generate SSH key pair for 'myappuser' if needed for deployment
 # (You can also generate these in your CI pipeline and COPY them in.)
