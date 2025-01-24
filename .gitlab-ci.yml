@@ -1,0 +1,66 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+########################
+# DEV Branch Jobs
+########################
+build_dev:
+  stage: build
+  only:
+    - dev
+  script:
+    - echo "Building Docker images for DEV..."
+    - docker build -t my-app-dev -f Dockerfile .
+    - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" \
+                 -t my-sftp-dev -f Dockerfile.sftp .
+    - echo "Docker images built locally on dev01."
+    
+deploy_dev:
+  stage: deploy
+  only:
+    - dev
+  when: on_success
+  script:
+    - echo "Deploying DEV environment on dev01..."
+    - docker-compose -f docker-compose.dev.yml down || true
+    - docker-compose -f docker-compose.dev.yml up -d
+    - echo "DEV environment is running with containers 'my-app-dev' and 'my-sftp-dev'."
+  tags:
+    - prod-kali
+  environment:
+    name: dev
+    url: http://callisto.azercell.com:1337
+
+########################
+# PROD Branch Jobs
+########################
+build_prod:
+  stage: build
+  only:
+    - main
+  script:
+    - echo "Building Docker images for PROD..."
+    - docker build -t my-app-prod -f Dockerfile .
+    - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" \
+                 -t my-sftp-dev -f Dockerfile.sftp .
+    - echo "Docker images built locally on kali01."
+    
+deploy_prod:
+  stage: deploy
+  only:
+    - main
+  when: manual
+  script:
+    - echo "Deploying PROD environment on kali01..."
+    - docker-compose -f docker-compose.prod.yml down || true
+    - docker-compose -f docker-compose.prod.yml up -d
+    - echo "PROD environment is running with containers 'my-app-prod' and 'my-sftp-prod'."
+  tags:
+    - prod-kali
+  environment:
+    name: production
+    url: http://kali01.azercell.com:1337
