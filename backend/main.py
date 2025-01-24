@@ -152,6 +152,10 @@ def init_db(db_path=DB_PATH):
     print("Initializing database...")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     print(f"Using database at {db_path}")
+    # List all files in the folder of db_path
+    db_folder = os.path.dirname(db_path)
+    files_in_db_folder = os.listdir(db_folder)
+    print(f"Files in the database folder ({db_folder}): {files_in_db_folder}")
 
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
