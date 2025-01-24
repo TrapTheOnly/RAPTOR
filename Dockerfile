@@ -53,4 +53,4 @@ VOLUME [ "/usr/src/app/shared" ]
 #     ssh-keygen -t rsa -f /home/myappuser/.ssh/id_rsa -q -N ""
 
 # Start the Flask server
-CMD ["python", "./backend/main.py"]
+CMD ["python", "/usr/app/src/backend/main.py"]
