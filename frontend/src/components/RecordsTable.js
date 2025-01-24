@@ -90,7 +90,7 @@ const RecordsTable = () => {
 
   const fetchRecords = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:5000/records');
+      const response = await axios.get('http://callisto.azercell.com:1337/records');
       setRecords(response.data);
     } catch (error) {
       console.error('Error fetching records:', error);
@@ -121,7 +121,7 @@ const RecordsTable = () => {
 
   const handleSave = async (id) => {
     try {
-      await axios.post(`http://127.0.0.1:5000/records/${id}`, formData);
+      await axios.post(`http://callisto.azercell.com:1337/records/${id}`, formData);
       await fetchRecords();
       setEditRowId(null);
     } catch (error) {
@@ -131,7 +131,7 @@ const RecordsTable = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`http://127.0.0.1:5000/records/${id}`);
+      await axios.delete(`http://callisto.azercell.com:1337/records/${id}`);
       await fetchRecords();
     } catch (error) {
       console.error('Error deleting record:', error);
