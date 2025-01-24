@@ -271,7 +271,18 @@ def update_data():
 # Flask App
 # ---------------------------------------------------------
 app = Flask(__name__, static_folder='static', static_url_path='')
+CORS(app, origins="http://localhost:1337")
 CORS(app, origins="http://localhost:3000")
+CORS(app, origins="http://localhost:5000")
+
+CORS(app, origins="http://kali01.azercell.com:1337")
+CORS(app, origins="http://kali01.azercell.com:3000")
+CORS(app, origins="http://kali01.azercell.com:5000")
+
+CORS(app, origins="http://callisto.azercell.com:1337")
+CORS(app, origins="http://callisto.azercell.com:3000")
+CORS(app, origins="http://callisto.azercell.com:5000")
+
 
 @app.route('/records', methods=['GET'])
 def get_records():
