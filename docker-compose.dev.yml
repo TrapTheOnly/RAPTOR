@@ -1,12 +1,10 @@
-version: "3.8"
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    image: my-app-dev
-    container_name: my-app-dev
+    image: wams-dev
+    container_name: wams-dev
     ports:
       - "1337:5000"
     volumes:
@@ -26,8 +24,8 @@ services:
       dockerfile: Dockerfile.sftp
       args:
         DNS_SERVER_SSH_PUBKEY: ${DNS_SERVER_SSH_PUBKEY}
-    image: my-sftp-dev
-    container_name: my-sftp-dev
+    image: wams-sftp-dev
+    container_name: wams-sftp-dev
     ports:
       - "2222:22"
     volumes:
@@ -35,5 +33,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  shared_volume:
+  dns_zonefiles_volume:
     driver: local

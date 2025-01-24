@@ -1,16 +1,14 @@
-version: "3.8"
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    image: my-app-prod
-    container_name: my-app-prod
+    image: wams-prod
+    container_name: wams-prod
     ports:
       - "1337:5000"
     volumes:
-      - prod_shared_volume:/usr/src/app/shared
+      - dns_zonefiles_volume:/usr/src/app/shared
     environment:
       - ENVIRONMENT=production
       - WAF=${WAF}
@@ -26,14 +24,14 @@ services:
       dockerfile: Dockerfile.sftp
       args:
         DNS_SERVER_SSH_PUBKEY: ${DNS_SERVER_SSH_PUBKEY}
-    image: my-sftp-prod
-    container_name: my-sftp-prod
+    image: wams-sftp-prod
+    container_name: wams-sftp-prod
     ports:
       - "2222:22"
     volumes:
-      - prod_shared_volume:/chroot/upload
+      - dns_zonefiles_volume:/chroot/upload
     restart: unless-stopped
 
 volumes:
-  prod_shared_volume:
+  dns_zonefiles_volume:
     driver: local
