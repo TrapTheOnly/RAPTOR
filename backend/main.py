@@ -15,6 +15,26 @@ import time
 load_dotenv()
 
 # ---------------------------------------------------------
+# Paths for DB & backups (can be overridden by environment)
+# ---------------------------------------------------------
+DB_PATH = os.getenv("DB_PATH", "/appdata/dns_records.db")
+BACKUP_FOLDER = os.getenv("BACKUP_FOLDER", "/appdata/backup")
+
+# ---------------------------------------------------------
+# Utility: figure out source from IP
+# ---------------------------------------------------------
+WAF_IPS = os.getenv("WAF", "").split(",")
+NGINX_IPS = os.getenv("NGINX", "").split(",")
+
+def determine_source(ip):
+    if ip in WAF_IPS:
+        return "WAF"
+    elif ip in NGINX_IPS:
+        return "Nginx"
+    else:
+        return "Cloud"
+
+# ---------------------------------------------------------
 # Utility: parse BIND zone file
 # ---------------------------------------------------------
 def parse_bind_zone_file(filepath, hostname):
@@ -50,10 +70,10 @@ def parse_bind_zone_file(filepath, hostname):
 # ---------------------------------------------------------
 # Utility: handle local file updates & backup
 # ---------------------------------------------------------
-def handle_zone_file_changes(new_zone_file_path, final_filename="zonefile.db"):
+def handle_zone_file_changes(new_zone_file_path, final_filename="/appdata/zonefile.db"):
     """
     Copies/renames a newly provided zone file to 'final_filename',
-    while managing backups:
+    while managing backups in BACKUP_FOLDER:
       - If 'final_filename' already exists, compare it to the most
         recent backup. If identical, remove the existing one to avoid duplication.
       - Otherwise, back it up with a timestamp before overwriting.
@@ -61,8 +81,7 @@ def handle_zone_file_changes(new_zone_file_path, final_filename="zonefile.db"):
     Returns the 'final_filename' where the zone file ends up.
     """
 
-    backup_folder = "backup"
-    os.makedirs(backup_folder, exist_ok=True)
+    os.makedirs(BACKUP_FOLDER, exist_ok=True)
 
     # If the final file doesn't exist yet, just copy new_zone_file_path => final_filename
     if not os.path.exists(final_filename):
@@ -71,58 +90,53 @@ def handle_zone_file_changes(new_zone_file_path, final_filename="zonefile.db"):
         return final_filename
 
     # If final file exists, compare with latest backup
-    # Step 1: read existing final file
     with open(final_filename, 'rb') as old_file:
         old_file_data = old_file.read()
-
-    # Step 2: read new file
     with open(new_zone_file_path, 'rb') as new_file:
         new_file_data = new_file.read()
 
     # We only create a new backup if the "old file" differs from "new file"
     if old_file_data != new_file_data:
-        # Step 3: see if there's a most recent backup
+        # Find the existing backups for final_filename
         backups = sorted(
-            [f for f in os.listdir(backup_folder) if f.startswith(final_filename)],
-            key=lambda x: os.path.getmtime(os.path.join(backup_folder, x)),
+            [f for f in os.listdir(BACKUP_FOLDER) if f.startswith(os.path.basename(final_filename))],
+            key=lambda x: os.path.getmtime(os.path.join(BACKUP_FOLDER, x)),
             reverse=True
         )
-        most_recent_backup = os.path.join(backup_folder, backups[0]) if backups else None
+        most_recent_backup = os.path.join(BACKUP_FOLDER, backups[0]) if backups else None
 
         # Compare old file vs. most recent backup
         if most_recent_backup and os.path.exists(most_recent_backup):
             with open(most_recent_backup, 'rb') as recent_backup_file:
                 recent_backup_data = recent_backup_file.read()
-            # If old file is identical to the latest backup, remove old final
             if old_file_data == recent_backup_data:
                 os.remove(final_filename)
                 print(f"Existing zone file matches the most recent backup. File {final_filename} removed before overwriting.")
             else:
                 # Move old final file to a new backup
-                timestamp = datetime.datetime.now().strftime("%d.%m.%Y")
-                backup_name = f"{final_filename}-{timestamp}"
-                backup_path = os.path.join(backup_folder, backup_name)
+                timestamp = datetime.datetime.now().strftime("%d.%m.%Y_%H%M%S")
+                backup_name = f"{os.path.basename(final_filename)}-{timestamp}"
+                backup_path = os.path.join(BACKUP_FOLDER, backup_name)
                 shutil.move(final_filename, backup_path)
                 print(f"Existing zone file moved to backup: {backup_path}")
         else:
             # No backups exist, so let's just rename the existing file
-            timestamp = datetime.datetime.now().strftime("%d.%m.%Y")
-            backup_name = f"{final_filename}-{timestamp}"
-            backup_path = os.path.join(backup_folder, backup_name)
+            timestamp = datetime.datetime.now().strftime("%d.%m.%Y_%H%M%S")
+            backup_name = f"{os.path.basename(final_filename)}-{timestamp}"
+            backup_path = os.path.join(BACKUP_FOLDER, backup_name)
             shutil.move(final_filename, backup_path)
             print(f"Existing zone file moved to backup: {backup_path}")
 
-        # Step 4: copy the new file in place
+        # Copy the new file in place
         shutil.copy2(new_zone_file_path, final_filename)
         print(f"New zone file {new_zone_file_path} copied to {final_filename}")
 
-        # Step 5: Manage the number of backups
+        # Manage the number of backups (limit to 100)
         if len(backups) >= 100:
-            oldest_backup = os.path.join(backup_folder, backups[-1])
+            oldest_backup = os.path.join(BACKUP_FOLDER, backups[-1])
             os.remove(oldest_backup)
             print(f"Oldest backup {oldest_backup} deleted (limit of 100).")
     else:
-        # If old file is the same as new file, do nothing special
         print(f"No changes found. The new zone file is identical to {final_filename}.")
 
     return final_filename
@@ -130,10 +144,13 @@ def handle_zone_file_changes(new_zone_file_path, final_filename="zonefile.db"):
 # ---------------------------------------------------------
 # Utility: Initialize & store records in SQLite DB
 # ---------------------------------------------------------
-def init_db(db_path='dns_records.db'):
+def init_db(db_path=DB_PATH):
     """
     Create the table for A records if not existing.
     """
+    # Ensure the parent directory exists
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute("""
@@ -150,12 +167,12 @@ def init_db(db_path='dns_records.db'):
     conn.commit()
     conn.close()
 
-def store_records_in_db(records, db_path='dns_records.db'):
+def store_records_in_db(records, db_path=DB_PATH):
     """
     Merge new data into the DB:
       - Add new records if they're not present.
       - Update IP for existing records if changed => status = 'updated'.
-      - Mark records as 'missing' if not in new dataset.
+      - Mark records as 'missing' if not in the new dataset.
       - Mark 'unchanged' otherwise.
     """
     conn = sqlite3.connect(db_path)
@@ -191,28 +208,15 @@ def store_records_in_db(records, db_path='dns_records.db'):
 
     # Mark as 'missing' anything not in the new dataset
     placeholders = ','.join('?' for _ in current_names)
-    c.execute(f"""
-        UPDATE records
-        SET status = 'missing'
-        WHERE name NOT IN ({placeholders})
-    """, tuple(current_names))
+    if placeholders:  # Only run if there's at least one record
+        c.execute(f"""
+            UPDATE records
+            SET status = 'missing'
+            WHERE name NOT IN ({placeholders})
+        """, tuple(current_names))
 
     conn.commit()
     conn.close()
-
-# ---------------------------------------------------------
-# Utility: figure out source from IP
-# ---------------------------------------------------------
-WAF_IPS = os.getenv("WAF", "").split(",")
-NGINX_IPS = os.getenv("NGINX", "").split(",")
-
-def determine_source(ip):
-    if ip in WAF_IPS:
-        return "WAF"
-    elif ip in NGINX_IPS:
-        return "Nginx"
-    else:
-        return "Cloud"
 
 # ---------------------------------------------------------
 # Periodic update scheduling
@@ -238,22 +242,20 @@ def update_data():
     try:
         print(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-        # The user has placed a new zone file in a local folder or volume
-        # .env holds e.g. DNS_ZONE_PATH or DNS_HOSTNAME pointing to that file
-        new_zone_file_path = os.getenv("DNS_HOSTNAME", "zonefile.db")
+        # .env holds e.g. DNS_HOSTNAME pointing to the new zone file
+        new_zone_file_path = os.getenv("DNS_HOSTNAME", "/appdata/zonefile.db")
 
-        # 1) Backup/replace final file with the new file
-        final_zone_file = handle_zone_file_changes(new_zone_file_path, "zonefile.db")
+        # Backup/replace final file with the new file
+        final_zone_file = handle_zone_file_changes(new_zone_file_path, "/appdata/zonefile.db")
 
-        # 2) Parse the final zone file
+        # Parse the final zone file
         hostname = os.path.basename(final_zone_file)
         records = parse_bind_zone_file(final_zone_file, hostname=hostname)
 
-        # 3) Store in the database
+        # Store in the database
         store_records_in_db(records)
 
         print(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-
     except Exception as e:
         print(f"Error during data update: {e}")
 
@@ -265,7 +267,7 @@ CORS(app, origins="http://localhost:3000")
 
 @app.route('/records', methods=['GET'])
 def get_records():
-    conn = sqlite3.connect('dns_records.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT * FROM records")
@@ -287,7 +289,7 @@ def update_record(record_id):
         record_ip_address = sanitize_string(data.get('ip_address', ''))
         record_source = sanitize_string(data.get('source', ''))
 
-        conn = sqlite3.connect('dns_records.db')
+        conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("""
             UPDATE records
@@ -306,7 +308,7 @@ def update_record(record_id):
 @app.route('/records/<int:record_id>', methods=['DELETE'])
 def delete_record(record_id):
     try:
-        conn = sqlite3.connect('dns_records.db')
+        conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("DELETE FROM records WHERE id = ?", (record_id,))
         conn.commit()
@@ -331,10 +333,10 @@ def not_found(e):
 # ---------------------------------------------------------
 if __name__ == '__main__':
     try:
-        # 1. Initialize the DB
+        # 1. Initialize the DB (will create /appdata if needed)
         init_db()
 
-        # 2. Perform an initial update (read local file, do backup, parse)
+        # 2. Perform an initial update
         update_data()
 
         # 3. Set up periodic updates (default once per 24h = 86400s)
