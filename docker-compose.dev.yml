@@ -34,5 +34,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  db_and_backups_volume:
+    driver: local
   dns_zonefiles_volume:
     driver: local
