@@ -33,11 +33,11 @@ RUN pip install --proxy http://proxy.azercell.com:8080 --no-cache-dir -r /usr/ap
 # into a folder that Flask can serve, e.g. `backend/static`
 COPY --from=frontend_builder /app/build/ /usr/app/src/backend/static/
 
-# Create the shared folder and set ownership to myappuser
-RUN mkdir -p /usr/src/app/shared && chown myappuser:myappuser /usr/src/app/shared
-
 # Create a user for security (optional, but recommended)
 RUN useradd -m myappuser
+
+# Create the shared folder and set ownership to myappuser
+RUN mkdir -p /appdata && chown myappuser:myappuser /appdata
 
 # Switch to the new user
 USER myappuser
