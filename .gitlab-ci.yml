@@ -30,7 +30,7 @@ deploy_dev:
     - docker-compose -f docker-compose.dev.yml up -d
     - echo "DEV environment is running with containers 'my-app-dev' and 'my-sftp-dev'."
   tags:
-    - prod-kali
+    - callisto
   environment:
     name: dev
     url: http://callisto.azercell.com:1337
