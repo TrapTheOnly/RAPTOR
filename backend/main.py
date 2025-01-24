@@ -70,7 +70,7 @@ def parse_bind_zone_file(filepath, hostname):
 # ---------------------------------------------------------
 # Utility: handle local file updates & backup
 # ---------------------------------------------------------
-def handle_zone_file_changes(new_zone_file_path, final_filename="/appdata/zonefile.db"):
+def handle_zone_file_changes(new_zone_file_path, final_filename):
     """
     Copies/renames a newly provided zone file to 'final_filename',
     while managing backups in BACKUP_FOLDER:
@@ -250,6 +250,8 @@ def update_data():
 
         # .env holds e.g. DNS_HOSTNAME pointing to the new zone file
         new_zone_file_path = os.getenv("DNS_HOSTNAME", "/appdata/zonefile.db")
+        if new_zone_file_path != "/appdata/zonefile.db": new_zone_file_path = "/usr/src/app/shared/" + new_zone_file_path
+        print(f"Using zone file at {new_zone_file_path}")
 
         # Backup/replace final file with the new file
         final_zone_file = handle_zone_file_changes(new_zone_file_path, "/appdata/zonefile.db")
