@@ -2,6 +2,10 @@ stages:
   - build
   - deploy
 
+before_script:
+  - export http_proxy=http://proxy.azercell.com:8080
+  - export https_proxy=http://proxy.azercell.com:8080
+
 variables:
   DOCKER_DRIVER: overlay2
 

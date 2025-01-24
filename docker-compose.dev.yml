@@ -10,7 +10,7 @@ services:
     ports:
       - "1337:5000"
     volumes:
-      - shared_volume:/usr/src/app/shared\
+      - dns_zonefiles_volume:/usr/src/app/shared
     environment:
       - ENVIRONMENT=development
       - WAF=${WAF}
@@ -31,7 +31,7 @@ services:
     ports:
       - "2222:22"
     volumes:
-      - shared_volume:/chroot/upload
+      - dns_zonefiles_volume:/chroot/upload
     restart: unless-stopped
 
 volumes:
