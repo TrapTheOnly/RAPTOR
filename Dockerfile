@@ -18,7 +18,7 @@ RUN npm run build
 # ---------------------------------
 # Stage 2: Build Production Image with Python
 # ---------------------------------
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /usr/src/app
@@ -27,7 +27,7 @@ WORKDIR /usr/src/app
 COPY backend/ ./backend/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r ./backend/requirements.txt
+RUN pip install --proxy http://proxy.azercell.com:8080 --user --no-cache-dir -r ./backend/requirements.txt
 
 # Copy the frontend build from the previous stage
 # into a folder that Flask can serve, e.g. `backend/static`
