@@ -271,22 +271,28 @@ def update_data():
 # Flask App
 # ---------------------------------------------------------
 app = Flask(__name__, static_folder='static', static_url_path='')
-CORS(app, origins="http://localhost:1337")
-CORS(app, origins="http://localhost:3000")
-CORS(app, origins="http://localhost:5000")
+from flask_cors import CORS
 
-CORS(app, origins="http://127.0.0.1:1337")
-CORS(app, origins="http://127.0.0.1:3000")
-CORS(app, origins="http://127.0.0.1:5000")
+app = Flask(__name__, static_folder='static', static_url_path='')
 
-
-CORS(app, origins="http://kali01.azercell.com:1337")
-CORS(app, origins="http://kali01.azercell.com:3000")
-CORS(app, origins="http://kali01.azercell.com:5000")
-
-CORS(app, origins="http://callisto.azercell.com:1337")
-CORS(app, origins="http://callisto.azercell.com:3000")
-CORS(app, origins="http://callisto.azercell.com:5000")
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:1337",
+            "http://localhost:3000",
+            "http://localhost:5000",
+            "http://127.0.0.1:1337",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5000",
+            "http://kali01.azercell.com:1337",
+            "http://kali01.azercell.com:3000",
+            "http://kali01.azercell.com:5000",
+            "http://callisto.azercell.com:1337",
+            "http://callisto.azercell.com:3000",
+            "http://callisto.azercell.com:5000"
+        ]
+    }
+})
 
 
 @app.route('/records', methods=['GET'])
