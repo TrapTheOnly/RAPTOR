@@ -24,14 +24,14 @@ FROM python:3.12-slim
 WORKDIR /usr/src/app
 
 # Copy backend code
-COPY backend/ ./backend/
+COPY backend/ /usr/app/src/backend/
 
 # Install Python dependencies
-RUN pip install --proxy http://proxy.azercell.com:8080 --user --no-cache-dir -r ./backend/requirements.txt
+RUN pip install --proxy http://proxy.azercell.com:8080 --user --no-cache-dir -r /usr/app/src/backend/requirements.txt
 
 # Copy the frontend build from the previous stage
 # into a folder that Flask can serve, e.g. `backend/static`
-COPY --from=frontend_builder /app/build/ ./backend/static/
+COPY --from=frontend_builder /app/build/ /usr/app/src/backend/static/
 
 # Create a user for security (optional, but recommended)
 RUN useradd -m myappuser
