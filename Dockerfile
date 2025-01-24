@@ -9,7 +9,7 @@ WORKDIR /app
 COPY frontend/package*.json ./
 
 # Install dependencies for frontend
-RUN npm install
+RUN npm --proxy http://proxy.azercell.com:8080 install
 
 # Copy the rest of the frontend sources and build
 COPY frontend/ .
