@@ -275,6 +275,11 @@ CORS(app, origins="http://localhost:1337")
 CORS(app, origins="http://localhost:3000")
 CORS(app, origins="http://localhost:5000")
 
+CORS(app, origins="http://127.0.0.1:1337")
+CORS(app, origins="http://127.0.0.1:3000")
+CORS(app, origins="http://127.0.0.1:5000")
+
+
 CORS(app, origins="http://kali01.azercell.com:1337")
 CORS(app, origins="http://kali01.azercell.com:3000")
 CORS(app, origins="http://kali01.azercell.com:5000")
