@@ -11,11 +11,11 @@ const App = () => {
       <Routes>
         <Route
           path="/"
-          element={loggedIn ? <RecordsTable /> : <Navigate to="/login" />}
+          element={<RecordsTable />}
         />
         <Route
           path="/login"
-          element={<Login setLoggedIn={setLoggedIn} />}
+          element={<Login />}
         />
       </Routes>
     </Router>

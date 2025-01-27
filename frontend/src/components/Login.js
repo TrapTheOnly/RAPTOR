@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   TextField,
@@ -38,6 +39,7 @@ const Login = ({ setLoggedIn }) => {
       if (response.status === 200) {
         setLoggedIn(true);
         setError('');
+        navigate('/');
       }
     } catch (error) {
       setError('Invalid credentials. Please try again.');

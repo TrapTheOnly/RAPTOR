@@ -8,7 +8,7 @@ services:
     ports:
       - "1337:5000"
     volumes:
-      - dns_zonefiles_volume:/usr/src/app/shared
+      - dns_zonefiles_volume:/usr/app/src/shared
       - db_and_backups_volume:/appdata
     environment:
       - ENVIRONMENT=development

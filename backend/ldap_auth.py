@@ -14,19 +14,10 @@ def ldap_authenticate(username, password):
     try:
         user_dn = f"{LDAP_DOMAIN}\\{username}"
         server = Server(LDAP_SERVER, get_info=ALL, use_ssl=True)
-        with open("/tmp/temp_ldap_info.txt", "w") as temp_file:
-            temp_file.write(f"LDAP_DOMAIN: {LDAP_DOMAIN}\n")
-            temp_file.write(f"LDAP_SERVER: {LDAP_SERVER}\n")
-            temp_file.write(f"Username: {username}\n")
-            temp_file.write(f"Server: {server}\n")
         conn = Connection(server, user=user_dn, password=password, authentication=NTLM, auto_bind=True)
-        with open("/tmp/temp_ldap_info.txt", "w") as temp_file:
-            temp_file.write(f"Connection: {conn}\n")
         conn.unbind()
         return True
     except Exception as e:
-        with open("/tmp/temp_ldap_info.txt", "w") as temp_file:
-            temp_file.write(f"Error: {e}\n")
         return False
 
 
