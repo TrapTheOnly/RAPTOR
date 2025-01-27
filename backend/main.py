@@ -352,7 +352,6 @@ def login():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
-    print(f"Logging in user {username}...")
     if ldap_authenticate(username, password):
         session['logged_in'] = True
         session['username'] = username
@@ -383,9 +382,6 @@ def not_found(e):
 # Main
 # ---------------------------------------------------------
 if __name__ == '__main__':
-    print("Files in the current folder:")
-    for filename in os.listdir('.'):
-        print(filename)
         
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         # 1. Initialize DB
