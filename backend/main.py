@@ -163,7 +163,8 @@ def init_db(db_path=DB_PATH):
             source TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'unchanged',
             creation_date TEXT NOT NULL,
-            last_modification_date TEXT
+            last_modification_date TEXT,
+            application_owner TEXT DEFAULT ''
         )
     """)
     conn.commit()
@@ -203,8 +204,8 @@ def store_records_in_db(records, db_path=DB_PATH):
                 """, (record['name'],))
         else:
             c.execute("""
-                INSERT INTO records (name, ip_address, source, status, creation_date)
-                VALUES (?, ?, ?, 'unchanged', datetime('now', '+4 hours'))
+                INSERT INTO records (name, ip_address, source, status, creation_date, application_owner)
+                VALUES (?, ?, ?, 'unchanged', datetime('now', '+4 hours'), '')
             """, (record['name'], record['ip_address'], record['source']))
             print(f"Inserted new record for {record['name']}")
 
@@ -317,6 +318,7 @@ def update_record(record_id):
         name = sanitize_string(data.get('name', ''))
         record_ip_address = sanitize_string(data.get('ip_address', ''))
         record_source = sanitize_string(data.get('source', ''))
+        application_owner = sanitize_string(data.get('application_owner', ''))
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -325,9 +327,10 @@ def update_record(record_id):
             SET name = ?,
                 ip_address = ?,
                 source = ?,
+                application_owner = ?,
                 last_modification_date = datetime('now', '+4 hours')
             WHERE id = ?
-        """, (name, record_ip_address, record_source, record_id))
+        """, (name, record_ip_address, record_source, application_owner, record_id))
         conn.commit()
         conn.close()
         return jsonify({"status": "success"}), 200

@@ -103,6 +103,7 @@ const RecordsTable = () => {
       name: record.name,
       ip_address: record.ip_address,
       source: record.source,
+      application_owner: record.application_owner,
     });
   };
 
@@ -226,9 +227,11 @@ const RecordsTable = () => {
                 <TableCell onClick={() => handleSort('name')}>Name</TableCell>
                 <TableCell onClick={() => handleSort('ip_address')}>IP Address</TableCell>
                 <TableCell onClick={() => handleSort('source')}>Source</TableCell>
+                <TableCell onClick={() => handleSort('application_owner')}>Application Owner</TableCell>                
                 <TableCell onClick={() => handleSort('status')}>Status</TableCell>
                 <TableCell onClick={() => handleSort('creation_date')}>Creation Date</TableCell>
-                <TableCell onClick={() => handleSort('last_modification_date')}>Last Modified Date</TableCell>                <TableCell>Actions</TableCell>
+                <TableCell onClick={() => handleSort('last_modification_date')}>Last Modified Date</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -261,6 +264,13 @@ const RecordsTable = () => {
                             onChange={handleChange}
                             />
                         </TableCell>
+                        <TableCell>
+                          <input
+                            name="application_owner"
+                            value={formData.application_owner || ''}
+                            onChange={handleChange}
+                          />
+                        </TableCell>
 
                         {/* Non-Editable Fields */}
                         <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
@@ -283,6 +293,7 @@ const RecordsTable = () => {
                         <TableCell>{record.name}</TableCell>
                         <TableCell>{record.ip_address}</TableCell>
                         <TableCell>{record.source}</TableCell>
+                        <TableCell>{record.application_owner || 'N/A'}</TableCell>
                         <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
                         <TableCell>{formatDateTime(record.creation_date)}</TableCell>
                         <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
