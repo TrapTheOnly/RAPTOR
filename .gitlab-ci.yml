@@ -1,16 +1,16 @@
 stages:
-  - security_preprocess
-  - security_check
-  - build
-  - deploy
+- security_preprocess
+- security_check
+- build
+- deploy
 
 include:
-  - project: 'security/sast-integrations/templates'
-    file: 'sast-check-gate-critical-new-stages.yaml'
+- project: 'security/sast-integrations/templates'
+  file: 'sast-check-gate-critical-new-stages.yaml'
 
 before_script:
-  - export http_proxy=http://proxy.azercell.com:8080
-  - export https_proxy=http://proxy.azercell.com:8080
+- export http_proxy=http://proxy.azercell.com:8080
+- export https_proxy=http://proxy.azercell.com:8080
 
 variables:
   DOCKER_DRIVER: overlay2
@@ -21,27 +21,29 @@ variables:
 build_dev:
   stage: build
   only:
-    - dev
+  - dev
   script:
-    - echo "Building Docker images for DEV..."
-    - docker build -t wams-dev -f Dockerfile .
-    - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-dev -f Dockerfile.sftp .
-    - echo "Docker images built locally on dev01."
+  - echo "Building Docker images for DEV..."
+  - export REACT_APP_API_URL=$REACT_APP_API_URL
+  - docker build -t wams-dev -f Dockerfile .
+  - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-dev -f Dockerfile.sftp .
+  - echo "Docker images built locally on dev01."
   tags:
-    - callisto
-    
+  - callisto
+
 deploy_dev:
   stage: deploy
   only:
-    - dev
+  - dev
   when: on_success
   script:
-    - echo "Deploying DEV environment on dev01..."
-    - docker-compose -f docker-compose.dev.yml down || true
-    - docker-compose -f docker-compose.dev.yml up -d
-    - echo "DEV environment is running with containers 'wams-dev' and 'wams-sftp-dev'."
+  - echo "Deploying DEV environment on dev01..."
+  - export REACT_APP_API_URL=$REACT_APP_API_URL
+  - docker-compose -f docker-compose.dev.yml down || true
+  - docker-compose -f docker-compose.dev.yml up -d
+  - echo "DEV environment is running with containers 'wams-dev' and 'wams-sftp-dev'."
   tags:
-    - callisto
+  - callisto
   environment:
     name: dev
     url: http://callisto.azercell.com:1337
@@ -52,27 +54,27 @@ deploy_dev:
 build_prod:
   stage: build
   only:
-    - main
+  - main
   script:
-    - echo "Building Docker images for PROD..."
-    - docker build -t wams-prod -f Dockerfile .
-    - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-prod -f Dockerfile.sftp .
-    - echo "Docker images built locally on kali01."
+  - echo "Building Docker images for PROD..."
+  - docker build -t wams-prod -f Dockerfile .
+  - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-prod -f Dockerfile.sftp .
+  - echo "Docker images built locally on kali01."
   tags:
-    - prod-kali
-    
+  - prod-kali
+
 deploy_prod:
   stage: deploy
   only:
-    - main
+  - main
   when: manual
   script:
-    - echo "Deploying PROD environment on kali01..."
-    - docker-compose -f docker-compose.prod.yml down || true
-    - docker-compose -f docker-compose.prod.yml up -d
-    - echo "PROD environment is running with containers 'wams-prod' and 'wams-sftp-prod'."
+  - echo "Deploying PROD environment on kali01..."
+  - docker-compose -f docker-compose.prod.yml down || true
+  - docker-compose -f docker-compose.prod.yml up -d
+  - echo "PROD environment is running with containers 'wams-prod' and 'wams-sftp-prod'."
   tags:
-    - prod-kali
+  - prod-kali
   environment:
     name: production
     url: http://kali01.azercell.com:1337
