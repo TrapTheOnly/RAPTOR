@@ -14,7 +14,7 @@ def ldap_authenticate(username, password):
     try:
         user_dn = f"{LDAP_DOMAIN}\\{username}"
         server = Server(LDAP_SERVER, get_info=ALL)
-        response = os.system(f"ping -c 1 {LDAP_SERVER}")
+        response = os.system(f"nc -z -w 5 {LDAP_SERVER} 389")
         if response != 0:
             raise Exception(f"Cannot reach LDAP server: {LDAP_SERVER}")
         else:
