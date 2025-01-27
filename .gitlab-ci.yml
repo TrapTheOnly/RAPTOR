@@ -1,6 +1,8 @@
 stages:
   - verify
   - security_check
+  - verify
+  - security_check
   - build
   - deploy
 
