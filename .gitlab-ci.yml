@@ -24,8 +24,7 @@ build_dev:
   - dev
   script:
   - echo "Building Docker images for DEV..."
-  - export REACT_APP_API_URL=$REACT_APP_API_URL
-  - docker build -t wams-dev -f Dockerfile .
+  - docker build --build-arg REACT_APP_API_URL=$REACT_APP_API_URL -t wams-dev -f Dockerfile .
   - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-dev -f Dockerfile.sftp .
   - echo "Docker images built locally on dev01."
   tags:
