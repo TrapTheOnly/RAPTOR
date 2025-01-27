@@ -12,7 +12,7 @@ import {
   createTheme,
 } from '@mui/material';
 
-const Login = () => {
+const Login = ({ setLoggedIn, setGlobalUsername }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -39,6 +39,8 @@ const Login = () => {
       });
       if (response.status === 200) {
         setError('');
+        setLoggedIn(true);
+        setGlobalUsername(response.data.username);
         navigate('/');
       }
     } catch (error) {

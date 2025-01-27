@@ -9,6 +9,7 @@ import datetime
 import threading
 import time
 from ldap_auth import ldap_authenticate, login_required_json, login_required_html
+from datetime import timedelta
 
 # ---------------------------------------------------------
 # Load environment variables from .env file
@@ -268,6 +269,7 @@ def update_data():
 # ---------------------------------------------------------
 app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.getenv("SECRET_KEY")
+app.permanent_session_lifetime = timedelta(hours=1)
 # @app.before_request
 # def log_request_info():
 #     app.logger.debug(f"Headers: {request.headers}")
@@ -356,18 +358,27 @@ def login():
     username = data.get('username')
     password = data.get('password')
     if ldap_authenticate(username, password):
+        session.permanent = True
         session['logged_in'] = True
         session['username'] = username
-        return jsonify({"status": "logged_in"}), 200
+        print(f"User {username} logged in.")
+        return jsonify({"status": "logged_in", "username": username}), 200
     else:
         return jsonify({"error": "Invalid credentials"}), 401
+    
+@app.route('/session-status', methods=['GET'])
+def session_status():
+    """
+    Check if the user is logged in.
+    """
+    if 'logged_in' in session and session['logged_in']:
+        return jsonify({"status": "logged_in", "username": session.get("username")}), 200
+    return jsonify({"status": "logged_out"}), 401
 
 @app.route('/logout', methods=['POST'])
 def logout():
     session.clear()
     return jsonify({"status": "logged_out"}), 200
-
-
 
 # ---------------------------------------------------------
 # Serve the React App

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -40,6 +41,7 @@ const RecordsTable = () => {
   const [formData, setFormData] = useState({});
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  let navigate = useNavigate();
 
   const theme = createTheme({
     palette: {
@@ -55,6 +57,25 @@ const RecordsTable = () => {
 
   useEffect(() => {
     fetchRecords();
+  }, []);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const response = await axios.get('/session-status');
+        if (response.status !== 200) {
+          navigate('/login');
+        }
+      } catch (error) {
+        console.error("Session expired:", error);
+        navigate('/login');
+      }
+    };
+  
+    checkSession();
+
+    const interval = setInterval(checkSession, 1 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
