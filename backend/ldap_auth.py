@@ -24,6 +24,7 @@ def ldap_authenticate(username, password):
     # except Exception as e:
     #     print(e)
     #     return False
+    print(LDAP_DOMAIN, LDAP_SERVER, username)
     return True
 
 
