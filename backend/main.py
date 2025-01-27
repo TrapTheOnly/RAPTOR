@@ -268,14 +268,8 @@ def update_data():
 app = Flask(__name__, static_folder='static', static_url_path='')
 from flask_cors import CORS
 
-app = Flask(__name__, static_folder='static', static_url_path='')
-
-origins = os.getenv("CORS_ORIGINS", "").split(",")
-CORS(app, resources={
-    r"/*": {
-        "origins": origins
-    }
-})
+# Configure CORS
+CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(",")}})
 
 @app.route('/records', methods=['GET'])
 @login_required_json
