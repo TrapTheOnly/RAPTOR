@@ -14,10 +14,6 @@ from ldap_auth import ldap_authenticate, login_required_json, login_required_htm
 # Load environment variables from .env file
 # ---------------------------------------------------------
 load_dotenv()
-# List all environment variables
-print("Environment variables:")
-for key, value in os.environ.items():
-    print(f"{key}: {value}")
 
 # ---------------------------------------------------------
 # Paths for DB & backups (can be overridden by environment)
@@ -156,11 +152,6 @@ def init_db(db_path=DB_PATH):
     # Ensure the parent directory exists
     print("Initializing database...")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    print(f"Using database at {db_path}")
-    # List all files in the folder of db_path
-    db_folder = os.path.dirname(db_path)
-    files_in_db_folder = os.listdir(db_folder)
-    print(f"Files in the database folder ({db_folder}): {files_in_db_folder}")
 
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -239,9 +230,7 @@ def periodic_update(interval, update_function):
     def wrapper():
         update_function()
         threading.Timer(interval, wrapper).start()
-        print("I triggered an update inside periodic_update!")
     threading.Timer(interval, wrapper).start()
-    print("I triggered an update at the end of periodic_update!")
 
 # ---------------------------------------------------------
 # The main data update function: works with a local zone file
@@ -364,6 +353,7 @@ def logout():
 # Serve the React App
 # ---------------------------------------------------------
 @app.route('/')
+@login_required_html
 def serve_index():
     return send_from_directory(app.static_folder, 'index.html')
 

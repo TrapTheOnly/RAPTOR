@@ -14,10 +14,17 @@ def ldap_authenticate(username, password):
     try:
         user_dn = f"{LDAP_DOMAIN}\\{username}"
         server = Server(LDAP_SERVER, get_info=ALL)
+        response = os.system(f"ping -c 1 {LDAP_SERVER}")
+        if response != 0:
+            raise Exception(f"Cannot reach LDAP server: {LDAP_SERVER}")
+        else:
+            print("LDAP server is up!")
         conn = Connection(server, user=user_dn, password=password, authentication=NTLM, auto_bind=True)
+        print(conn)
         conn.unbind()
         return True
     except Exception as e:
+        print(e)
         return False
 
 
@@ -42,6 +49,6 @@ def login_required_html(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get('logged_in'):
-            return redirect('/login_page')
+            return redirect('/login')
         return f(*args, **kwargs)
     return wrapper
