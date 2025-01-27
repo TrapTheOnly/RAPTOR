@@ -1,13 +1,14 @@
 import os
 import sqlite3
 import re
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 import shutil
 import datetime
 import threading
 import time
+from ldap_auth import ldap_authenticate, login_required_json, login_required_html
 
 # ---------------------------------------------------------
 # Load environment variables from .env file
@@ -17,8 +18,8 @@ load_dotenv()
 # ---------------------------------------------------------
 # Paths for DB & backups (can be overridden by environment)
 # ---------------------------------------------------------
-DB_PATH = os.getenv("DB_PATH", "/appdata/dns_records.db")
-BACKUP_FOLDER = os.getenv("BACKUP_FOLDER", "/appdata/backup")
+DB_PATH = os.getenv("DATA_PATH") + "dns_records.db"
+BACKUP_FOLDER = os.getenv("BACKUP_FOLDER")
 
 # ---------------------------------------------------------
 # Utility: figure out source from IP
@@ -142,7 +143,7 @@ def handle_zone_file_changes(new_zone_file_path, final_filename):
     return final_filename
 
 # ---------------------------------------------------------
-# Utility: Initialize & store records in SQLite DB
+# Utility: initialize & store records in SQLite DB
 # ---------------------------------------------------------
 def init_db(db_path=DB_PATH):
     """
@@ -225,7 +226,7 @@ def store_records_in_db(records, db_path=DB_PATH):
     conn.close()
 
 # ---------------------------------------------------------
-# Periodic update scheduling
+# Utility: periodic update scheduling
 # ---------------------------------------------------------
 def periodic_update(interval, update_function):
     """
@@ -234,7 +235,9 @@ def periodic_update(interval, update_function):
     def wrapper():
         update_function()
         threading.Timer(interval, wrapper).start()
+        print("I triggered an update inside periodic_update!")
     threading.Timer(interval, wrapper).start()
+    print("I triggered an update at the end of periodic_update!")
 
 # ---------------------------------------------------------
 # The main data update function: works with a local zone file
@@ -249,16 +252,15 @@ def update_data():
         print(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         # .env holds e.g. DNS_HOSTNAME pointing to the new zone file
-        new_zone_file_path = os.getenv("DNS_HOSTNAME", "/appdata/zonefile.db")
-        if new_zone_file_path != "/appdata/zonefile.db": new_zone_file_path = "/usr/src/app/shared/" + new_zone_file_path
+        new_zone_file_path = os.getenv("SHARED_PATH") + os.getenv("DNS_HOSTNAME")
+        final_zone_file_path = os.getenv("DATA_PATH") + os.getenv("DNS_HOSTNAME")
         print(f"Using zone file at {new_zone_file_path}")
 
         # Backup/replace final file with the new file
-        final_zone_file = handle_zone_file_changes(new_zone_file_path, "/appdata/zonefile.db")
+        final_zone_file = handle_zone_file_changes(new_zone_file_path, final_zone_file_path)
 
         # Parse the final zone file
-        hostname = os.path.basename(final_zone_file)
-        records = parse_bind_zone_file(final_zone_file, hostname=hostname)
+        records = parse_bind_zone_file(final_zone_file, os.getenv("DNS_HOSTNAME"))
 
         # Store in the database
         store_records_in_db(records)
@@ -275,27 +277,15 @@ from flask_cors import CORS
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
+origins = os.getenv("CORS_ORIGINS", "").split(",")
 CORS(app, resources={
     r"/*": {
-        "origins": [
-            "http://localhost:1337",
-            "http://localhost:3000",
-            "http://localhost:5000",
-            "http://127.0.0.1:1337",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5000",
-            "http://kali01.azercell.com:1337",
-            "http://kali01.azercell.com:3000",
-            "http://kali01.azercell.com:5000",
-            "http://callisto.azercell.com:1337",
-            "http://callisto.azercell.com:3000",
-            "http://callisto.azercell.com:5000"
-        ]
+        "origins": origins
     }
 })
 
-
 @app.route('/records', methods=['GET'])
+@login_required_json
 def get_records():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -308,6 +298,7 @@ def get_records():
     return jsonify(records)
 
 @app.route('/records/<int:record_id>', methods=['POST'])
+@login_required_json
 def update_record(record_id):
     data = request.get_json(force=True)
 
@@ -336,6 +327,7 @@ def update_record(record_id):
         return jsonify({"error": str(e)}), 400
 
 @app.route('/records/<int:record_id>', methods=['DELETE'])
+@login_required_json
 def delete_record(record_id):
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -346,9 +338,26 @@ def delete_record(record_id):
         return jsonify({"status": "success", "message": f"Record {record_id} deleted"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
+    
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    if ldap_authenticate(username, password):
+        session['logged_in'] = True
+        session['username'] = username
+        return jsonify({"status": "logged_in"}), 200
+    else:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"status": "logged_out"}), 200
 
 # ---------------------------------------------------------
-# Serve the React App (if you're serving the build via Flask)
+# Serve the React App
 # ---------------------------------------------------------
 @app.route('/')
 def serve_index():
@@ -362,19 +371,16 @@ def not_found(e):
 # Main
 # ---------------------------------------------------------
 if __name__ == '__main__':
-    try:
-        # 1. Initialize the DB (will create /appdata if needed)
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        # 1. Initialize DB
         init_db()
 
-        # 2. Perform an initial update
+        # 2. Perform initial update
         update_data()
 
-        # 3. Set up periodic updates (default once per 24h = 86400s)
+        # 3. Schedule periodic updates
         interval = int(os.getenv('UPDATE_TIME', '86400'))
         periodic_update(interval, update_data)
-
-    except Exception as e:
-        print(f"Error during startup: {e}")
 
     # 4. Run Flask
     print("Starting Flask server on port 5000...")

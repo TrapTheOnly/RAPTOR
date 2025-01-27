@@ -1,5 +1,9 @@
 backend/env
-backend/dns_records.db
+backend/*.db
+backend/backup
+backend/static
+backend/*.com
 .env
 .DS_Store
-example.com
+*.com
+__pycache__

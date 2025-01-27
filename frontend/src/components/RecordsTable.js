@@ -40,6 +40,7 @@ const RecordsTable = () => {
   const [formData, setFormData] = useState({});
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const apiUrl = process.env.REACT_APP_API_URL;
 
   const theme = createTheme({
     palette: {
@@ -90,7 +91,7 @@ const RecordsTable = () => {
 
   const fetchRecords = async () => {
     try {
-      const response = await axios.get('http://callisto.azercell.com:1337/records');
+      const response = await axios.get(`${apiUrl}/records`);
       setRecords(response.data);
     } catch (error) {
       console.error('Error fetching records:', error);
@@ -121,7 +122,7 @@ const RecordsTable = () => {
 
   const handleSave = async (id) => {
     try {
-      await axios.post(`http://callisto.azercell.com:1337/records/${id}`, formData);
+      await axios.post(`${apiUrl}/records/${id}`, formData);
       await fetchRecords();
       setEditRowId(null);
     } catch (error) {
@@ -131,7 +132,7 @@ const RecordsTable = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`http://callisto.azercell.com:1337/records/${id}`);
+      await axios.delete(`${apiUrl}/records/${id}`);
       await fetchRecords();
     } catch (error) {
       console.error('Error deleting record:', error);
@@ -145,13 +146,15 @@ const RecordsTable = () => {
     }
     setSortConfig({ key, direction });
   
-  const sortedRecords = [...records].sort((a, b) => {
-      const aValue = key === 'date'
-        ? new Date(a.last_modification_date || a.creation_date) // Use last_modification_date or creation_date
-        : a[key];
-      const bValue = key === 'date'
-        ? new Date(b.last_modification_date || b.creation_date)
-        : b[key];
+    const sortedRecords = [...records].sort((a, b) => {
+      let aValue = a[key];
+      let bValue = b[key];
+  
+      // Convert to Date objects if sorting by creation_date or last_modification_date
+      if (key === 'creation_date' || key === 'last_modification_date') {
+        aValue = new Date(aValue);
+        bValue = new Date(bValue);
+      }
   
       if (aValue < bValue) return direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return direction === 'asc' ? 1 : -1;
@@ -225,8 +228,8 @@ const RecordsTable = () => {
                 <TableCell onClick={() => handleSort('ip_address')}>IP Address</TableCell>
                 <TableCell onClick={() => handleSort('source')}>Source</TableCell>
                 <TableCell onClick={() => handleSort('status')}>Status</TableCell>
-                <TableCell onClick={() => handleSort('date')}>Last Modified Date</TableCell>
-                <TableCell>Actions</TableCell>
+                <TableCell onClick={() => handleSort('creation_date')}>Creation Date</TableCell>
+                <TableCell onClick={() => handleSort('last_modification_date')}>Last Modified Date</TableCell>                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -262,9 +265,8 @@ const RecordsTable = () => {
 
                         {/* Non-Editable Fields */}
                         <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
-                        <TableCell>
-                            {formatDateTime(record.last_modification_date || record.creation_date)}
-                        </TableCell>
+                        <TableCell>{formatDateTime(record.creation_date)}</TableCell>
+                        <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
 
                         {/* Action Buttons */}
                         <TableCell>
@@ -283,9 +285,8 @@ const RecordsTable = () => {
                         <TableCell>{record.ip_address}</TableCell>
                         <TableCell>{record.source}</TableCell>
                         <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
-                        <TableCell>
-                            {formatDateTime(record.last_modification_date || record.creation_date)}
-                        </TableCell>
+                        <TableCell>{formatDateTime(record.creation_date)}</TableCell>
+                        <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
                         <TableCell>
                             <IconButton onClick={() => handleEdit(record)}>
                             <EditIcon color="primary" />
