@@ -13,10 +13,15 @@ services:
     environment:
       - ENVIRONMENT=development
       - WAF=${WAF}
+      - DNS_HOSTNAME=${DNS_HOSTNAME}
+      - CORS_ORIGINS=${CORS_ORIGINS}
       - NGINX=${NGINX}
-      - USE_REMOTE=${USE_REMOTE}
-      - DNS_HOSTNAME=${DNS_HOSTNAME} # e.g. DNS_HOSTNAME=/usr/src/app/shared/myzonefile.db
       - UPDATE_TIME=${UPDATE_TIME}
+      - DATA_PATH=${DATA_PATH}
+      - SHARED_PATH=${SHARED_PATH}
+      - BACKUP_FOLDER=${BACKUP_FOLDER}
+      - LDAP_DOMAIN=${LDAP_DOMAIN}
+      - LDAP_SERVER=${LDAP_SERVER}
     restart: unless-stopped
 
   sftp:
