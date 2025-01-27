@@ -4,6 +4,8 @@ WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm --proxy http://proxy.azercell.com:8080 install
 COPY frontend/ .
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 RUN npm run build
 
 # --- Backend Setup Stage ---
