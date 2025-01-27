@@ -95,6 +95,7 @@ const Login = ({ setLoggedIn }) => {
             color="primary"
             fullWidth
             onClick={handleLogin}
+            type="submit"
           >
             Login
           </Button>
