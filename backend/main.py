@@ -266,6 +266,26 @@ def update_data():
 # Flask App
 # ---------------------------------------------------------
 app = Flask(__name__, static_folder='static', static_url_path='')
+@app.before_request
+def log_request_info():
+    app.logger.debug(f"Headers: {request.headers}")
+    app.logger.debug(f"Body: {request.get_data()}")
+
+@app.after_request
+def log_response_info(response):
+    try:
+        # Log response status and body only if it's safe to do so
+        app.logger.debug(f"Response status: {response.status}")
+        
+        # Check if response is a standard type (not streaming or direct passthrough)
+        if response.direct_passthrough:
+            app.logger.debug("Response is a direct passthrough; skipping body logging.")
+        else:
+            app.logger.debug(f"Response body: {response.get_data(as_text=True)}")
+    except RuntimeError as e:
+        app.logger.warning(f"Could not log response body: {e}")
+    return response
+
 from flask_cors import CORS
 
 # Configure CORS
@@ -343,6 +363,8 @@ def login():
 def logout():
     session.clear()
     return jsonify({"status": "logged_out"}), 200
+
+
 
 # ---------------------------------------------------------
 # Serve the React App
