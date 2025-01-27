@@ -40,7 +40,6 @@ const RecordsTable = () => {
   const [formData, setFormData] = useState({});
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-  const apiUrl = process.env.REACT_APP_API_URL;
 
   const theme = createTheme({
     palette: {
@@ -91,7 +90,7 @@ const RecordsTable = () => {
 
   const fetchRecords = async () => {
     try {
-      const response = await axios.get(`${apiUrl}/records`);
+      const response = await axios.get(`/records`);
       setRecords(response.data);
     } catch (error) {
       console.error('Error fetching records:', error);
@@ -122,7 +121,7 @@ const RecordsTable = () => {
 
   const handleSave = async (id) => {
     try {
-      await axios.post(`${apiUrl}/records/${id}`, formData);
+      await axios.post(`/records/${id}`, formData);
       await fetchRecords();
       setEditRowId(null);
     } catch (error) {
@@ -132,7 +131,7 @@ const RecordsTable = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`${apiUrl}/records/${id}`);
+      await axios.delete(`/records/${id}`);
       await fetchRecords();
     } catch (error) {
       console.error('Error deleting record:', error);

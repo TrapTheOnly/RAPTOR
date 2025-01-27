@@ -13,7 +13,7 @@ def ldap_authenticate(username, password):
     """
     try:
         user_dn = f"{LDAP_DOMAIN}\\{username}"
-        server = Server(LDAP_SERVER, get_info=ALL)
+        server = Server(LDAP_SERVER, get_info=ALL, use_ssl=True)
         print(server)
         conn1 = Connection(server, auto_bind=True)
         print(conn1)

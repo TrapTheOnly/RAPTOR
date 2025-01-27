@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        REACT_APP_API_URL: ${REACT_APP_API_URL}
     image: wams-dev
     container_name: wams-dev
     ports:
@@ -24,7 +22,6 @@ services:
       - BACKUP_FOLDER=${BACKUP_FOLDER}
       - LDAP_DOMAIN=${LDAP_DOMAIN}
       - LDAP_SERVER=${LDAP_SERVER}
-      - REACT_APP_API_URL=${REACT_APP_API_URL}
     restart: unless-stopped
 
   sftp:
