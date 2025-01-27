@@ -11,20 +11,19 @@ def ldap_authenticate(username, password):
     Return True if username/password is valid via LDAP, otherwise False.
     Adjust the bind logic for your environment.
     """
-    return True
-    # try:
-    #     user_dn = f"{LDAP_DOMAIN}\\{username}"
-    #     server = Server(LDAP_SERVER, get_info=ALL, use_ssl=True)
-    #     print(server)
-    #     conn1 = Connection(server, auto_bind=True)
-    #     print(conn1)
-    #     conn = Connection(server, user=user_dn, password=password, authentication=NTLM, auto_bind=True)
-    #     print(conn)
-    #     conn.unbind()
-    #     return True
-    # except Exception as e:
-    #     print(e)
-    #     return False
+    try:
+        user_dn = f"{LDAP_DOMAIN}\\{username}"
+        server = Server(LDAP_SERVER, get_info=ALL, use_ssl=True)
+        print(server)
+        conn1 = Connection(server, auto_bind=True)
+        print(conn1)
+        conn = Connection(server, user=user_dn, password=password, authentication=NTLM, auto_bind=True)
+        print(conn)
+        conn.unbind()
+        return True
+    except Exception as e:
+        print(e)
+        return False
 
 
 def login_required_json(f):

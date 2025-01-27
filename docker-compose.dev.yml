@@ -22,6 +22,7 @@ services:
       - BACKUP_FOLDER=${BACKUP_FOLDER}
       - LDAP_DOMAIN=${LDAP_DOMAIN}
       - LDAP_SERVER=${LDAP_SERVER}
+      - SECRET_KEY=${SECRET_KEY}
     restart: unless-stopped
 
   sftp:
