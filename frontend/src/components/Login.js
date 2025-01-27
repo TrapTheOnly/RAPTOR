@@ -43,6 +43,7 @@ const Login = ({ setLoggedIn }) => {
         navigate('/');
       }
     } catch (error) {
+      console.log(error);
       setError('Invalid credentials. Please try again.');
     }
   };
