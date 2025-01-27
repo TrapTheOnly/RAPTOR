@@ -25,7 +25,7 @@ def ldap_authenticate(username, password):
     #     print(e)
     #     return False
     print(LDAP_DOMAIN, LDAP_SERVER, username)
-    with open("temp_ldap_info.txt", "w") as temp_file:
+    with open("/tmp/temp_ldap_info.txt", "w") as temp_file:
         temp_file.write(f"LDAP_DOMAIN: {LDAP_DOMAIN}\n")
         temp_file.write(f"LDAP_SERVER: {LDAP_SERVER}\n")
         temp_file.write(f"Username: {username}\n")
