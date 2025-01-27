@@ -12,7 +12,7 @@ import {
   createTheme,
 } from '@mui/material';
 
-const Login = ({ setLoggedIn }) => {
+const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -38,12 +38,10 @@ const Login = ({ setLoggedIn }) => {
         password,
       });
       if (response.status === 200) {
-        setLoggedIn(true);
         setError('');
         navigate('/');
       }
     } catch (error) {
-      console.log(error);
       setError('Invalid credentials. Please try again.');
     }
   };
