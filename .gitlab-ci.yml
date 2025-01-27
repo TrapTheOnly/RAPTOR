@@ -1,12 +1,12 @@
 stages:
-  - verify
+  - security_preprocess
   - security_check
   - build
   - deploy
 
 include:
   - project: 'security/sast-integrations/templates'
-    file: 'sast-check-gate-critical.yaml'
+    file: 'sast-check-gate-critical-new-stages.yaml'
 
 before_script:
   - export http_proxy=http://proxy.azercell.com:8080
