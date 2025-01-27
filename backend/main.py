@@ -14,6 +14,10 @@ from ldap_auth import ldap_authenticate, login_required_json, login_required_htm
 # Load environment variables from .env file
 # ---------------------------------------------------------
 load_dotenv()
+# List all environment variables
+print("Environment variables:")
+for key, value in os.environ.items():
+    print(f"{key}: {value}")
 
 # ---------------------------------------------------------
 # Paths for DB & backups (can be overridden by environment)
