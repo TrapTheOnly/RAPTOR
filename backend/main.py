@@ -382,6 +382,10 @@ def not_found(e):
 # Main
 # ---------------------------------------------------------
 if __name__ == '__main__':
+    print("Files in the current folder:")
+    for filename in os.listdir('.'):
+        print(filename)
+        
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         # 1. Initialize DB
         init_db()
