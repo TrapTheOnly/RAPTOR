@@ -8,16 +8,22 @@ services:
     ports:
       - "1337:5000"
     volumes:
-      - dns_zonefiles_volume:/usr/src/app/shared
+      - dns_zonefiles_volume:/usr/app/src/shared
       - db_and_backups_volume:/appdata
     environment:
-      - ENVIRONMENT=production
+      - ENVIRONMENT=development
       - WAF=${WAF}
-      - NGINX=${NGINX}
-      - USE_REMOTE=${USE_REMOTE}
       - DNS_HOSTNAME=${DNS_HOSTNAME}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - NGINX=${NGINX}
       - UPDATE_TIME=${UPDATE_TIME}
-    # restart: unless-stopped
+      - DATA_PATH=${DATA_PATH}
+      - SHARED_PATH=${SHARED_PATH}
+      - BACKUP_FOLDER=${BACKUP_FOLDER}
+      - LDAP_DOMAIN=${LDAP_DOMAIN}
+      - LDAP_SERVER=${LDAP_SERVER}
+      - SECRET_KEY=${SECRET_KEY}
+    restart: unless-stopped
 
   sftp:
     build:

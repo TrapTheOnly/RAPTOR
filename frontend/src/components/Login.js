@@ -17,6 +17,7 @@ const Login = ({ setLoggedIn }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
+  let navigate = useNavigate();
 
   const theme = createTheme({
     palette: {
