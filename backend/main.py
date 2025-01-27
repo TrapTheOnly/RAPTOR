@@ -337,6 +337,7 @@ def login():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
+    print(f"Logging in user {username}...")
     if ldap_authenticate(username, password):
         session['logged_in'] = True
         session['username'] = username
