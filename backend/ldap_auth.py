@@ -34,6 +34,7 @@ def login_required_json(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get('logged_in'):
+            print("Unauthorized")
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
     return wrapper
