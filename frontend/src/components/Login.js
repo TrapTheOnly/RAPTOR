@@ -12,11 +12,10 @@ import {
   createTheme,
 } from '@mui/material';
 
-const Login = ({ setLoggedIn, setGlobalUsername }) => {
+const Login = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMode, setDarkMode }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
   let navigate = useNavigate();
 
   const theme = createTheme({
@@ -41,6 +40,7 @@ const Login = ({ setLoggedIn, setGlobalUsername }) => {
         setError('');
         setLoggedIn(true);
         setGlobalUsername(response.data.username);
+        setGlobalUserRole(response.data.user_type);
         navigate('/');
       }
     } catch (error) {

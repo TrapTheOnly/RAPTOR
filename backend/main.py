@@ -1,25 +1,23 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 import sqlite3
 import re
 from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
-from dotenv import load_dotenv
 import shutil
 import datetime
 import threading
 import time
-from ldap_auth import ldap_authenticate, login_required_json, login_required_html
 from datetime import timedelta
-
-# ---------------------------------------------------------
-# Load environment variables from .env file
-# ---------------------------------------------------------
-load_dotenv()
+from userhandler import ldap_authenticate, login_required_json, login_required_html, search_ldap_users
+from adminhandler import admin_required, init_admin_db
 
 # ---------------------------------------------------------
 # Paths for DB & backups (can be overridden by environment)
 # ---------------------------------------------------------
-DB_PATH = os.getenv("DATA_PATH") + "dns_records.db"
+DB_PATH = os.getenv("DATA_PATH") + "database.db"
 BACKUP_FOLDER = os.getenv("BACKUP_FOLDER")
 
 # ---------------------------------------------------------
@@ -156,6 +154,8 @@ def init_db(db_path=DB_PATH):
 
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
+
+    # DNS records table
     c.execute("""
         CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,6 +168,17 @@ def init_db(db_path=DB_PATH):
             application_owner TEXT DEFAULT ''
         )
     """)
+
+    # Allowed users table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS allowed_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT,
+            added_date TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -222,6 +233,24 @@ def store_records_in_db(records, db_path=DB_PATH):
     conn.commit()
     conn.close()
 
+def add_user_to_system(username, email, db_path=DB_PATH):
+    """
+    Add a user to the allowed_users table.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO allowed_users (username, email, added_date)
+            VALUES (?, ?, datetime('now', '+4 hours'), ?)
+        """, (username, email))
+        conn.commit()
+        conn.close()
+    except sqlite3.IntegrityError:
+        raise ValueError(f"User {username} already exists in the system.")
+    except Exception as e:
+        raise RuntimeError(f"Error adding user {username}: {e}")
+
 # ---------------------------------------------------------
 # Utility: periodic update scheduling
 # ---------------------------------------------------------
@@ -270,31 +299,11 @@ def update_data():
 app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.getenv("SECRET_KEY")
 app.permanent_session_lifetime = timedelta(hours=1)
-# @app.before_request
-# def log_request_info():
-#     app.logger.debug(f"Headers: {request.headers}")
-#     app.logger.debug(f"Body: {request.get_data()}")
-
-# @app.after_request
-# def log_response_info(response):
-#     try:
-#         # Log response status and body only if it's safe to do so
-#         app.logger.debug(f"Response status: {response.status}")
-        
-#         # Check if response is a standard type (not streaming or direct passthrough)
-#         if response.direct_passthrough:
-#             app.logger.debug("Response is a direct passthrough; skipping body logging.")
-#         else:
-#             app.logger.debug(f"Response body: {response.get_data(as_text=True)}")
-#     except RuntimeError as e:
-#         app.logger.warning(f"Could not log response body: {e}")
-#     return response
-
-from flask_cors import CORS
-
-# Configure CORS
 CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(",")}})
 
+# ---------------------------------------------------------
+# Record API Endpoints
+# ---------------------------------------------------------
 @app.route('/records', methods=['GET'])
 @login_required_json
 def get_records():
@@ -340,7 +349,7 @@ def update_record(record_id):
         return jsonify({"error": str(e)}), 400
 
 @app.route('/records/<int:record_id>', methods=['DELETE'])
-@login_required_json
+@admin_required
 def delete_record(record_id):
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -351,18 +360,54 @@ def delete_record(record_id):
         return jsonify({"status": "success", "message": f"Record {record_id} deleted"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
+
+# ---------------------------------------------------------
+# Admin API Endpoints
+# ---------------------------------------------------------
+@app.route('/ldap-search', methods=['GET'])
+@admin_required
+def ldap_search():
+    query = request.args.get('query').lower()
+    try:
+        results = search_ldap_users(query)
+        return jsonify({"results": results}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     
+@app.route('/add-user', methods=['POST'])
+@admin_required
+def add_user():
+    data = request.get_json()
+    username = data.get('username').lower()
+    try:
+        add_user_to_system(username)
+        return jsonify({"message": f"User {username} added successfully."}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---------------------------------------------------------
+# User Authentication Endpoints
+# ---------------------------------------------------------
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
-    username = data.get('username')
+    username = data.get('username').lower()
     password = data.get('password')
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT * FROM allowed_users WHERE username = ?", (username,))
+    user = c.fetchone()
+    conn.close()
+    if not user and username != os.getenv("ADMIN_USERNAME"):
+        return jsonify({"error": "Invalid credentials"}), 401
+
     if ldap_authenticate(username, password):
         session.permanent = True
         session['logged_in'] = True
         session['username'] = username
+        user_type = "admin" if session.get('admin_logged_in') else "user"
         print(f"User {username} logged in.")
-        return jsonify({"status": "logged_in", "username": username}), 200
+        return jsonify({"status": "logged_in", "username": username, "user_type": user_type}), 200
     else:
         return jsonify({"error": "Invalid credentials"}), 401
     
@@ -372,7 +417,8 @@ def session_status():
     Check if the user is logged in.
     """
     if 'logged_in' in session and session['logged_in']:
-        return jsonify({"status": "logged_in", "username": session.get("username")}), 200
+        user_type = "admin" if session.get('admin_logged_in') else "user"
+        return jsonify({"status": "logged_in", "username": session.get("username"), "user_type": user_type}), 200
     return jsonify({"status": "logged_out"}), 401
 
 @app.route('/logout', methods=['POST'])
@@ -381,7 +427,7 @@ def logout():
     return jsonify({"status": "logged_out"}), 200
 
 # ---------------------------------------------------------
-# Serve the React App
+# Frontend Routes
 # ---------------------------------------------------------
 @app.route('/')
 @login_required_html
@@ -398,16 +444,11 @@ def not_found(e):
 if __name__ == '__main__':
         
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        # 1. Initialize DB
         init_db()
-
-        # 2. Perform initial update
+        init_admin_db()
         update_data()
-
-        # 3. Schedule periodic updates
         interval = int(os.getenv('UPDATE_TIME', '86400'))
         periodic_update(interval, update_data)
 
-    # 4. Run Flask
     print("Starting Flask server on port 5000...")
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -10,7 +10,6 @@ import {
   TableRow,
   Paper,
   IconButton,
-  Switch,
   Box,
   CssBaseline,
   ThemeProvider,
@@ -23,8 +22,6 @@ import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import UpdateIcon from '@mui/icons-material/Update';
 import WarningIcon from '@mui/icons-material/Warning';
@@ -34,13 +31,12 @@ function sanitizeInput(str) {
   return str.replace(/[^a-zA-Z0-9.\-_ ]+/g, '');
 }
 
-const RecordsTable = () => {
-  const storedTheme = localStorage.getItem('theme') || 'light';
+const RecordsTable = ({ userRole, darkMode }) => {
   const [records, setRecords] = useState([]);
   const [editRowId, setEditRowId] = useState(null);
   const [formData, setFormData] = useState({});
-  const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const isAdmin = userRole === 'admin';
   let navigate = useNavigate();
 
   const theme = createTheme({
@@ -78,11 +74,6 @@ const RecordsTable = () => {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    // Save theme preference to local storage whenever it changes
-    localStorage.setItem('theme', darkMode ? 'dark' : 'light');
-  }, [darkMode]);
-
   const getStatusIcon = (status, darkMode) => {
     const iconColor = darkMode ? '#90caf9' : '#1976d2';
     switch (status) {
@@ -98,7 +89,7 @@ const RecordsTable = () => {
   };
 
   const formatDateTime = (datetime) => {
-    if (!datetime) return 'N/A'; // Handle cases where last_modification_date is null
+    if (!datetime) return 'N/A';
     return new Intl.DateTimeFormat('en-UK', {
       year: 'numeric',
       month: 'short',
@@ -170,8 +161,7 @@ const RecordsTable = () => {
     const sortedRecords = [...records].sort((a, b) => {
       let aValue = a[key];
       let bValue = b[key];
-  
-      // Convert to Date objects if sorting by creation_date or last_modification_date
+
       if (key === 'creation_date' || key === 'last_modification_date') {
         aValue = new Date(aValue);
         bValue = new Date(bValue);
@@ -220,7 +210,7 @@ const RecordsTable = () => {
           alignItems="center"
           mb={2}
         >
-          <Typography variant="h4" component="h1">
+          <Typography variant="h6" component="h1">
             DNS Records
           </Typography>
           <Box display="flex" alignItems="center">
@@ -233,12 +223,6 @@ const RecordsTable = () => {
             >
               Export CSV
             </Button>
-            <LightModeIcon />
-            <Switch
-              checked={darkMode}
-              onChange={() => setDarkMode(!darkMode)}
-            />
-            <DarkModeIcon />
           </Box>
         </Box>
         <TableContainer component={Paper}>
@@ -263,28 +247,9 @@ const RecordsTable = () => {
                     >
                     {editRowId === record.id ? (
                         <>
-                        {/* Editable Fields */}
-                        <TableCell>
-                            <input
-                            name="name"
-                            value={formData.name}
-                            onChange={handleChange}
-                            />
-                        </TableCell>
-                        <TableCell>
-                            <input
-                            name="ip_address"
-                            value={formData.ip_address}
-                            onChange={handleChange}
-                            />
-                        </TableCell>
-                        <TableCell>
-                            <input
-                            name="source"
-                            value={formData.source}
-                            onChange={handleChange}
-                            />
-                        </TableCell>
+                        <TableCell>{record.name}</TableCell>
+                        <TableCell>{record.ip_address}</TableCell>
+                        <TableCell>{record.source}</TableCell>
                         <TableCell>
                           <input
                             name="application_owner"
@@ -292,13 +257,9 @@ const RecordsTable = () => {
                             onChange={handleChange}
                           />
                         </TableCell>
-
-                        {/* Non-Editable Fields */}
                         <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
                         <TableCell>{formatDateTime(record.creation_date)}</TableCell>
                         <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
-
-                        {/* Action Buttons */}
                         <TableCell>
                             <IconButton onClick={() => handleSave(record.id)}>
                             <SaveIcon color="primary" />
@@ -319,13 +280,16 @@ const RecordsTable = () => {
                         <TableCell>{formatDateTime(record.creation_date)}</TableCell>
                         <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
                         <TableCell>
-                            <IconButton onClick={() => handleEdit(record)}>
+                          <IconButton onClick={() => handleEdit(record)}>
                             <EditIcon color="primary" />
-                            </IconButton>
+                          </IconButton>
+                          { isAdmin ? 
                             <IconButton onClick={() => handleDelete(record.id)}>
-                            <DeleteIcon color="error" />
-                            </IconButton>
-                        </TableCell>
+                              <DeleteIcon color="error" />
+                            </IconButton> : <></>
+                          }
+                        </TableCell> 
+                        
                         </>
                     )}
                     </TableRow>
