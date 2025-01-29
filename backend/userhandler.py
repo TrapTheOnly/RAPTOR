@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 LDAP_SERVER = os.getenv("LDAP_SERVER")
 LDAP_DOMAIN = os.getenv("LDAP_DOMAIN")
+LDAP_USER = os.getenv("LDAP_USER")
+LDAP_PASS = os.getenv("LDAP_PASS")
 
 def ldap_authenticate(username, password):
     """
@@ -35,56 +37,52 @@ def search_ldap_users(query, page_size=500):
     Search LDAP for users matching the query with pagination.
     """
     try:
-        LDAP_USER = os.getenv("LDAP_USER")
-        LDAP_PASS = os.getenv("LDAP_PASS")
+        # Base DN for LDAP search
         LDAP_BASE_DN = f"DC={LDAP_DOMAIN.replace('.', ',DC=')}"
 
+        # Connect to the LDAP server
         server = Server(LDAP_SERVER, get_info=ALL)
         conn = Connection(server, user=LDAP_USER, password=LDAP_PASS, auto_bind=True)
         logger.info("LDAP connection successful")
         logger.info(f"LDAP search query: {query}")
 
+        # Define search filter and attributes
         search_filter = f"(|(sAMAccountName=*{query}*)(mail=*{query}*))"
-        
-        # Enable paging control
+        attributes = ['name', 'sAMAccountName', 'distinguishedName', 'mail']
+
+        # Initialize results and pagination variables
         total_entries = []
         entry_count = 0
-        
-        # Perform paged search
-        conn.search(
-            search_base=LDAP_BASE_DN,
-            search_filter=search_filter,
-            search_scope=SUBTREE,
-            attributes=['name', 'sAMAccountName', 'distinguishedName', 'mail'],
-            paged_size=page_size
-        )
+        cookie = None
 
+        # Perform paged search
         while True:
+            conn.search(
+                search_base=LDAP_BASE_DN,
+                search_filter=search_filter,
+                search_scope=SUBTREE,
+                attributes=attributes,
+                paged_size=page_size,
+                paged_cookie=cookie
+            )
+
             results = []
             for entry in conn.entries:
                 entry_count += 1
                 logger.debug(f"Processing entry {entry_count}")
                 results.append({
-                    "username": str(entry.sAMAccountName) if hasattr(entry, 'sAMAccountName') else None,
-                    "email": str(entry.mail) if hasattr(entry, 'mail') else None,
-                    "full_name": str(entry.name) if hasattr(entry, 'name') else None,
-                    "distinguished_name": str(entry.distinguishedName) if hasattr(entry, 'distinguishedName') else None
+                    "username": str(entry.sAMAccountName.value) if entry.sAMAccountName else None,
+                    "email": str(entry.mail.value) if entry.mail else None,
+                    "full_name": str(entry.name.value) if entry.name else None,
+                    "distinguished_name": str(entry.distinguishedName.value) if entry.distinguishedName else None
                 })
-            
+
             total_entries.extend(results)
-            logger.info(f"Retrieved {len(results)} entries in current page")
-            
-            cookie = conn.result['controls']['1.2.840.113556.1.4.319']['value']['cookie']
-            if cookie:
-                conn.search(
-                    search_base=LDAP_BASE_DN,
-                    search_filter=search_filter,
-                    search_scope=SUBTREE,
-                    attributes=['name', 'cn', 'distinguishedName', 'mail'],
-                    paged_size=page_size,
-                    paged_cookie=cookie
-                )
-            else:
+            logger.info(f"Retrieved {len(results)} entries in the current page")
+
+            # Retrieve the cookie for the next page
+            cookie = conn.result.get('controls', {}).get('1.2.840.113556.1.4.319', {}).get('value', {}).get('cookie')
+            if not cookie:
                 break
 
         logger.info(f"Total entries retrieved: {len(total_entries)}")
