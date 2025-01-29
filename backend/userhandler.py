@@ -51,9 +51,10 @@ def search_ldap_users(query):
 
         results = []
         for entry in conn.entries:
+            logger.info(f"LDAP search result: {entry}")
             results.append({
-                "username": str(entry.uid),
-                "email": str(entry.mail) if entry.mail else None
+                "username": str(entry.uid) if hasattr(entry, 'uid') else None,
+                "email": str(entry.mail) if hasattr(entry, 'mail') else None
             })
 
         conn.unbind()
