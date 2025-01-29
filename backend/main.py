@@ -24,11 +24,14 @@ BACKUP_FOLDER = os.getenv("BACKUP_FOLDER")
 # ---------------------------------------------------------
 # Configure logging
 # ---------------------------------------------------------
+log_folder = os.path.dirname(DB_PATH)
+os.makedirs(log_folder, exist_ok=True)
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s %(levelname)s %(name)s %(message)s',
     handlers=[
-        logging.FileHandler(DB_PATH + "application.log"),
+        logging.FileHandler(os.path.join(log_folder, "application.log")),
         logging.StreamHandler()
     ]
 )
