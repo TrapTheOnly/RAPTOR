@@ -41,12 +41,14 @@ def search_ldap_users(query):
         server = Server(LDAP_SERVER)
         conn = Connection(server, user=ldap_admin_user, password=ldap_admin_pass, auto_bind=True)
 
-        search_filter = f"(|(uid=*{query}*)(mail=*{query}*))"
+        # search_filter = f"(|(uid=*{query}*)(mail=*{query}*))"
+        search_filter = "(objectClass=person)"
         conn.search(
             search_base=LDAP_DOMAIN,
             search_filter=search_filter,
             search_scope=SUBTREE,
-            attributes=['uid', 'mail']
+            # attributes=['uid', 'mail']
+            attributes=['*']
         )
 
         results = []

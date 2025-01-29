@@ -392,7 +392,6 @@ def ldap_search():
         results = search_ldap_users(query)
         return jsonify({"results": results}), 200
     except Exception as e:
-        logger.error(f"Error during LDAP search: {e}")
         return jsonify({"error": str(e)}), 500
     
 @app.route('/add-user', methods=['POST'])
