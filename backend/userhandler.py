@@ -35,28 +35,31 @@ def search_ldap_users(query):
     Search LDAP for users matching the query.
     """
     try:
-        ldap_admin_user = os.getenv("LDAP_USER")
-        ldap_admin_pass = os.getenv("LDAP_PASS")
+        LDAP_USER = os.getenv("LDAP_USER")
+        LDAP_PASS = os.getenv("LDAP_PASS")
+        LDAP_BASE_DN = f"DC={LDAP_DOMAIN.replace('.', ',DC=')}"
 
-        server = Server(LDAP_SERVER)
-        conn = Connection(server, user=ldap_admin_user, password=ldap_admin_pass, auto_bind=True)
+        server = Server(LDAP_SERVER, get_info=ALL)
+        conn = Connection(server, user=LDAP_USER, password=LDAP_PASS, auto_bind=True)
 
-        # search_filter = f"(|(uid=*{query}*)(mail=*{query}*))"
-        search_filter = "(objectClass=person)"
+        search_filter = f"(|(cn=*{query}*)(mail=*{query}*))"
+        # search_filter = "(objectClass=*)"
         conn.search(
-            search_base=LDAP_DOMAIN,
+            search_base=LDAP_BASE_DN,
             search_filter=search_filter,
             search_scope=SUBTREE,
             # attributes=['uid', 'mail']
-            attributes=['*']
+            attributes=['name', 'cn', 'distinguishedName', 'mail']
         )
 
         results = []
         for entry in conn.entries:
             logger.info(f"LDAP search result: {entry}")
             results.append({
-                "username": str(entry.uid) if hasattr(entry, 'uid') else None,
-                "email": str(entry.mail) if hasattr(entry, 'mail') else None
+                "username": str(entry.cn) if hasattr(entry, 'uid') else None,
+                "email": str(entry.mail) if hasattr(entry, 'mail') else None,
+                "full_name": str(entry.name) if hasattr(entry, 'name') else None,
+                "distinguished_name": str(entry.distinguishedName) if hasattr(entry, 'distinguishedName') else None
             })
 
         conn.unbind()
