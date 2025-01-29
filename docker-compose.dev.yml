@@ -24,6 +24,7 @@ services:
       - LDAP_SERVER=${LDAP_SERVER}
       - SECRET_KEY=${SECRET_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - APP_PORT=${APP_PORT}
     restart: unless-stopped
 
   sftp:

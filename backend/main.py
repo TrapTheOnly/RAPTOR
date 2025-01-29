@@ -15,7 +15,6 @@ from datetime import timedelta
 from userhandler import ldap_authenticate, login_required_json, login_required_html, search_ldap_users
 from adminhandler import admin_required, init_admin_db
 
-
 # ---------------------------------------------------------
 # Paths for DB & backups (can be overridden by environment)
 # ---------------------------------------------------------
@@ -470,5 +469,6 @@ if __name__ == '__main__':
         interval = int(os.getenv('UPDATE_TIME', '86400'))
         periodic_update(interval, update_data)
 
-    logger.info("Starting Flask server on port 5000...")
-    app.run(host='0.0.0.0', port=3000, debug=True)
+    port = os.getenv("APP_PORT")
+    logger.info(f"Starting Flask server on port {port}...")
+    app.run(host='0.0.0.0', port=port, debug=True)
