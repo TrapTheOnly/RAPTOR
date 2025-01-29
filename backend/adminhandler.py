@@ -12,9 +12,9 @@ def init_admin_db():
     Initializes the admin database with a static admin user.
     The admin user credentials are generated and logged once.
     """
-    with open("/tmp/writehere.txt", "w") as file:
-        file.write("admin username is: " + ADMIN_USERNAME, "db path is: " + DB_PATH)
-        
+    file = open("/tmp/writehere.txt", "w")
+    file.write("admin username is: " + ADMIN_USERNAME, "db path is: " + DB_PATH)
+
     if os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -27,16 +27,21 @@ def init_admin_db():
             )
         """)
 
-        static_username = ADMIN_USERNAME
-        static_password = secrets.token_urlsafe(16)
-        hashed_password = bcrypt.hashpw(static_password.encode(), bcrypt.gensalt())
+        try:
+            static_username = ADMIN_USERNAME
+            static_password = secrets.token_urlsafe(16)
+            hashed_password = bcrypt.hashpw(static_password.encode(), bcrypt.gensalt())
 
-        c.execute("SELECT * FROM admin_users WHERE username = ?", (static_username,))
-        if c.fetchone() is None:
-            c.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", (static_username, hashed_password))
-            print(f"Admin user created! Username: {static_username}, Password: {static_password}")
-        else:
-            print("Admin user already exists. Skipping creation.")
+            c.execute("SELECT * FROM admin_users WHERE username = ?", (static_username,))
+            if c.fetchone() is None:
+                c.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", (static_username, hashed_password))
+                print(f"Admin user created! Username: {static_username}, Password: {static_password}")
+            else:
+                print("Admin user already exists. Skipping creation.")
+        except Exception as e:
+            with open("/tmp/writehere.txt", "a") as file:
+                file.write(f"\nError creating admin user: {e}")
+                file.close()
 
         conn.commit()
         conn.close()

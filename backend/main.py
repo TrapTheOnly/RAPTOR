@@ -445,10 +445,7 @@ if __name__ == '__main__':
         
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         init_db()
-        try:
-            init_admin_db()
-        except Exception as e:
-            print(f"Error initializing admin database: {e}")
+        init_admin_db()
         update_data()
         interval = int(os.getenv('UPDATE_TIME', '86400'))
         periodic_update(interval, update_data)
