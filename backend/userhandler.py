@@ -41,6 +41,8 @@ def search_ldap_users(query):
 
         server = Server(LDAP_SERVER, get_info=ALL)
         conn = Connection(server, user=LDAP_USER, password=LDAP_PASS, auto_bind=True)
+        logger.info("LDAP connection successful", conn)
+        logger.info(f"LDAP search query: {query}")
 
         search_filter = f"(|(cn=*{query}*)(mail=*{query}*))"
         # search_filter = "(objectClass=*)"
