@@ -15,6 +15,13 @@ from datetime import timedelta
 from userhandler import ldap_authenticate, login_required_json, login_required_html, search_ldap_users
 from adminhandler import admin_required, init_admin_db
 
+
+# ---------------------------------------------------------
+# Paths for DB & backups (can be overridden by environment)
+# ---------------------------------------------------------
+DB_PATH = os.getenv("DATA_PATH") + "database.db"
+BACKUP_FOLDER = os.getenv("BACKUP_FOLDER")
+
 # ---------------------------------------------------------
 # Configure logging
 # ---------------------------------------------------------
@@ -22,18 +29,12 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s %(levelname)s %(name)s %(message)s',
     handlers=[
-        logging.FileHandler("application.log"),
+        logging.FileHandler(DB_PATH + "application.log"),
         logging.StreamHandler()
     ]
 )
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------
-# Paths for DB & backups (can be overridden by environment)
-# ---------------------------------------------------------
-DB_PATH = os.getenv("DATA_PATH") + "database.db"
-BACKUP_FOLDER = os.getenv("BACKUP_FOLDER")
 
 # ---------------------------------------------------------
 # Utility: figure out source from IP
