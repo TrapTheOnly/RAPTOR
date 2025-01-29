@@ -23,6 +23,7 @@ services:
       - LDAP_DOMAIN=${LDAP_DOMAIN}
       - LDAP_SERVER=${LDAP_SERVER}
       - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
     restart: unless-stopped
 
   sftp:
