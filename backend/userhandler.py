@@ -1,8 +1,12 @@
 import os
+import logging
 from flask import session, jsonify, redirect
 from functools import wraps
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE
 from adminhandler import admin_login
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 LDAP_SERVER = os.getenv("LDAP_SERVER")
@@ -23,6 +27,7 @@ def ldap_authenticate(username, password):
         conn.unbind()
         return True
     except Exception as e:
+        logger.error(f"LDAP authentication failed for user {username}: {e}")
         return False
     
 def search_ldap_users(query):
@@ -54,7 +59,7 @@ def search_ldap_users(query):
         conn.unbind()
         return results
     except Exception as e:
-        print(f"Error searching LDAP: {e}")
+        logger.error(f"Error searching LDAP: {e}")
         raise RuntimeError(f"LDAP search failed: {e}")
 
 
@@ -66,7 +71,7 @@ def login_required_json(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get('logged_in'):
-            print("Unauthorized")
+            logger.warning("Unauthorized access attempt to JSON route")
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
     return wrapper
@@ -80,6 +85,7 @@ def login_required_html(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get('logged_in'):
+            logger.warning("Unauthorized access attempt to HTML route")
             return redirect('/login')
         return f(*args, **kwargs)
     return wrapper

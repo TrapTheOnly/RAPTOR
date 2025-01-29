@@ -1,4 +1,5 @@
 import os
+import logging
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -13,6 +14,20 @@ import time
 from datetime import timedelta
 from userhandler import ldap_authenticate, login_required_json, login_required_html, search_ldap_users
 from adminhandler import admin_required, init_admin_db
+
+# ---------------------------------------------------------
+# Configure logging
+# ---------------------------------------------------------
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s %(levelname)s %(name)s %(message)s',
+    handlers=[
+        logging.FileHandler("application.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------
 # Paths for DB & backups (can be overridden by environment)
@@ -86,7 +101,7 @@ def handle_zone_file_changes(new_zone_file_path, final_filename):
     # If the final file doesn't exist yet, just copy new_zone_file_path => final_filename
     if not os.path.exists(final_filename):
         shutil.copy2(new_zone_file_path, final_filename)
-        print(f"No existing zone file. Copied {new_zone_file_path} to {final_filename}")
+        logger.info(f"No existing zone file. Copied {new_zone_file_path} to {final_filename}")
         return final_filename
 
     # If final file exists, compare with latest backup
@@ -111,33 +126,33 @@ def handle_zone_file_changes(new_zone_file_path, final_filename):
                 recent_backup_data = recent_backup_file.read()
             if old_file_data == recent_backup_data:
                 os.remove(final_filename)
-                print(f"Existing zone file matches the most recent backup. File {final_filename} removed before overwriting.")
+                logger.info(f"Existing zone file matches the most recent backup. File {final_filename} removed before overwriting.")
             else:
                 # Move old final file to a new backup
                 timestamp = datetime.datetime.now().strftime("%d.%m.%Y_%H%M%S")
                 backup_name = f"{os.path.basename(final_filename)}-{timestamp}"
                 backup_path = os.path.join(BACKUP_FOLDER, backup_name)
                 shutil.move(final_filename, backup_path)
-                print(f"Existing zone file moved to backup: {backup_path}")
+                logger.info(f"Existing zone file moved to backup: {backup_path}")
         else:
             # No backups exist, so let's just rename the existing file
             timestamp = datetime.datetime.now().strftime("%d.%m.%Y_%H%M%S")
             backup_name = f"{os.path.basename(final_filename)}-{timestamp}"
             backup_path = os.path.join(BACKUP_FOLDER, backup_name)
             shutil.move(final_filename, backup_path)
-            print(f"Existing zone file moved to backup: {backup_path}")
+            logger.info(f"Existing zone file moved to backup: {backup_path}")
 
         # Copy the new file in place
         shutil.copy2(new_zone_file_path, final_filename)
-        print(f"New zone file {new_zone_file_path} copied to {final_filename}")
+        logger.info(f"New zone file {new_zone_file_path} copied to {final_filename}")
 
         # Manage the number of backups (limit to 100)
         if len(backups) >= 100:
             oldest_backup = os.path.join(BACKUP_FOLDER, backups[-1])
             os.remove(oldest_backup)
-            print(f"Oldest backup {oldest_backup} deleted (limit of 100).")
+            logger.info(f"Oldest backup {oldest_backup} deleted (limit of 100).")
     else:
-        print(f"No changes found. The new zone file is identical to {final_filename}.")
+        logger.info(f"No changes found. The new zone file is identical to {final_filename}.")
 
     return final_filename
 
@@ -149,7 +164,7 @@ def init_db(db_path=DB_PATH):
     Create the table for A records if not existing.
     """
     # Ensure the parent directory exists
-    print("Initializing database...")
+    logger.info("Initializing database...")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
     conn = sqlite3.connect(db_path)
@@ -202,7 +217,7 @@ def store_records_in_db(records, db_path=DB_PATH):
     for record in records:
         if record['name'] in existing_records:
             if existing_records[record['name']]['ip_address'] != record['ip_address']:
-                print(f"IP changed for {record['name']}: {existing_records[record['name']]['ip_address']} -> {record['ip_address']}")
+                logger.info(f"IP changed for {record['name']}: {existing_records[record['name']]['ip_address']} -> {record['ip_address']}")
                 c.execute("""
                     UPDATE records
                     SET ip_address = ?, status = 'updated', last_modification_date = datetime('now', '+4 hours')
@@ -219,7 +234,7 @@ def store_records_in_db(records, db_path=DB_PATH):
                 INSERT INTO records (name, ip_address, source, status, creation_date, application_owner)
                 VALUES (?, ?, ?, 'unchanged', datetime('now', '+4 hours'), '')
             """, (record['name'], record['ip_address'], record['source']))
-            print(f"Inserted new record for {record['name']}")
+            logger.info(f"Inserted new record for {record['name']}")
 
     # Mark as 'missing' anything not in the new dataset
     placeholders = ','.join('?' for _ in current_names)
@@ -273,12 +288,12 @@ def update_data():
     3. Parses that final zone file and updates the DB.
     """
     try:
-        print(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         # .env holds e.g. DNS_HOSTNAME pointing to the new zone file
         new_zone_file_path = os.getenv("SHARED_PATH") + os.getenv("DNS_HOSTNAME")
         final_zone_file_path = os.getenv("DATA_PATH") + os.getenv("DNS_HOSTNAME")
-        print(f"Using zone file at {new_zone_file_path}")
+        logger.info(f"Using zone file at {new_zone_file_path}")
 
         # Backup/replace final file with the new file
         final_zone_file = handle_zone_file_changes(new_zone_file_path, final_zone_file_path)
@@ -289,9 +304,9 @@ def update_data():
         # Store in the database
         store_records_in_db(records)
 
-        print(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
     except Exception as e:
-        print(f"Error during data update: {e}")
+        logger.error(f"Error during data update: {e}")
 
 # ---------------------------------------------------------
 # Flask App
@@ -346,6 +361,7 @@ def update_record(record_id):
         conn.close()
         return jsonify({"status": "success"}), 200
     except Exception as e:
+        logger.error(f"Error updating record {record_id}: {e}")
         return jsonify({"error": str(e)}), 400
 
 @app.route('/records/<int:record_id>', methods=['DELETE'])
@@ -359,6 +375,7 @@ def delete_record(record_id):
         conn.close()
         return jsonify({"status": "success", "message": f"Record {record_id} deleted"}), 200
     except Exception as e:
+        logger.error(f"Error deleting record {record_id}: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
 # ---------------------------------------------------------
@@ -372,6 +389,7 @@ def ldap_search():
         results = search_ldap_users(query)
         return jsonify({"results": results}), 200
     except Exception as e:
+        logger.error(f"Error during LDAP search: {e}")
         return jsonify({"error": str(e)}), 500
     
 @app.route('/add-user', methods=['POST'])
@@ -383,6 +401,7 @@ def add_user():
         add_user_to_system(username)
         return jsonify({"message": f"User {username} added successfully."}), 200
     except Exception as e:
+        logger.error(f"Error adding user {username}: {e}")
         return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------
@@ -406,7 +425,7 @@ def login():
         session['logged_in'] = True
         session['username'] = username
         user_type = "admin" if session.get('admin_logged_in') else "user"
-        print(f"User {username} logged in.")
+        logger.info(f"User {username} logged in.")
         return jsonify({"status": "logged_in", "username": username, "user_type": user_type}), 200
     else:
         return jsonify({"error": "Invalid credentials"}), 401
@@ -450,5 +469,5 @@ if __name__ == '__main__':
         interval = int(os.getenv('UPDATE_TIME', '86400'))
         periodic_update(interval, update_data)
 
-    print("Starting Flask server on port 5000...")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    logger.info("Starting Flask server on port 5000...")
+    app.run(host='0.0.0.0', port=3000, debug=True)

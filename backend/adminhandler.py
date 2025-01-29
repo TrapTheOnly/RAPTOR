@@ -2,7 +2,11 @@ import os
 import bcrypt
 import secrets
 import sqlite3
+import logging
 from flask import session, jsonify
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 DB_PATH = os.getenv("DATA_PATH") + "database.db"
@@ -34,8 +38,9 @@ def init_admin_db():
             c.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", (static_username, hashed_password))
             with open("/tmp/writehere.txt", "a") as file:
                 file.write(f"Admin user created! Username: {static_username}, Password: {static_password}")
+            logger.info(f"Admin user created! Username: {static_username}, Password: {static_password}")
         else:
-            print("Admin user already exists. Skipping creation.")
+            logger.info("Admin user already exists. Skipping creation.")
 
         conn.commit()
         conn.close()
@@ -58,7 +63,7 @@ def admin_login(username, password):
         else:
             return False
     except Exception as e:
-        print(f"Error authenticating admin user: {e}")
+        logger.error(f"Error authenticating admin user: {e}")
         return False
 
 def admin_required(f):
