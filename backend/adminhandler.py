@@ -12,6 +12,9 @@ def init_admin_db():
     Initializes the admin database with a static admin user.
     The admin user credentials are generated and logged once.
     """
+    with open("/tmp/writehere.txt", "w") as file:
+        file.write("admin username is: " + ADMIN_USERNAME, "db path is: " + DB_PATH)
+        
     if os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()

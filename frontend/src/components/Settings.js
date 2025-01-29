@@ -58,32 +58,32 @@ const Settings = ({ darkMode }) => {
 
   return (
     <ThemeProvider theme={theme}>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
-        <Paper elevation={3} style={{ padding: '2rem', width: '500px' }}>
-            <Typography variant="h5" gutterBottom>
-            Admin Settings
-            </Typography>
-            <TextField
-            label="Search Domain User"
-            variant="outlined"
-            fullWidth
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ marginBottom: '1rem' }}
-            />
-            <Button variant="contained" color="primary" fullWidth onClick={handleSearch}>
-            Search
-            </Button>
-            {message && <Typography color="error" style={{ marginTop: '1rem' }}>{message}</Typography>}
-            <List>
-            {searchResults.map((user) => (
-                <ListItem key={user.username} button onClick={() => handleAddUser(user.username)}>
-                    <ListItemText primary={`${user.username} (${user.email})`} />
-                </ListItem>
-            ))}
-            </List>
-        </Paper>
-        </Box>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+      <Paper elevation={3} style={{ padding: '2rem', width: '500px' }}>
+        <Typography variant="h5" gutterBottom>
+          Admin Settings
+        </Typography>
+        <TextField
+          label="Search Domain User"
+          variant="outlined"
+          fullWidth
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ marginBottom: '1rem' }}
+        />
+        <Button variant="contained" color="primary" fullWidth onClick={handleSearch}>
+          Search
+        </Button>
+        {message && <Typography color="error" style={{ marginTop: '1rem' }}>{message}</Typography>}
+        <List>
+          {searchResults.map((user) => (
+            <ListItem key={user.username} button onClick={() => handleAddUser(user.username)}>
+              <ListItemText primary={`${user.username} (${user.email})`} />
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
+      </Box>
     </ThemeProvider>
   );
 };
