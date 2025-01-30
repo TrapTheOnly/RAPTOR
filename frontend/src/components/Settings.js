@@ -18,6 +18,46 @@ const Settings = ({ darkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [message, setMessage] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState([]);
+
+  /**
+   * Handle selecting a user from the search results.
+   * Moves the user to the selected users panel.
+   */
+  const handleSelectUser = (user) => {
+    if (!selectedUsers.some((selected) => selected.username === user.username)) {
+      setSelectedUsers([...selectedUsers, user]);
+      setSearchResults(searchResults.filter((result) => result.username !== user.username));
+    }
+  };
+
+  /**
+   * Handle removing a user from the selected users panel.
+   * Moves the user back to the search results panel.
+   */
+  const handleRemoveUser = (user) => {
+    setSearchResults([...searchResults, user]);
+    setSelectedUsers(selectedUsers.filter((selected) => selected.username !== user.username));
+  };
+
+  /**
+   * Handle submitting all selected users to the backend.
+   */
+  const handleSubmit = async () => {
+    // try {
+    //   const response = await axios.post('/add-users-bulk', { users: selectedUsers });
+    //   if (response.status === 200) {
+    //     setMessage('Users added successfully.');
+    //     setSelectedUsers([]);
+    //   }
+    // } catch (error) {
+    //   console.error('Error submitting users:', error);
+    //   setMessage('Failed to submit users. Please try again.');
+    // }
+    selectedUsers.forEach(user => {
+      handleAddUser(user.username);
+    });
+  };
 
   const handleSearch = async () => {
     try {
@@ -70,11 +110,11 @@ const Settings = ({ darkMode }) => {
         padding="2rem"
         bgcolor={theme.palette.background.default}
       >
-        <Paper elevation={3} style={{ padding: '2rem', width: '700px', maxWidth: '90%' }}>
+        <Paper elevation={3} style={{ padding: '2rem', width: '800px', maxWidth: '95%' }}>
           <Typography variant="h4" align="center" gutterBottom>
             Admin Settings
           </Typography>
-          
+  
           {/* Search Section */}
           <Box display="flex" justifyContent="space-between" flexWrap="wrap" mb={2}>
             <TextField
@@ -102,15 +142,9 @@ const Settings = ({ darkMode }) => {
             </Typography>
           )}
   
-          {/* Results Section */}
-          <Box
-            display="flex"
-            flexDirection="row"
-            justifyContent="space-between"
-            height="400px"
-            overflow="hidden"
-          >
-            {/* Search Results */}
+          {/* Panels for search results and selected users */}
+          <Box display="flex" flexDirection="row" justifyContent="space-between" height="400px">
+            {/* Search Results Panel */}
             <Box flex={1} padding="1rem" overflow="auto" border="1px solid" borderColor={theme.palette.divider}>
               <Typography variant="h6" gutterBottom>
                 Search Results
@@ -122,28 +156,37 @@ const Settings = ({ darkMode }) => {
               ) : (
                 <List>
                   {searchResults.map((user) => (
-                    <ListItem key={user.username} button onClick={() => handleAddUser(user.username)}>
-                      <ListItemText
-                        primary={`${user.full_name}`}
-                        secondary={`Email: ${user.email}`}
-                      />
+                    <ListItem key={user.username} button onClick={() => handleSelectUser(user)}>
+                      <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
                     </ListItem>
                   ))}
                 </List>
               )}
             </Box>
   
-            {/* Actions or Information Panel */}
-            <Box flex={1} padding="1rem" marginLeft="1rem" overflow="auto" bgcolor={theme.palette.background.paper}>
+            {/* Selected Users Panel */}
+            <Box flex={1} padding="1rem" marginLeft="1rem" overflow="auto" border="1px solid" borderColor={theme.palette.divider}>
               <Typography variant="h6" gutterBottom>
-                Instructions / Actions
+                Selected Users
               </Typography>
-              <Typography variant="body2" color="textSecondary">
-                Select a user from the search results to add them to the system. Ensure the user has a valid username and email address.
-              </Typography>
-              <Typography variant="body2" style={{ marginTop: '1rem' }}>
-                <strong>Note:</strong> Only users with both valid usernames and email addresses will be displayed.
-              </Typography>
+              {selectedUsers.length === 0 ? (
+                <Typography variant="body2" color="textSecondary">
+                  No users selected. Click on a user from the search results to add them.
+                </Typography>
+              ) : (
+                <List>
+                  {selectedUsers.map((user) => (
+                    <ListItem key={user.username} button onClick={() => handleRemoveUser(user)}>
+                      <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+              {selectedUsers.length > 0 && (
+                <Button variant="contained" color="secondary" fullWidth onClick={handleSubmit}>
+                  Submit Users
+                </Button>
+              )}
             </Box>
           </Box>
         </Paper>
