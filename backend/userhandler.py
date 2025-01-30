@@ -47,7 +47,7 @@ def search_ldap_users(query, page_size=500):
         logger.info(f"LDAP search query: {query}")
 
         # Define search filter and attributes
-        search_filter = f"(|(sAMAccountName=*{query})(mail=*{query}))"
+        search_filter = f"(|(sAMAccountName=*{query}*)(mail=*{query}*))"
         attributes = ['name', 'sAMAccountName', 'distinguishedName', 'mail']
 
         # Initialize results and pagination variables
