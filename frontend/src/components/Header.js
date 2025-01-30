@@ -23,7 +23,7 @@ const Header = ({ username, userRole, setUserRole, setLoggedIn, setUsername, dar
     <AppBar position="static" color={appBarColor}>
       <Toolbar>
         <Typography variant="h6" style={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => navigate('/')}>
-          ADAM
+          DNS Radar
         </Typography>
         <Box display="flex" alignItems="center">
           <Typography variant="body1" style={{ marginRight: '1rem' }}>
