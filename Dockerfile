@@ -8,7 +8,7 @@ RUN npm run build
 
 # --- Backend Setup Stage ---
 FROM python:3.12-slim
-WORKDIR /usr/src/app
+WORKDIR /usr/app/src
 COPY backend/ /usr/app/src/backend/
 RUN pip install --proxy http://proxy.azercell.com:8080 --no-cache-dir -r /usr/app/src/backend/requirements.txt
 
