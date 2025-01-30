@@ -346,7 +346,7 @@ const Settings = ({ darkMode }) => {
                       </IconButton>
                     }
                   >
-                    <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
+                    <ListItemText primary={`${user.username}`} secondary={`Email: ${user.email}`} />
                   </ListItem>
                 ))}
               </List>
