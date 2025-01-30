@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -9,7 +10,6 @@ import {
   TableRow,
   Paper,
   IconButton,
-  Switch,
   Box,
   CssBaseline,
   ThemeProvider,
@@ -22,8 +22,6 @@ import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import UpdateIcon from '@mui/icons-material/Update';
 import WarningIcon from '@mui/icons-material/Warning';
@@ -33,13 +31,13 @@ function sanitizeInput(str) {
   return str.replace(/[^a-zA-Z0-9.\-_ ]+/g, '');
 }
 
-const RecordsTable = () => {
-  const storedTheme = localStorage.getItem('theme') || 'light';
+const RecordsTable = ({ userRole, darkMode }) => {
   const [records, setRecords] = useState([]);
   const [editRowId, setEditRowId] = useState(null);
   const [formData, setFormData] = useState({});
-  const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const isAdmin = userRole === 'admin';
+  let navigate = useNavigate();
 
   const theme = createTheme({
     palette: {
@@ -58,9 +56,23 @@ const RecordsTable = () => {
   }, []);
 
   useEffect(() => {
-    // Save theme preference to local storage whenever it changes
-    localStorage.setItem('theme', darkMode ? 'dark' : 'light');
-  }, [darkMode]);
+    const checkSession = async () => {
+      try {
+        const response = await axios.get('/session-status');
+        if (response.status !== 200) {
+          navigate('/login');
+        }
+      } catch (error) {
+        console.error("Session expired:", error);
+        navigate('/login');
+      }
+    };
+  
+    checkSession();
+
+    const interval = setInterval(checkSession, 1 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const getStatusIcon = (status, darkMode) => {
     const iconColor = darkMode ? '#90caf9' : '#1976d2';
@@ -77,7 +89,7 @@ const RecordsTable = () => {
   };
 
   const formatDateTime = (datetime) => {
-    if (!datetime) return 'N/A'; // Handle cases where last_modification_date is null
+    if (!datetime) return 'N/A';
     return new Intl.DateTimeFormat('en-UK', {
       year: 'numeric',
       month: 'short',
@@ -90,7 +102,7 @@ const RecordsTable = () => {
 
   const fetchRecords = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:5000/records');
+      const response = await axios.get(`/records`);
       setRecords(response.data);
     } catch (error) {
       console.error('Error fetching records:', error);
@@ -103,6 +115,7 @@ const RecordsTable = () => {
       name: record.name,
       ip_address: record.ip_address,
       source: record.source,
+      application_owner: record.application_owner,
     });
   };
 
@@ -121,7 +134,7 @@ const RecordsTable = () => {
 
   const handleSave = async (id) => {
     try {
-      await axios.post(`http://127.0.0.1:5000/records/${id}`, formData);
+      await axios.post(`/records/${id}`, formData);
       await fetchRecords();
       setEditRowId(null);
     } catch (error) {
@@ -131,7 +144,7 @@ const RecordsTable = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`http://127.0.0.1:5000/records/${id}`);
+      await axios.delete(`/records/${id}`);
       await fetchRecords();
     } catch (error) {
       console.error('Error deleting record:', error);
@@ -145,13 +158,14 @@ const RecordsTable = () => {
     }
     setSortConfig({ key, direction });
   
-  const sortedRecords = [...records].sort((a, b) => {
-      const aValue = key === 'date'
-        ? new Date(a.last_modification_date || a.creation_date) // Use last_modification_date or creation_date
-        : a[key];
-      const bValue = key === 'date'
-        ? new Date(b.last_modification_date || b.creation_date)
-        : b[key];
+    const sortedRecords = [...records].sort((a, b) => {
+      let aValue = a[key];
+      let bValue = b[key];
+
+      if (key === 'creation_date' || key === 'last_modification_date') {
+        aValue = new Date(aValue);
+        bValue = new Date(bValue);
+      }
   
       if (aValue < bValue) return direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return direction === 'asc' ? 1 : -1;
@@ -196,7 +210,7 @@ const RecordsTable = () => {
           alignItems="center"
           mb={2}
         >
-          <Typography variant="h4" component="h1">
+          <Typography variant="h6" component="h1">
             DNS Records
           </Typography>
           <Box display="flex" alignItems="center">
@@ -209,12 +223,6 @@ const RecordsTable = () => {
             >
               Export CSV
             </Button>
-            <LightModeIcon />
-            <Switch
-              checked={darkMode}
-              onChange={() => setDarkMode(!darkMode)}
-            />
-            <DarkModeIcon />
           </Box>
         </Box>
         <TableContainer component={Paper}>
@@ -224,8 +232,10 @@ const RecordsTable = () => {
                 <TableCell onClick={() => handleSort('name')}>Name</TableCell>
                 <TableCell onClick={() => handleSort('ip_address')}>IP Address</TableCell>
                 <TableCell onClick={() => handleSort('source')}>Source</TableCell>
+                <TableCell onClick={() => handleSort('application_owner')}>Application Owner</TableCell>                
                 <TableCell onClick={() => handleSort('status')}>Status</TableCell>
-                <TableCell onClick={() => handleSort('date')}>Last Modified Date</TableCell>
+                <TableCell onClick={() => handleSort('creation_date')}>Creation Date</TableCell>
+                <TableCell onClick={() => handleSort('last_modification_date')}>Last Modified Date</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -237,36 +247,19 @@ const RecordsTable = () => {
                     >
                     {editRowId === record.id ? (
                         <>
-                        {/* Editable Fields */}
+                        <TableCell>{record.name}</TableCell>
+                        <TableCell>{record.ip_address}</TableCell>
+                        <TableCell>{record.source}</TableCell>
                         <TableCell>
-                            <input
-                            name="name"
-                            value={formData.name}
+                          <input
+                            name="application_owner"
+                            value={formData.application_owner || ''}
                             onChange={handleChange}
-                            />
+                          />
                         </TableCell>
-                        <TableCell>
-                            <input
-                            name="ip_address"
-                            value={formData.ip_address}
-                            onChange={handleChange}
-                            />
-                        </TableCell>
-                        <TableCell>
-                            <input
-                            name="source"
-                            value={formData.source}
-                            onChange={handleChange}
-                            />
-                        </TableCell>
-
-                        {/* Non-Editable Fields */}
                         <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
-                        <TableCell>
-                            {formatDateTime(record.last_modification_date || record.creation_date)}
-                        </TableCell>
-
-                        {/* Action Buttons */}
+                        <TableCell>{formatDateTime(record.creation_date)}</TableCell>
+                        <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
                         <TableCell>
                             <IconButton onClick={() => handleSave(record.id)}>
                             <SaveIcon color="primary" />
@@ -282,18 +275,21 @@ const RecordsTable = () => {
                         <TableCell>{record.name}</TableCell>
                         <TableCell>{record.ip_address}</TableCell>
                         <TableCell>{record.source}</TableCell>
+                        <TableCell>{record.application_owner || 'N/A'}</TableCell>
                         <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
+                        <TableCell>{formatDateTime(record.creation_date)}</TableCell>
+                        <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
                         <TableCell>
-                            {formatDateTime(record.last_modification_date || record.creation_date)}
-                        </TableCell>
-                        <TableCell>
-                            <IconButton onClick={() => handleEdit(record)}>
+                          <IconButton onClick={() => handleEdit(record)}>
                             <EditIcon color="primary" />
-                            </IconButton>
+                          </IconButton>
+                          { isAdmin ? 
                             <IconButton onClick={() => handleDelete(record.id)}>
-                            <DeleteIcon color="error" />
-                            </IconButton>
-                        </TableCell>
+                              <DeleteIcon color="error" />
+                            </IconButton> : <></>
+                          }
+                        </TableCell> 
+                        
                         </>
                     )}
                     </TableRow>

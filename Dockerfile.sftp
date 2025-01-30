@@ -1,0 +1,37 @@
+# --- Base Image and Environment Setup ---
+FROM ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN echo 'Acquire::HTTP::Proxy "http://proxy.azercell.com:8080";' > /etc/apt/apt.conf.d/99proxy \
+    && echo 'Acquire::HTTPS::Proxy "http://proxy.azercell.com:8080";' >> /etc/apt/apt.conf.d/99proxy \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+       openssh-server \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /run/sshd
+
+# --- User and SSH Configuration ---
+    RUN groupadd sftpusers && \
+    useradd -m -g sftpusers -s /usr/sbin/nologin sftpuser
+RUN mkdir -p /home/sftpuser/.ssh && \
+    chmod 700 /home/sftpuser/.ssh && \
+    chown sftpuser:sftpusers /home/sftpuser/.ssh
+RUN sed -i 's@#Subsystem sftp /usr/lib/openssh/sftp-server@Subsystem sftp internal-sftp@g' /etc/ssh/sshd_config && \
+    echo "\
+Match User sftpuser\n\
+    ChrootDirectory /chroot\n\
+    ForceCommand internal-sftp\n\
+    X11Forwarding no\n\
+    AllowTcpForwarding no\n\
+" >> /etc/ssh/sshd_config
+RUN mkdir -p /chroot/upload && \
+    chown root:root /chroot && \
+    chmod 755 /chroot && \
+    chown sftpuser:sftpusers /chroot/upload
+    
+# --- Final Setup and Start ---
+    EXPOSE 22
+ARG DNS_SERVER_SSH_PUBKEY
+RUN echo "$DNS_SERVER_SSH_PUBKEY" >> /home/sftpuser/.ssh/authorized_keys && \
+    chown sftpuser:sftpusers /home/sftpuser/.ssh/authorized_keys && \
+    chmod 600 /home/sftpuser/.ssh/authorized_keys
+CMD ["/usr/sbin/sshd", "-D"]

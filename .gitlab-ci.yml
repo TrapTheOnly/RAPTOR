@@ -1,0 +1,78 @@
+stages:
+- security_preprocess
+- security_check
+- build
+- deploy
+
+include:
+- project: 'security/sast-integrations/templates'
+  file: 'sast-check-gate-critical-new-stages.yaml'
+
+before_script:
+- export http_proxy=http://proxy.azercell.com:8080
+- export https_proxy=http://proxy.azercell.com:8080
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+########################
+# DEV Branch Jobs
+########################
+build_dev:
+  stage: build
+  only:
+  - dev
+  script:
+  - echo "Building Docker images for DEV..."
+  - docker build -t wams-dev -f Dockerfile .
+  - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-dev -f Dockerfile.sftp .
+  - echo "Docker images built locally on callisto."
+  tags:
+  - callisto
+
+deploy_dev:
+  stage: deploy
+  only:
+  - dev
+  when: on_success
+  script:
+  - echo "Deploying DEV environment on callisto..."
+  - docker-compose -f docker-compose.dev.yml down || true
+  - docker-compose -f docker-compose.dev.yml up -d
+  - echo "DEV environment is running with HTTPS."
+  tags:
+  - callisto
+  environment:
+    name: dev
+    url: https://callisto.azercell.com:1337
+
+########################
+# PROD Branch Jobs
+########################
+build_prod:
+  stage: build
+  only:
+  - main
+  script:
+  - echo "Building Docker images for PROD..."
+  - docker build -t dnsradar-prod -f Dockerfile .
+  - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t dnsradar-sftp-prod -f Dockerfile.sftp .
+  - echo "Docker images built locally on kali01."
+  tags:
+  - prod-kali
+
+deploy_prod:
+  stage: deploy
+  only:
+  - main
+  when: manual
+  script:
+  - echo "Deploying PROD environment on kali01..."
+  - docker-compose -f docker-compose.prod.yml down || true
+  - docker-compose -f docker-compose.prod.yml up -d
+  - echo "PROD environment is running with HTTPS."
+  tags:
+  - prod-kali
+  environment:
+    name: production
+    url: https://kali01.azercell.com:1337
