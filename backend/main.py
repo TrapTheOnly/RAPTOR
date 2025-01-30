@@ -31,7 +31,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s %(levelname)s %(name)s %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(log_folder, "application.log")),
+        logging.FileHandler(os.path.join(log_folder, "application.log"), mode='w'),
         logging.StreamHandler()
     ]
 )
@@ -514,8 +514,8 @@ if __name__ == '__main__':
         interval = int(os.getenv('UPDATE_TIME', '86400'))
         periodic_update(interval, update_data)
 
-    # CERT_FILE = os.getenv("CERT_FILE")
-    # KEY_FILE = os.getenv("KEY_FILE")
+    CERT_FILE = os.getenv("CERT_FILE")
+    KEY_FILE = os.getenv("KEY_FILE")
     port = os.getenv("APP_PORT")
     logger.info(f"Starting Flask server on port {port}...")
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE), debug=True)
