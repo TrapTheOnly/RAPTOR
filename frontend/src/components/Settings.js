@@ -24,7 +24,8 @@ const Settings = ({ darkMode }) => {
       setSearchResults([]);
       const response = await axios.get(`/ldap-search?query=${searchQuery}`);
       if (response.status === 200) {
-        setSearchResults(response.data.results.filter(user => user.username && user.email));
+        setSearchResults(response.data.results.filter(user => user.username != "None" && 
+                          user.email != "None" && user.full_name != "None"));
       } else {
         setMessage('No results found.');
       }
@@ -123,7 +124,7 @@ const Settings = ({ darkMode }) => {
                   {searchResults.map((user) => (
                     <ListItem key={user.username} button onClick={() => handleAddUser(user.username)}>
                       <ListItemText
-                        primary={`${user.username}`}
+                        primary={`${user.full_name}`}
                         secondary={`Email: ${user.email}`}
                       />
                     </ListItem>
