@@ -14,9 +14,6 @@ before_script:
 
 variables:
   DOCKER_DRIVER: overlay2
-  CERT_DIR: /builds/certs
-  CERT_FILE: $CERT_DIR/app.crt
-  KEY_FILE: $CERT_DIR/app.key
 
 ########################
 # DEV Branch Jobs
@@ -27,14 +24,7 @@ build_dev:
   - dev
   script:
   - echo "Building Docker images for DEV..."
-  - mkdir -p $CERT_DIR
-  - |
-    if [ ! -f "$CERT_FILE" ]; then
-      openssl req -x509 -newkey rsa:2048 -nodes \
-        -keyout "$KEY_FILE" -out "$CERT_FILE" -days 365 \
-        -subj "/C=US/ST=Test/L=Test/O=DevOrg/OU=IT/CN=localhost"
-    fi
-  - docker build --build-arg CERT_DIR=$CERT_DIR -t wams-dev -f Dockerfile .
+  - docker build -t wams-dev -f Dockerfile .
   - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-dev -f Dockerfile.sftp .
   - echo "Docker images built locally on callisto."
   tags:
@@ -65,10 +55,8 @@ build_prod:
   - main
   script:
   - echo "Building Docker images for PROD..."
-  - mkdir -p $CERT_DIR
-  - cp path/to/prod/certificates/* $CERT_DIR
-  - docker build --build-arg CERT_DIR=$CERT_DIR -t wams-prod -f Dockerfile .
-  - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-prod -f Dockerfile.sftp .
+  - docker build -t dnsradar-prod -f Dockerfile .
+  - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t dnsradar-sftp-prod -f Dockerfile.sftp .
   - echo "Docker images built locally on kali01."
   tags:
   - prod-kali

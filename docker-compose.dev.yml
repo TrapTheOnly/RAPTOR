@@ -10,7 +10,7 @@ services:
     volumes:
       - dns_zonefiles_volume:/usr/app/src/shared
       - db_and_backups_volume:/appdata
-      - ./certs:/certs:ro
+      - certs_volume:/certs:ro
     environment:
       - ENVIRONMENT=development
       - WAF=${WAF}
@@ -28,8 +28,8 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - APP_PORT=${APP_PORT}
-      - CERT_FILE=/certs/app.crt
-      - KEY_FILE=/certs/app.key
+      - CERT_FILE=${CERT_FILE}
+      - KEY_FILE=${KEY_FILE}
     restart: unless-stopped
 
   sftp:
@@ -50,4 +50,6 @@ volumes:
   db_and_backups_volume:
     driver: local
   dns_zonefiles_volume:
+    driver: local
+  certs_volume:
     driver: local
