@@ -41,13 +41,13 @@ def search_ldap_users(query, page_size=500):
         LDAP_BASE_DN = f"DC={LDAP_DOMAIN.replace('.', ',DC=')}"
 
         # Connect to the LDAP server
-        server = Server(LDAP_SERVER, get_info=ALL)
+        server = Server(LDAP_SERVER, get_info=ALL, use_ssl=True)
         conn = Connection(server, user=LDAP_USER, password=LDAP_PASS, auto_bind=True)
         logger.info("LDAP connection successful")
         logger.info(f"LDAP search query: {query}")
 
         # Define search filter and attributes
-        search_filter = f"(|(sAMAccountName=*{query}*)(mail=*{query}*))"
+        search_filter = f"(|(sAMAccountName=*{query})(mail={query}*))"
         attributes = ['name', 'sAMAccountName', 'distinguishedName', 'mail']
 
         # Initialize results and pagination variables
