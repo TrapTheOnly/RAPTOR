@@ -22,7 +22,7 @@ const Header = ({ username, userRole, setUserRole, setLoggedIn, setUsername, dar
   return (
     <AppBar position="static" color={appBarColor}>
       <Toolbar>
-        <Typography variant="h6" style={{ flexGrow: 1 }} onClick={() => navigate('/')}>
+        <Typography variant="h6" style={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => navigate('/')}>
           ADAM
         </Typography>
         <Box display="flex" alignItems="center">

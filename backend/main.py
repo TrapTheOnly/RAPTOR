@@ -13,7 +13,7 @@ import threading
 import time
 from datetime import timedelta
 from userhandler import ldap_authenticate, login_required_json, login_required_html, search_ldap_users
-from adminhandler import admin_required, init_admin_db, change_admin_password, get_existing_users
+from adminhandler import admin_required, init_admin_db, change_admin_password, get_existing_users, delete_user
 
 # ---------------------------------------------------------
 # Paths for DB & backups (can be overridden by environment)
@@ -432,6 +432,21 @@ def api_get_existing_users():
     Endpoint to retrieve existing users.
     """
     response, status_code = get_existing_users()
+    return jsonify(response), status_code
+
+@app.route('/delete-user', methods=['DELETE'])
+@admin_required
+def api_delete_user():
+    """
+    Endpoint to delete a user from the allowed_users table.
+    """
+    data = request.get_json()
+    username = data.get('username')
+
+    if not username:
+        return jsonify({"error": "Username is required."}), 400
+
+    response, status_code = delete_user(username)
     return jsonify(response), status_code
 
 # ---------------------------------------------------------

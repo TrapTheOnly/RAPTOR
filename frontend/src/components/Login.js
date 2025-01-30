@@ -48,6 +48,13 @@ const Login = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMode, se
     }
   };
 
+  const handleLoginKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleLogin();
+      e.preventDefault();
+    }
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -82,6 +89,7 @@ const Login = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMode, se
               variant="outlined"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={handleLoginKeyDown}
               margin="normal"
             />
             <TextField
@@ -91,6 +99,7 @@ const Login = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMode, se
               variant="outlined"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={handleLoginKeyDown}
               margin="normal"
             />
           </Box>
@@ -103,13 +112,14 @@ const Login = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMode, se
           >
             Login
           </Button>
-          <Typography
-            variant="body2"
-            style={{ marginTop: '1rem', cursor: 'pointer' }}
+          <Button
+            variant="text"
+            color="secondary"
+            style={{ marginTop: '1rem' }}
             onClick={() => setDarkMode(!darkMode)}
           >
             {darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          </Typography>
+          </Button>
         </Paper>
       </Box>
     </ThemeProvider>

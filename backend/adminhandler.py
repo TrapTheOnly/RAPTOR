@@ -127,6 +127,31 @@ def get_existing_users():
     except Exception as e:
         logger.error(f"Error retrieving existing users: {e}")
         return {"error": "Failed to fetch existing users."}, 500
+    
+def delete_user(username):
+    """
+    Deletes a user from the allowed_users table.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        
+        # Check if the user exists
+        c.execute("SELECT username FROM allowed_users WHERE username = ?", (username,))
+        if not c.fetchone():
+            conn.close()
+            return {"error": f"User '{username}' does not exist."}, 404
+
+        # Delete the user
+        c.execute("DELETE FROM allowed_users WHERE username = ?", (username,))
+        conn.commit()
+        conn.close()
+
+        logger.info(f"User '{username}' deleted successfully.")
+        return {"message": f"User '{username}' deleted successfully."}, 200
+    except Exception as e:
+        logger.error(f"Error deleting user '{username}': {e}")
+        return {"error": f"Failed to delete user '{username}'."}, 500
 
 def admin_required(f):
     """

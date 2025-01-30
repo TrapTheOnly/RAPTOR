@@ -8,11 +8,13 @@ import {
   Paper, 
   List, 
   ListItem,
-  ListItemText, 
+  ListItemText,
   ThemeProvider,
   createTheme,
-  CssBaseline, 
+  CssBaseline,
+  IconButton
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 const Settings = ({ darkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,6 +70,26 @@ const Settings = ({ darkMode }) => {
     }
   };
 
+  /**
+   * Handle deleting a user from the system.
+   */
+  const handleDeleteUser = async (username) => {
+    try {
+      const response = await axios.delete(`/delete-user`, { data: { username } });
+      if (response.status === 200) {
+        setMessageType('success');
+        setMessage(`User ${username} deleted successfully.`);
+        setExistingUsers(existingUsers.filter((user) => user.username !== username));
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      setMessageType('error');
+      setMessage(`Failed to delete user ${username}.`);
+    } finally {
+      setTimeout(() => setMessage(''), 2000);
+    }
+  };
+
   const handleSearch = async () => {
     try {
       setSearchResults([]);
@@ -85,6 +107,22 @@ const Settings = ({ darkMode }) => {
       setTimeout(() => setMessage(''), 2000);
     }
   };  
+
+  // Handle Enter key for search form
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+      e.preventDefault();
+    }
+  };
+
+  // Handle Enter key for password change form
+  const handlePasswordKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleChangePassword();
+      e.preventDefault();
+    }
+  };
 
   useEffect(() => {
     const fetchExistingUsers = async () => {
@@ -189,6 +227,7 @@ const Settings = ({ darkMode }) => {
               fullWidth
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
+              onKeyDown={handlePasswordKeyDown}
               style={{ marginBottom: '1rem' }}
             />
 
@@ -199,6 +238,7 @@ const Settings = ({ darkMode }) => {
               fullWidth
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
+              onKeyDown={handlePasswordKeyDown}
               style={{ marginBottom: '1rem' }}
             />
 
@@ -209,6 +249,7 @@ const Settings = ({ darkMode }) => {
               fullWidth
               value={retypePassword}
               onChange={(e) => setRetypePassword(e.target.value)}
+              onKeyDown={handlePasswordKeyDown}
               style={{ marginBottom: '1rem' }}
             />
 
@@ -228,6 +269,7 @@ const Settings = ({ darkMode }) => {
               fullWidth
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
               style={{ flex: 1, marginRight: '1rem' }}
             />
             <Button variant="contained" color="primary" onClick={handleSearch}>
@@ -296,8 +338,15 @@ const Settings = ({ darkMode }) => {
             ) : (
               <List>
                 {existingUsers.map((user) => (
-                  <ListItem key={user.username}>
-                    <ListItemText primary={`${user.username}`} secondary={`Email: ${user.email}`} />
+                  <ListItem
+                    key={user.username}
+                    secondaryAction={
+                      <IconButton edge="end" color="error" onClick={() => handleDeleteUser(user.username)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    }
+                  >
+                    <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
                   </ListItem>
                 ))}
               </List>
