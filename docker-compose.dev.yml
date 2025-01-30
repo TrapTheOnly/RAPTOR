@@ -10,7 +10,7 @@ services:
     volumes:
       - dns_zonefiles_volume:/usr/app/src/shared
       - db_and_backups_volume:/appdata
-      - certs_volume:/certs:ro
+      - certs_volume:/certs
     environment:
       - ENVIRONMENT=development
       - WAF=${WAF}
