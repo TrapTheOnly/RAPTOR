@@ -399,8 +399,9 @@ def ldap_search():
 def add_user():
     data = request.get_json()
     username = data.get('username').lower()
+    email = data.get('email').lower()
     try:
-        add_user_to_system(username)
+        add_user_to_system(username, email)
         return jsonify({"message": f"User {username} added successfully."}), 200
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")

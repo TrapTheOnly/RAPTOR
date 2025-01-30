@@ -55,7 +55,7 @@ const Settings = ({ darkMode }) => {
     //   setMessage('Failed to submit users. Please try again.');
     // }
     selectedUsers.forEach(user => {
-      handleAddUser(user.username);
+      handleAddUser(user.username, user.email);
     });
   };
 
@@ -75,9 +75,9 @@ const Settings = ({ darkMode }) => {
     }
   };
 
-  const handleAddUser = async (username) => {
+  const handleAddUser = async (username, email) => {
     try {
-      const response = await axios.post('/add-user', { username });
+      const response = await axios.post('/add-user', { username, email });
       if (response.status === 200) {
         setMessage(`User ${username} added successfully.`);
       }
