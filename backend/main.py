@@ -260,9 +260,10 @@ def add_user_to_system(username, email, db_path=DB_PATH):
         c = conn.cursor()
         c.execute("""
             INSERT INTO allowed_users (username, email, added_date)
-            VALUES (?, ?, datetime('now', '+4 hours'), ?)
+            VALUES (?, ?, datetime('now', '+4 hours'))
         """, (username, email))
         conn.commit()
+        logger.info(f"User {username} added to the system.")
         conn.close()
     except sqlite3.IntegrityError:
         raise ValueError(f"User {username} already exists in the system.")
