@@ -51,20 +51,24 @@ const Settings = ({ darkMode }) => {
    * Handle submitting all selected users to the backend.
    */
   const handleSubmit = async () => {
-    selectedUsers.forEach(user => {
-      handleAddUser(user.username, user.email);
-    });
-  };
-
-  const handleAddUser = async (username, email) => {
     try {
-      const response = await axios.post('/add-user', { username, email });
-      if (response.status === 200) {
-        setMessage(`User ${username} added successfully.`);
+      const responses = await Promise.all(
+        selectedUsers.map(user => axios.post('/add-user', { username: user.username, email: user.email }))
+      );
+  
+      // Check if all requests were successful
+      if (responses.every(response => response.status === 200)) {
+        setMessageType('success');
+        setMessage('Users added successfully.');
+        setSelectedUsers([]);
+  
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       }
     } catch (error) {
-      console.error('Error adding user:', error);
-      setMessage(`Failed to add user ${username}.`);
+      setMessageType('error');
+      setMessage('Failed to add users. Please try again.');
     } finally {
       setTimeout(() => setMessage(''), 2000);
     }
@@ -82,7 +86,6 @@ const Settings = ({ darkMode }) => {
         setExistingUsers(existingUsers.filter((user) => user.username !== username));
       }
     } catch (error) {
-      console.error('Error deleting user:', error);
       setMessageType('error');
       setMessage(`Failed to delete user ${username}.`);
     } finally {
@@ -98,10 +101,11 @@ const Settings = ({ darkMode }) => {
         setSearchResults(response.data.results.filter(user => user.username != "None" && 
                           user.email != "None" && user.full_name != "None"));
       } else {
+        setMessageType('error');
         setMessage('No results found.');
       }
     } catch (error) {
-      console.error('Error searching LDAP:', error);
+      setMessageType('error');
       setMessage('Error searching LDAP. Please try again.');
     } finally {
       setTimeout(() => setMessage(''), 2000);
@@ -132,7 +136,7 @@ const Settings = ({ darkMode }) => {
           setExistingUsers(response.data.users);
         }
       } catch (error) {
-        console.error('Error fetching existing users:', error);
+        setMessageType('error');
         setMessage('Failed to fetch existing users.');
       } finally {
         setTimeout(() => setMessage(''), 2000);
@@ -164,7 +168,6 @@ const Settings = ({ darkMode }) => {
         setRetypePassword('');
       }
     } catch (error) {
-      console.error('Error changing password:', error);
       setMessageType('error');
       setMessage('Failed to change password. Please check your current password.');
     } finally {
@@ -290,9 +293,9 @@ const Settings = ({ darkMode }) => {
               ) : (
                 <List>
                   {searchResults
-                    .filter((user) => !existingUsers.some((u) => u.username === user.username)) // Exclude users already in the system
+                    .filter((user) => !existingUsers.some((u) => u.username === user.username))
                     .map((user) => (
-                      <ListItem key={user.username} button onClick={() => handleSelectUser(user)}>
+                      <ListItem key={user.username} button onClick={() => handleSelectUser(user)} style={{ cursor: 'pointer' }}>
                         <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
                       </ListItem>
                     ))}
@@ -340,6 +343,12 @@ const Settings = ({ darkMode }) => {
                 {existingUsers.map((user) => (
                   <ListItem
                     key={user.username}
+                    sx={{
+                      cursor: 'pointer',
+                      '&:hover': {
+                        backgroundColor: 'action.hover',
+                      },
+                    }}
                     secondaryAction={
                       <IconButton edge="end" color="error" onClick={() => handleDeleteUser(user.username)}>
                         <DeleteIcon />
