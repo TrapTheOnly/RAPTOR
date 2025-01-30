@@ -14,6 +14,9 @@ before_script:
 
 variables:
   DOCKER_DRIVER: overlay2
+  CERT_DIR: /builds/certs
+  CERT_FILE: $CERT_DIR/app.crt
+  KEY_FILE: $CERT_DIR/app.key
 
 ########################
 # DEV Branch Jobs
@@ -24,9 +27,16 @@ build_dev:
   - dev
   script:
   - echo "Building Docker images for DEV..."
-  - docker build -t wams-dev -f Dockerfile .
+  - mkdir -p $CERT_DIR
+  - |
+    if [ ! -f "$CERT_FILE" ]; then
+      openssl req -x509 -newkey rsa:2048 -nodes \
+        -keyout "$KEY_FILE" -out "$CERT_FILE" -days 365 \
+        -subj "/C=US/ST=Test/L=Test/O=DevOrg/OU=IT/CN=localhost"
+    fi
+  - docker build --build-arg CERT_DIR=$CERT_DIR -t wams-dev -f Dockerfile .
   - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-dev -f Dockerfile.sftp .
-  - echo "Docker images built locally on dev01."
+  - echo "Docker images built locally on callisto."
   tags:
   - callisto
 
@@ -36,15 +46,15 @@ deploy_dev:
   - dev
   when: on_success
   script:
-  - echo "Deploying DEV environment on dev01..."
+  - echo "Deploying DEV environment on callisto..."
   - docker-compose -f docker-compose.dev.yml down || true
   - docker-compose -f docker-compose.dev.yml up -d
-  - echo "DEV environment is running with containers 'wams-dev' and 'wams-sftp-dev'."
+  - echo "DEV environment is running with HTTPS."
   tags:
   - callisto
   environment:
     name: dev
-    url: http://callisto.azercell.com:1337
+    url: https://callisto.azercell.com:1337
 
 ########################
 # PROD Branch Jobs
@@ -55,7 +65,9 @@ build_prod:
   - main
   script:
   - echo "Building Docker images for PROD..."
-  - docker build -t wams-prod -f Dockerfile .
+  - mkdir -p $CERT_DIR
+  - cp path/to/prod/certificates/* $CERT_DIR
+  - docker build --build-arg CERT_DIR=$CERT_DIR -t wams-prod -f Dockerfile .
   - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-prod -f Dockerfile.sftp .
   - echo "Docker images built locally on kali01."
   tags:
@@ -70,9 +82,9 @@ deploy_prod:
   - echo "Deploying PROD environment on kali01..."
   - docker-compose -f docker-compose.prod.yml down || true
   - docker-compose -f docker-compose.prod.yml up -d
-  - echo "PROD environment is running with containers 'wams-prod' and 'wams-sftp-prod'."
+  - echo "PROD environment is running with HTTPS."
   tags:
   - prod-kali
   environment:
     name: production
-    url: http://kali01.azercell.com:1337
+    url: https://kali01.azercell.com:1337

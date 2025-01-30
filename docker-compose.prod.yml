@@ -3,15 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: wams-prod
-    container_name: wams-prod
+    image: dnsradar-prod
+    container_name: dnsradar-prod
     ports:
       - "1337:5000"
     volumes:
       - dns_zonefiles_volume:/usr/app/src/shared
       - db_and_backups_volume:/appdata
+      - ./certs:/certs:ro
     environment:
-      - ENVIRONMENT=development
+      - ENVIRONMENT=production
       - WAF=${WAF}
       - DNS_HOSTNAME=${DNS_HOSTNAME}
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -22,7 +23,13 @@ services:
       - BACKUP_FOLDER=${BACKUP_FOLDER}
       - LDAP_DOMAIN=${LDAP_DOMAIN}
       - LDAP_SERVER=${LDAP_SERVER}
+      - LDAP_USER=${LDAP_USER}
+      - LDAP_PASS=${LDAP_PASS}
       - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - APP_PORT=${APP_PORT}
+      - CERT_FILE=/certs/app.crt
+      - KEY_FILE=/certs/app.key
     restart: unless-stopped
 
   sftp:
@@ -31,8 +38,8 @@ services:
       dockerfile: Dockerfile.sftp
       args:
         DNS_SERVER_SSH_PUBKEY: ${DNS_SERVER_SSH_PUBKEY}
-    image: wams-sftp-prod
-    container_name: wams-sftp-prod
+    image: dnsradar-sftp-prod
+    container_name: dnsradar-sftp-prod
     ports:
       - "2222:22"
     volumes:
