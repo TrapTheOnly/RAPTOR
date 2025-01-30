@@ -218,6 +218,9 @@ const Settings = ({ darkMode }) => {
           </Box>
   
           {/* Search and User Management */}
+          <Typography variant="h6" gutterBottom>
+              Add Domain Users
+            </Typography>
           <Box display="flex" justifyContent="space-between" mb={2}>
             <TextField
               label="Search Domain User"
