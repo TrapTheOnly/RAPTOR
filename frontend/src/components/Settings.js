@@ -19,6 +19,11 @@ const Settings = ({ darkMode }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [message, setMessage] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [messageType, setMessageType] = useState('');
+  const [existingUsers, setExistingUsers] = useState([]);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [retypePassword, setRetypePassword] = useState('');
 
   /**
    * Handle selecting a user from the search results.
@@ -44,19 +49,23 @@ const Settings = ({ darkMode }) => {
    * Handle submitting all selected users to the backend.
    */
   const handleSubmit = async () => {
-    // try {
-    //   const response = await axios.post('/add-users-bulk', { users: selectedUsers });
-    //   if (response.status === 200) {
-    //     setMessage('Users added successfully.');
-    //     setSelectedUsers([]);
-    //   }
-    // } catch (error) {
-    //   console.error('Error submitting users:', error);
-    //   setMessage('Failed to submit users. Please try again.');
-    // }
     selectedUsers.forEach(user => {
       handleAddUser(user.username, user.email);
     });
+  };
+
+  const handleAddUser = async (username, email) => {
+    try {
+      const response = await axios.post('/add-user', { username, email });
+      if (response.status === 200) {
+        setMessage(`User ${username} added successfully.`);
+      }
+    } catch (error) {
+      console.error('Error adding user:', error);
+      setMessage(`Failed to add user ${username}.`);
+    } finally {
+      setTimeout(() => setMessage(''), 2000);
+    }
   };
 
   const handleSearch = async () => {
@@ -72,18 +81,56 @@ const Settings = ({ darkMode }) => {
     } catch (error) {
       console.error('Error searching LDAP:', error);
       setMessage('Error searching LDAP. Please try again.');
+    } finally {
+      setTimeout(() => setMessage(''), 2000);
     }
-  };
+  };  
 
-  const handleAddUser = async (username, email) => {
+  useEffect(() => {
+    const fetchExistingUsers = async () => {
+      try {
+        const response = await axios.get('/existing-users');
+        if (response.status === 200) {
+          setExistingUsers(response.data.users);
+        }
+      } catch (error) {
+        console.error('Error fetching existing users:', error);
+        setMessage('Failed to fetch existing users.');
+      } finally {
+        setTimeout(() => setMessage(''), 2000);
+      }
+    };
+  
+    fetchExistingUsers();
+  }, []);
+
+  const handleChangePassword = async () => {
+    if (newPassword !== retypePassword) {
+      setMessageType('error');
+      setMessage('New password and retyped password do not match.');
+      setTimeout(() => setMessage(''), 2000);
+      return;
+    }
+
     try {
-      const response = await axios.post('/add-user', { username, email });
+      const response = await axios.post('/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+
       if (response.status === 200) {
-        setMessage(`User ${username} added successfully.`);
+        setMessageType('success');
+        setMessage('Password changed successfully.');
+        setCurrentPassword('');
+        setNewPassword('');
+        setRetypePassword('');
       }
     } catch (error) {
-      console.error('Error adding user:', error);
-      setMessage(`Failed to add user ${username}.`);
+      console.error('Error changing password:', error);
+      setMessageType('error');
+      setMessage('Failed to change password. Please check your current password.');
+    } finally {
+      setTimeout(() => setMessage(''), 2000);
     }
   };
 
@@ -110,56 +157,100 @@ const Settings = ({ darkMode }) => {
         padding="2rem"
         bgcolor={theme.palette.background.default}
       >
-        <Paper elevation={3} style={{ padding: '2rem', width: '800px', maxWidth: '95%' }}>
+        <Paper elevation={3} style={{ padding: '2rem', width: '900px', maxWidth: '95%' }}>
           <Typography variant="h4" align="center" gutterBottom>
             Admin Settings
           </Typography>
   
-          {/* Search Section */}
-          <Box display="flex" justifyContent="space-between" flexWrap="wrap" mb={2}>
+          {/* Notifications */}
+          {message && (
+            <Typography
+              variant="body1"
+              align="center"
+              style={{
+                color: messageType === 'success' ? 'green' : 'red',
+                marginBottom: '1rem',
+              }}
+            >
+              {message}
+            </Typography>
+          )}
+  
+          {/* Change Password Section */}
+          <Box mb={3}>
+            <Typography variant="h6" gutterBottom>
+              Change Admin Password
+            </Typography>
+
+            <TextField
+              label="Current Password"
+              type="password"
+              variant="outlined"
+              fullWidth
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              style={{ marginBottom: '1rem' }}
+            />
+
+            <TextField
+              label="New Password"
+              type="password"
+              variant="outlined"
+              fullWidth
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              style={{ marginBottom: '1rem' }}
+            />
+
+            <TextField
+              label="Retype New Password"
+              type="password"
+              variant="outlined"
+              fullWidth
+              value={retypePassword}
+              onChange={(e) => setRetypePassword(e.target.value)}
+              style={{ marginBottom: '1rem' }}
+            />
+
+            <Button variant="contained" color="primary" fullWidth onClick={handleChangePassword}>
+              Change Password
+            </Button>
+          </Box>
+  
+          {/* Search and User Management */}
+          <Box display="flex" justifyContent="space-between" mb={2}>
             <TextField
               label="Search Domain User"
               variant="outlined"
               fullWidth
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ flex: 1, marginBottom: '1rem' }}
+              style={{ flex: 1, marginRight: '1rem' }}
             />
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleSearch}
-              style={{ marginLeft: '1rem', height: '56px' }}
-            >
+            <Button variant="contained" color="primary" onClick={handleSearch}>
               Search
             </Button>
           </Box>
   
-          {/* Display search messages */}
-          {message && (
-            <Typography variant="body1" color="error" align="center" style={{ marginBottom: '1rem' }}>
-              {message}
-            </Typography>
-          )}
-  
-          {/* Panels for search results and selected users */}
           <Box display="flex" flexDirection="row" justifyContent="space-between" height="400px">
-            {/* Search Results Panel */}
+            {/* Available Users Panel */}
             <Box flex={1} padding="1rem" overflow="auto" border="1px solid" borderColor={theme.palette.divider}>
               <Typography variant="h6" gutterBottom>
-                Search Results
+                Available Users
               </Typography>
               {searchResults.length === 0 ? (
                 <Typography variant="body2" color="textSecondary">
-                  No results found. Try a different search term.
+                  No users found.
                 </Typography>
               ) : (
                 <List>
-                  {searchResults.map((user) => (
-                    <ListItem key={user.username} button onClick={() => handleSelectUser(user)}>
-                      <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
-                    </ListItem>
-                  ))}
+                  {searchResults
+                    .filter((user) => !existingUsers.some((u) => u.username === user.username)) // Exclude users already in the system
+                    .map((user) => (
+                      <ListItem key={user.username} button onClick={() => handleSelectUser(user)}>
+                        <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
+                      </ListItem>
+                    ))}
                 </List>
               )}
             </Box>
@@ -171,7 +262,7 @@ const Settings = ({ darkMode }) => {
               </Typography>
               {selectedUsers.length === 0 ? (
                 <Typography variant="body2" color="textSecondary">
-                  No users selected. Click on a user from the search results to add them.
+                  No users selected. Click a user to add them here.
                 </Typography>
               ) : (
                 <List>
@@ -188,6 +279,26 @@ const Settings = ({ darkMode }) => {
                 </Button>
               )}
             </Box>
+          </Box>
+  
+          {/* Existing Users Panel */}
+          <Box mt={3}>
+            <Typography variant="h6" gutterBottom>
+              Existing Users in the System
+            </Typography>
+            {existingUsers.length === 0 ? (
+              <Typography variant="body2" color="textSecondary">
+                No users found in the system.
+              </Typography>
+            ) : (
+              <List>
+                {existingUsers.map((user) => (
+                  <ListItem key={user.username}>
+                    <ListItemText primary={`${user.username}`} secondary={`Email: ${user.email}`} />
+                  </ListItem>
+                ))}
+              </List>
+            )}
           </Box>
         </Paper>
       </Box>

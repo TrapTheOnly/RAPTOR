@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AppBar, Toolbar, Button, Typography, Box, Switch } from '@mui/material';
@@ -31,9 +31,17 @@ const Header = ({ username, userRole, setUserRole, setLoggedIn, setUsername, dar
           </Typography>
           <LightModeIcon />
           <Switch
-              checked={darkMode}
-              onChange={() => setDarkMode(!darkMode)}
-            />
+            checked={darkMode}
+            onChange={() => setDarkMode(!darkMode)}
+            sx={{
+              '& .MuiSwitch-thumb': {
+                backgroundColor: darkMode ? 'warning.main' : 'white',
+              },
+              '& .MuiSwitch-track': {
+                backgroundColor: darkMode ? '#fdd835' : '#e0e0e0',
+              },
+            }}
+          />
           <DarkModeIcon />
           {userRole === "admin" && (
             <Button color="inherit" onClick={() => navigate('/settings')}>

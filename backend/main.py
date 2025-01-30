@@ -13,7 +13,7 @@ import threading
 import time
 from datetime import timedelta
 from userhandler import ldap_authenticate, login_required_json, login_required_html, search_ldap_users
-from adminhandler import admin_required, init_admin_db
+from adminhandler import admin_required, init_admin_db, change_admin_password, get_existing_users
 
 # ---------------------------------------------------------
 # Paths for DB & backups (can be overridden by environment)
@@ -407,6 +407,32 @@ def add_user():
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")
         return jsonify({"error": str(e)}), 500
+    
+@app.route('/change-password', methods=['POST'])
+@admin_required
+def api_change_password():
+    """
+    Endpoint to change the admin password.
+    """
+    data = request.get_json()
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+
+    if not current_password or not new_password:
+        return jsonify({"error": "Both current and new passwords are required."}), 400
+
+    response, status_code = change_admin_password(current_password, new_password)
+    return jsonify(response), status_code
+
+
+@app.route('/existing-users', methods=['GET'])
+@admin_required
+def api_get_existing_users():
+    """
+    Endpoint to retrieve existing users.
+    """
+    response, status_code = get_existing_users()
+    return jsonify(response), status_code
 
 # ---------------------------------------------------------
 # User Authentication Endpoints

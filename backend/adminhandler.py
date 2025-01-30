@@ -65,6 +65,68 @@ def admin_login(username, password):
     except Exception as e:
         logger.error(f"Error authenticating admin user: {e}")
         return False
+    
+def check_current_admin_password(current_password):
+    """
+    Verifies the current admin password.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT password FROM admin_users WHERE username = ?", (ADMIN_USERNAME,))
+        result = c.fetchone()
+        conn.close()
+
+        if result and bcrypt.checkpw(current_password.encode(), result[0]):
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error verifying current password: {e}")
+        return False
+
+def change_admin_password(current_password, new_password):
+    """
+    Changes the admin password after verifying the current password.
+    """
+    if not check_current_admin_password(current_password):
+        return {"error": "Current password is incorrect."}, 401
+
+    try:
+        hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""
+            UPDATE admin_users
+            SET password = ?
+            WHERE username = ?
+        """, (hashed_password, ADMIN_USERNAME))
+        conn.commit()
+        conn.close()
+
+        return {"message": "Password changed successfully."}, 200
+    except Exception as e:
+        logger.error(f"Error changing admin password: {e}")
+        return {"error": "Failed to change password."}, 500
+
+def get_existing_users():
+    """
+    Retrieves all users in the allowed_users table.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        c.execute("SELECT username, email, added_date FROM allowed_users")
+        rows = c.fetchall()
+        conn.close()
+
+        users = [dict(row) for row in rows]
+        return {"users": users}, 200
+    except Exception as e:
+        logger.error(f"Error retrieving existing users: {e}")
+        return {"error": "Failed to fetch existing users."}, 500
 
 def admin_required(f):
     """
