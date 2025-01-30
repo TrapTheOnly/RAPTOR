@@ -70,10 +70,12 @@ def search_ldap_users(query, page_size=500):
             for entry in conn.entries:
                 entry_count += 1
                 logger.debug(f"Processing entry {entry_count}")
+                if entry.sAMAccountName is None or entry.mail is None or entry.name is None:
+                    continue
                 results.append({
-                    "username": str(entry.sAMAccountName.value) if entry.sAMAccountName else None,
-                    "email": str(entry.mail.value) if entry.mail else None,
-                    "full_name": str(entry.name.value) if entry.name else None,
+                    "username": str(entry.sAMAccountName.value),
+                    "email": str(entry.mail.value),
+                    "full_name": str(entry.name.value),
                     "distinguished_name": str(entry.distinguishedName.value) if entry.distinguishedName else None
                 })
 

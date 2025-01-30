@@ -20,6 +20,7 @@ const Settings = ({ darkMode }) => {
 
   const handleSearch = async () => {
     try {
+      setSearchResults([]);
       const response = await axios.get(`/ldap-search?query=${searchQuery}`);
       if (response.status === 200) {
         setSearchResults(response.data.results);
