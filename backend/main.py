@@ -42,48 +42,69 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------
 # Utility: figure out source from IP
 # ---------------------------------------------------------
-WAF_IPS = os.getenv("WAF", "").split(",")
-NGINX_IPS = os.getenv("NGINX", "").split(",")
-
 def determine_source(ip):
-    if ip in WAF_IPS:
-        return "WAF"
-    elif ip in NGINX_IPS:
-        return "Nginx"
-    else:
-        return "Cloud"
+    """
+    Look up the IP in our ip_sources table. If found, return its source_name.
+    Otherwise, return "Other".
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT source_name FROM ip_sources WHERE ip_address = ?", (ip,))
+    row = c.fetchone()
+    conn.close()
+
+    if row:
+        return row[0]
+    return "Other"
 
 # ---------------------------------------------------------
 # Utility: parse BIND zone file
 # ---------------------------------------------------------
 def parse_bind_zone_file(filepath, hostname):
     """
-    Naive parser for a BIND zone file.
-    Returns a list of dictionaries. Each dictionary has keys:
-      - name
-      - ip_address
-      - source (WAF, Nginx, Cloud)
+    Parse a BIND zone file that contains A records, including lines
+    with blank or '@' names. Any blank/'@' name is treated as the domain apex.
     """
     records = []
-    rr_pattern = re.compile(r'^(\S+)\s+(\d+)?\s*(IN)?\s+A\s+(.+)$', re.IGNORECASE)
+    rr_pattern = re.compile(
+        r'^\s*'                   # leading whitespace
+        r'(?P<name>\S*)\s*'       # capture 'name' (possibly blank)
+        r'(?P<ttl>\d+)?\s*'       # optional TTL
+        r'(IN\s+)?A\s+'           # 'IN' optional, then 'A'
+        r'(?P<ip>[^\s]+)'         # capture IP
+        r'.*$',                   # ignore the rest (if any)
+        re.IGNORECASE
+    )
 
     with open(filepath, 'r') as f:
         for line in f:
+            # Strip out inline comments and whitespace
             line = line.split(';', 1)[0].strip()
             if not line:
                 continue
+
             match = rr_pattern.match(line)
             if match:
-                name = match.group(1)
-                ip = match.group(4)
+                raw_name = match.group('name').strip()
+                ip = match.group('ip').strip()
+
+                # If the record name is blank, '@', or '.', treat as the domain apex
+                if not raw_name or raw_name in ('@', '.'):
+                    raw_name = hostname
+                else:
+                    raw_name = f"{raw_name}.{hostname}"
+
                 source = determine_source(ip)
-                full_name = f"{name}.{hostname}"
+
+                full_name = raw_name
+
                 record = {
                     "name": full_name,
                     "ip_address": ip,
                     "source": source
                 }
                 records.append(record)
+
     return records
 
 # ---------------------------------------------------------
@@ -184,6 +205,15 @@ def init_db(db_path=DB_PATH):
             username TEXT NOT NULL UNIQUE,
             email TEXT,
             added_date TEXT NOT NULL
+        )
+    """)
+
+    # IP sources table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS ip_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_name TEXT NOT NULL,
+            ip_address TEXT NOT NULL UNIQUE
         )
     """)
 
@@ -471,6 +501,127 @@ def manual_update():
     except Exception as e:
         logger.error(f"Manual update error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+@app.route('/ip-sources', methods=['GET'])
+@admin_required
+def get_ip_sources():
+    """
+    Returns the full list of IP→Source mappings.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, source_name, ip_address FROM ip_sources")
+        rows = c.fetchall()
+        conn.close()
+
+        # Convert rows to list of dicts
+        ip_sources = [dict(row) for row in rows]
+        return jsonify({"ip_sources": ip_sources}), 200
+    except Exception as e:
+        logger.error(f"Error retrieving IP sources: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/ip-sources', methods=['POST'])
+@admin_required
+def add_ip_source():
+    """
+    Adds a new IP→Source mapping.
+    Also updates existing records if they have this IP (source=..., status='updated').
+    JSON body: { "source_name": "...", "ip_address": "..." }
+    """
+    data = request.get_json()
+    source_name = data.get('source_name')
+    ip_address = data.get('ip_address')
+
+    if not source_name or not ip_address:
+        return jsonify({"error": "source_name and ip_address are required."}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        
+        # Insert new IP→Source mapping
+        c.execute("""
+            INSERT INTO ip_sources (source_name, ip_address)
+            VALUES (?, ?)
+        """, (source_name, ip_address))
+        conn.commit()
+
+        # Update existing records that match this IP
+        c.execute("""
+            UPDATE records
+            SET source = ?,
+                status = 'updated',
+                last_modification_date = datetime('now', '+4 hours')
+            WHERE ip_address = ?
+        """, (source_name, ip_address))
+        updated_count = c.rowcount
+
+        conn.commit()
+        conn.close()
+
+        message = f"IP source {ip_address} added as '{source_name}'. {updated_count} existing record(s) updated."
+        logger.info(message)
+        return jsonify({"message": message}), 200
+    except sqlite3.IntegrityError:
+        # likely because ip_address is UNIQUE
+        return jsonify({"error": f"IP address {ip_address} is already defined."}), 400
+    except Exception as e:
+        logger.error(f"Error adding IP source: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/ip-sources', methods=['DELETE'])
+@admin_required
+def delete_ip_source():
+    """
+    Deletes an IP→Source mapping by ip_address.
+    Also reverts any matching records to 'Other' with status='updated'.
+    JSON body: { "ip_address": "..." }
+    """
+    data = request.get_json()
+    ip_address = data.get('ip_address')
+
+    if not ip_address:
+        return jsonify({"error": "ip_address is required."}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+
+        # First find the existing source_name for that IP (if any)
+        c.execute("SELECT source_name FROM ip_sources WHERE ip_address = ?", (ip_address,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": f"No mapping found for IP {ip_address}."}), 404
+
+        source_name = row[0]
+
+        # Delete from ip_sources
+        c.execute("DELETE FROM ip_sources WHERE ip_address = ?", (ip_address,))
+        conn.commit()
+
+        # Revert any existing records that had this IP => source='Other', status='updated'
+        c.execute("""
+            UPDATE records
+            SET source = 'Other',
+                status = 'updated',
+                last_modification_date = datetime('now', '+4 hours')
+            WHERE ip_address = ?
+        """, (ip_address,))
+        updated_count = c.rowcount
+        conn.commit()
+        conn.close()
+
+        message = (f"IP source mapping for {ip_address} ('{source_name}') deleted. "
+                   f"{updated_count} record(s) reverted to 'Other'.")
+        logger.info(message)
+        return jsonify({"message": message}), 200
+    except Exception as e:
+        logger.error(f"Error deleting IP source for {ip_address}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------
 # User Authentication Endpoints

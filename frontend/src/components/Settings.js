@@ -26,6 +26,161 @@ const Settings = ({ darkMode }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [retypePassword, setRetypePassword] = useState('');
+  const [sourceTypes, setSourceTypes] = useState([]);    // list of distinct source_name strings
+  const [ipsBySource, setIpsBySource] = useState({});    // { sourceName: [ '1.2.3.4', '2.2.2.2' ], ... }
+  const [selectedSource, setSelectedSource] = useState(''); 
+  const [newSourceName, setNewSourceName] = useState(''); // to add a new type
+  const [newIpAddress, setNewIpAddress] = useState('');   // to add a new IP under selected source
+  const [ipsToAdd, setIpsToAdd] = useState([]);           // IPs staged for addition
+  const [ipsToDelete, setIpsToDelete] = useState([]);     // IPs staged for deletion
+
+  /*************************************************************************
+   * 1) FETCH & PARSE IP SOURCES ON LOAD
+   *************************************************************************/
+  useEffect(() => {
+    fetchIpSources();
+    fetchExistingUsers(); 
+  }, []);
+
+  const fetchIpSources = async () => {
+    try {
+      const response = await axios.get('/ip-sources');
+      if (response.status === 200 && response.data.ip_sources) {
+        const ipSourcesArray = response.data.ip_sources; 
+
+        // Build a set of distinct source_name
+        const sourceSet = new Set();
+        // Build a map from source_name => array of ips
+        const map = {};
+
+        ipSourcesArray.forEach(item => {
+          const src = item.source_name;
+          sourceSet.add(src);
+          if (!map[src]) {
+            map[src] = [];
+          }
+          map[src].push(item.ip_address);
+        });
+        setSourceTypes(Array.from(sourceSet));
+        setIpsBySource(map);
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage('Failed to fetch IP sources.');
+      console.error(error);
+    }
+  };
+
+  /*************************************************************************
+   * 2) ADD NEW SOURCE TYPE (locally, no IP assigned yet)
+   *************************************************************************/
+  const handleAddSourceType = () => {
+    const trimmedName = newSourceName.trim();
+    if (!trimmedName) return;
+    
+    // If the type already exists, skip
+    if (sourceTypes.includes(trimmedName)) {
+      setMessageType('error');
+      setMessage('This source type already exists.');
+      setTimeout(() => setMessage(''), 2000);
+      return;
+    }
+
+    // Add to local state
+    setSourceTypes([...sourceTypes, trimmedName]);
+    setIpsBySource({ ...ipsBySource, [trimmedName]: [] });
+    setSelectedSource(trimmedName);
+    setNewSourceName('');
+  };
+
+  /*************************************************************************
+   * 3) SELECT A SOURCE TYPE
+   *************************************************************************/
+  const handleSelectSourceType = (srcName) => {
+    setSelectedSource(srcName);
+    setIpsToAdd([]);     // reset staged additions
+    setIpsToDelete([]);  // reset staged deletions
+    setNewIpAddress(''); // clear IP field
+  };
+
+  /*************************************************************************
+   * 4) STAGE A NEW IP ADDRESS FOR ADDITION
+   *************************************************************************/
+  const handleAddIp = () => {
+    const trimmedIp = newIpAddress.trim();
+    if (!trimmedIp || !selectedSource) return;
+
+    // Check if it already exists in local state
+    const currentIps = ipsBySource[selectedSource] || [];
+    if (currentIps.includes(trimmedIp)) {
+      setMessageType('error');
+      setMessage('IP already exists in this source.');
+      setTimeout(() => setMessage(''), 2000);
+      return;
+    }
+
+    // Add it locally
+    const updatedIps = [...currentIps, trimmedIp];
+    setIpsBySource({ ...ipsBySource, [selectedSource]: updatedIps });
+
+    // Stage it for addition
+    setIpsToAdd([...ipsToAdd, trimmedIp]);
+    setNewIpAddress('');
+  };
+
+  /*************************************************************************
+   * 5) STAGE AN IP ADDRESS FOR DELETION
+   *************************************************************************/
+  const handleDeleteIpClick = (ip) => {
+    // Mark the IP for deletion if it's an existing IP
+    if (!ipsToDelete.includes(ip)) {
+      setIpsToDelete([...ipsToDelete, ip]);
+    }
+    // Also remove it from local display
+    const updatedIps = (ipsBySource[selectedSource] || []).filter(x => x !== ip);
+    setIpsBySource({ ...ipsBySource, [selectedSource]: updatedIps });
+  };
+
+  /*************************************************************************
+   * 6) SUBMIT CHANGES (Add + Delete) ONE-BY-ONE
+   *************************************************************************/
+  const handleSubmitChanges = async () => {
+    if (!selectedSource) return;
+
+    // 1) Add the new IPs
+    for (const ip of ipsToAdd) {
+      try {
+        await axios.post('/ip-sources', {
+          source_name: selectedSource,
+          ip_address: ip
+        });
+      } catch (error) {
+        console.error(`Failed to add IP: ${ip}`, error);
+      }
+    }
+
+    // 2) Delete the staged IPs
+    for (const ip of ipsToDelete) {
+      try {
+        await axios.delete('/ip-sources', {
+          data: { ip_address: ip }
+        });
+      } catch (error) {
+        console.error(`Failed to delete IP: ${ip}`, error);
+      }
+    }
+
+    setMessageType('success');
+    setMessage('Changes submitted successfully.');
+    setTimeout(() => setMessage(''), 2000);
+
+    // Clear staging
+    setIpsToAdd([]);
+    setIpsToDelete([]);
+
+    // Refresh from server to ensure we’re in sync
+    fetchIpSources();
+  };
 
   /**
    * Handle selecting a user from the search results.
@@ -150,23 +305,20 @@ const Settings = ({ darkMode }) => {
     }
   };
 
-  useEffect(() => {
-    const fetchExistingUsers = async () => {
-      try {
-        const response = await axios.get('/existing-users');
-        if (response.status === 200) {
-          setExistingUsers(response.data.users);
-        }
-      } catch (error) {
-        setMessageType('error');
-        setMessage('Failed to fetch existing users.');
-      } finally {
-        setTimeout(() => setMessage(''), 2000);
+  const fetchExistingUsers = async () => {
+    try {
+      const response = await axios.get('/existing-users');
+      if (response.status === 200) {
+        setExistingUsers(response.data.users);
       }
-    };
-  
-    fetchExistingUsers();
-  }, []);
+    } catch (error) {
+      setMessageType('error');
+      setMessage('Failed to fetch existing users.');
+    } finally {
+      setTimeout(() => setMessage(''), 2000);
+    }
+  };
+
 
   const handleChangePassword = async () => {
     if (newPassword !== retypePassword) {
@@ -243,6 +395,123 @@ const Settings = ({ darkMode }) => {
             <Button variant="contained" color="secondary" fullWidth onClick={handleManualParse}>
               Parse Records
             </Button>
+          </Box>
+
+          {/* IP Source Management Section */}
+          <Typography variant="h6" gutterBottom>
+              IP Source Management
+            </Typography>
+          <Box display="flex" gap="2rem" mb={4}>
+            {/* Left Pane: List of Source Types */}
+            <Box flex={1} border="1px solid" borderColor={theme.palette.divider} p={2}>
+              <Typography variant="h6" gutterBottom>Source Types</Typography>
+
+              {/* Input to Add a New Source Type */}
+              <TextField
+                label="New Source Type"
+                variant="outlined"
+                fullWidth
+                value={newSourceName}
+                onChange={(e) => setNewSourceName(e.target.value)}
+                style={{ marginBottom: '1rem' }}
+              />
+              <Button 
+                variant="contained" 
+                color="primary" 
+                fullWidth 
+                onClick={handleAddSourceType}
+                style={{ marginBottom: '1rem' }}
+              >
+                Add Type
+              </Button>
+
+              {/* Existing Types List */}
+              {sourceTypes.length === 0 ? (
+                <Typography variant="body2" color="textSecondary">
+                  No source types found.
+                </Typography>
+              ) : (
+                <List>
+                  {sourceTypes.map((srcName) => (
+                    <ListItem 
+                      key={srcName} 
+                      style={{ cursor: 'pointer' }}
+                      button 
+                      selected={selectedSource === srcName}
+                      onClick={() => handleSelectSourceType(srcName)}
+                    >
+                      <ListItemText primary={srcName} />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Box>
+
+            {/* Right Pane: IP Addresses for Selected Type */}
+            <Box flex={2} border="1px solid" borderColor={theme.palette.divider} p={2}>
+              {selectedSource === '' ? (
+                <Typography variant="body1">
+                  Select a source type on the left to view and manage its IP addresses.
+                </Typography>
+              ) : (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    IPs for: {selectedSource}
+                  </Typography>
+
+                  {/* Input to Add a New IP */}
+                  <Box display="flex" mb={2}>
+                    <TextField
+                      label="New IP Address"
+                      variant="outlined"
+                      fullWidth
+                      value={newIpAddress}
+                      onChange={(e) => setNewIpAddress(e.target.value)}
+                      style={{ marginRight: '1rem' }}
+                    />
+                    <Button 
+                      variant="contained" 
+                      color="primary" 
+                      onClick={handleAddIp}
+                    >
+                      Add IP
+                    </Button>
+                  </Box>
+
+                  {/* List of IPs */}
+                  <List>
+                    {(ipsBySource[selectedSource] || []).map((ip) => (
+                      <ListItem key={ip} sx={{
+                        cursor: 'pointer',
+                        '&:hover': {
+                          backgroundColor: 'action.hover',
+                        },
+                      }} secondaryAction={
+                        <IconButton edge="end" color="error" onClick={() => handleDeleteIpClick(ip)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      }>
+                        <ListItemText primary={ip} />
+                      </ListItem>
+                    ))}
+                  </List>
+
+                  {/* If we have something to add or delete, show a "Submit Changes" button */}
+                  {(ipsToAdd.length > 0 || ipsToDelete.length > 0) && (
+                    <Box mt={2}>
+                      <Button
+                        variant="contained"
+                        color="secondary"
+                        fullWidth
+                        onClick={handleSubmitChanges}
+                      >
+                        Submit Changes
+                      </Button>
+                    </Box>
+                  )}
+                </>
+              )}
+            </Box>
           </Box>
   
           {/* Change Password Section */}
