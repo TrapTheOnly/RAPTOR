@@ -93,6 +93,28 @@ const Settings = ({ darkMode }) => {
     }
   };
 
+  /**
+   * Manually trigger zone file parsing.
+   */
+  const handleManualParse = async () => {
+    try {
+      const response = await axios.post('/manual-update');
+      if (response.status === 200) {
+        setMessageType('success');
+        setMessage('Records updated successfully.');
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage('Failed to parse records. Please try again.');
+    } finally {
+      // Clear the message after a short delay
+      setTimeout(() => setMessage(''), 2000);
+    }
+  };
+
+  /**
+   * Handle searching a user in LDAP.
+   */
   const handleSearch = async () => {
     try {
       setSearchResults([]);
@@ -216,6 +238,12 @@ const Settings = ({ darkMode }) => {
               {message}
             </Typography>
           )}
+
+          <Box mb={3}>
+            <Button variant="contained" color="secondary" fullWidth onClick={handleManualParse}>
+              Parse Records
+            </Button>
+          </Box>
   
           {/* Change Password Section */}
           <Box mb={3}>

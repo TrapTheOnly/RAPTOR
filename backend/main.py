@@ -5,6 +5,7 @@ load_dotenv()
 
 import sqlite3
 import re
+import glob
 from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 import shutil
@@ -90,74 +91,63 @@ def parse_bind_zone_file(filepath, hostname):
 # ---------------------------------------------------------
 def handle_zone_file_changes(new_zone_file_path, final_filename):
     """
-    Copies/renames a newly provided zone file to 'final_filename',
-    while managing backups in BACKUP_FOLDER:
-      - If 'final_filename' already exists, compare it to the most
-        recent backup. If identical, remove the existing one to avoid duplication.
-      - Otherwise, back it up with a timestamp before overwriting.
-      - Maintain at most 100 backups.
-    Returns the 'final_filename' where the zone file ends up.
+    Handles copying and backup of a new zone file to the final destination.
+    - If the final file exists and is identical to the new file, no changes are made.
+    - If different, the final file is backed up and the new file is copied in its place.
+    - The number of backups is limited to 100 per domain.
+    
+    Args:
+    new_zone_file_path (str): Path to the new zone file.
+    final_filename (str): Destination path for the final zone file.
+
+    Returns:
+    str: The path of the final file.
     """
+    try:
+        # Extract domain name and create backup folder for this domain
+        domain_name = extract_domain_from_filename(final_filename)
+        domain_backup_folder = os.path.join(BACKUP_FOLDER, domain_name)
+        os.makedirs(domain_backup_folder, exist_ok=True)
 
-    os.makedirs(BACKUP_FOLDER, exist_ok=True)
+        # If the final file doesn't exist, just copy the new file
+        if not os.path.exists(final_filename):
+            shutil.copy2(new_zone_file_path, final_filename)
+            logger.info(f"New zone file copied to: {final_filename}")
+            return final_filename
 
-    # If the final file doesn't exist yet, just copy new_zone_file_path => final_filename
-    if not os.path.exists(final_filename):
+        # Read the contents of both the existing and new files
+        with open(final_filename, 'rb') as old_file, open(new_zone_file_path, 'rb') as new_file:
+            old_file_data = old_file.read()
+            new_file_data = new_file.read()
+
+        # If files are identical, no changes are needed
+        if old_file_data == new_file_data:
+            logger.info(f"No changes found. The new file is identical to the existing file at {final_filename}.")
+            return final_filename
+
+        # Backup the existing file
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"{os.path.basename(final_filename)}-{timestamp}.bak"
+        backup_path = os.path.join(domain_backup_folder, backup_filename)
+        shutil.move(final_filename, backup_path)
+        logger.info(f"Existing zone file backed up to: {backup_path}")
+
+        # Copy the new file to the final location
         shutil.copy2(new_zone_file_path, final_filename)
-        logger.info(f"No existing zone file. Copied {new_zone_file_path} to {final_filename}")
+        logger.info(f"New zone file copied to: {final_filename}")
+
+        # Manage backups (limit to 100 backups per domain)
+        backups = sorted(glob.glob(f"{domain_backup_folder}/*.bak"), key=os.path.getmtime)
+        if len(backups) > 100:
+            oldest_backup = backups[0]
+            os.remove(oldest_backup)
+            logger.info(f"Oldest backup deleted: {oldest_backup}")
+
         return final_filename
 
-    # If final file exists, compare with latest backup
-    with open(final_filename, 'rb') as old_file:
-        old_file_data = old_file.read()
-    with open(new_zone_file_path, 'rb') as new_file:
-        new_file_data = new_file.read()
-
-    # We only create a new backup if the "old file" differs from "new file"
-    if old_file_data != new_file_data:
-        # Find the existing backups for final_filename
-        backups = sorted(
-            [f for f in os.listdir(BACKUP_FOLDER) if f.startswith(os.path.basename(final_filename))],
-            key=lambda x: os.path.getmtime(os.path.join(BACKUP_FOLDER, x)),
-            reverse=True
-        )
-        most_recent_backup = os.path.join(BACKUP_FOLDER, backups[0]) if backups else None
-
-        # Compare old file vs. most recent backup
-        if most_recent_backup and os.path.exists(most_recent_backup):
-            with open(most_recent_backup, 'rb') as recent_backup_file:
-                recent_backup_data = recent_backup_file.read()
-            if old_file_data == recent_backup_data:
-                os.remove(final_filename)
-                logger.info(f"Existing zone file matches the most recent backup. File {final_filename} removed before overwriting.")
-            else:
-                # Move old final file to a new backup
-                timestamp = datetime.datetime.now().strftime("%d.%m.%Y_%H%M%S")
-                backup_name = f"{os.path.basename(final_filename)}-{timestamp}"
-                backup_path = os.path.join(BACKUP_FOLDER, backup_name)
-                shutil.move(final_filename, backup_path)
-                logger.info(f"Existing zone file moved to backup: {backup_path}")
-        else:
-            # No backups exist, so let's just rename the existing file
-            timestamp = datetime.datetime.now().strftime("%d.%m.%Y_%H%M%S")
-            backup_name = f"{os.path.basename(final_filename)}-{timestamp}"
-            backup_path = os.path.join(BACKUP_FOLDER, backup_name)
-            shutil.move(final_filename, backup_path)
-            logger.info(f"Existing zone file moved to backup: {backup_path}")
-
-        # Copy the new file in place
-        shutil.copy2(new_zone_file_path, final_filename)
-        logger.info(f"New zone file {new_zone_file_path} copied to {final_filename}")
-
-        # Manage the number of backups (limit to 100)
-        if len(backups) >= 100:
-            oldest_backup = os.path.join(BACKUP_FOLDER, backups[-1])
-            os.remove(oldest_backup)
-            logger.info(f"Oldest backup {oldest_backup} deleted (limit of 100).")
-    else:
-        logger.info(f"No changes found. The new zone file is identical to {final_filename}.")
-
-    return final_filename
+    except Exception as e:
+        logger.error(f"Error handling zone file changes for {final_filename}: {e}")
+        raise
 
 # ---------------------------------------------------------
 # Utility: initialize & store records in SQLite DB
@@ -283,30 +273,50 @@ def periodic_update(interval, update_function):
     threading.Timer(interval, wrapper).start()
 
 # ---------------------------------------------------------
+# Utility: extract domain from filename
+# ---------------------------------------------------------
+def extract_domain_from_filename(filename):
+    """
+    Extract the domain name from the filename. Example:
+    "example.com_A_Records" -> "example.com"
+    """
+    match = re.match(r"(.+?)_A_Records", os.path.basename(filename))
+    return match.group(1) if match else None
+
+# ---------------------------------------------------------
 # The main data update function: works with a local zone file
 # ---------------------------------------------------------
 def update_data():
     """
-    1. Takes a local zone file path (from .env or default).
-    2. Backs up the old zone file if changed, places the new file in a final location.
-    3. Parses that final zone file and updates the DB.
+    1. Process all zone files in the shared path.
+    2. For each file, parse and update records in the database.
+    3. Back up each file separately if there are changes.
     """
     try:
         logger.info(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        shared_path = os.getenv("SHARED_PATH", "")
+        zone_files = glob.glob(f"{shared_path}/*_A_Records")
 
-        # .env holds e.g. DNS_HOSTNAME pointing to the new zone file
-        new_zone_file_path = os.getenv("SHARED_PATH") + os.getenv("DNS_HOSTNAME")
-        final_zone_file_path = os.getenv("DATA_PATH") + os.getenv("DNS_HOSTNAME")
-        logger.info(f"Using zone file at {new_zone_file_path}")
+        if not zone_files:
+            logger.warning("No zone files found in shared path.")
+            return
 
-        # Backup/replace final file with the new file
-        final_zone_file = handle_zone_file_changes(new_zone_file_path, final_zone_file_path)
+        for zone_file in zone_files:
+            domain = extract_domain_from_filename(zone_file)
+            if not domain:
+                logger.warning(f"Skipping invalid file name format: {zone_file}")
+                continue
 
-        # Parse the final zone file
-        records = parse_bind_zone_file(final_zone_file, os.getenv("DNS_HOSTNAME"))
+            logger.info(f"Processing zone file for domain: {domain}")
 
-        # Store in the database
-        store_records_in_db(records)
+            # Handle backup and parsing
+            final_zone_file_path = os.path.join(os.getenv("DATA_PATH", ""), os.path.basename(zone_file))
+            final_zone_file = handle_zone_file_changes(zone_file, final_zone_file_path)
+            records = parse_bind_zone_file(final_zone_file, domain)
+
+            # Store records in the database
+            store_records_in_db(records)
 
         logger.info(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
     except Exception as e:
@@ -448,6 +458,19 @@ def api_delete_user():
 
     response, status_code = delete_user(username)
     return jsonify(response), status_code
+
+@app.route('/manual-update', methods=['POST'])
+@admin_required
+def manual_update():
+    """
+    Manually trigger parsing of zone files from the shared folder.
+    """
+    try:
+        update_data()
+        return jsonify({"status": "success", "message": "Records updated successfully."}), 200
+    except Exception as e:
+        logger.error(f"Manual update error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ---------------------------------------------------------
 # User Authentication Endpoints
