@@ -5,6 +5,7 @@ load_dotenv()
 
 import sqlite3
 import re
+import glob
 from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 import shutil
@@ -41,48 +42,69 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------
 # Utility: figure out source from IP
 # ---------------------------------------------------------
-WAF_IPS = os.getenv("WAF", "").split(",")
-NGINX_IPS = os.getenv("NGINX", "").split(",")
-
 def determine_source(ip):
-    if ip in WAF_IPS:
-        return "WAF"
-    elif ip in NGINX_IPS:
-        return "Nginx"
-    else:
-        return "Cloud"
+    """
+    Look up the IP in our ip_sources table. If found, return its source_name.
+    Otherwise, return "Other".
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT source_name FROM ip_sources WHERE ip_address = ?", (ip,))
+    row = c.fetchone()
+    conn.close()
+
+    if row:
+        return row[0]
+    return "Other"
 
 # ---------------------------------------------------------
 # Utility: parse BIND zone file
 # ---------------------------------------------------------
 def parse_bind_zone_file(filepath, hostname):
     """
-    Naive parser for a BIND zone file.
-    Returns a list of dictionaries. Each dictionary has keys:
-      - name
-      - ip_address
-      - source (WAF, Nginx, Cloud)
+    Parse a BIND zone file that contains A records, including lines
+    with blank or '@' names. Any blank/'@' name is treated as the domain apex.
     """
     records = []
-    rr_pattern = re.compile(r'^(\S+)\s+(\d+)?\s*(IN)?\s+A\s+(.+)$', re.IGNORECASE)
+    rr_pattern = re.compile(
+        r'^\s*'                   # leading whitespace
+        r'(?P<name>\S*)\s*'       # capture 'name' (possibly blank)
+        r'(?P<ttl>\d+)?\s*'       # optional TTL
+        r'(IN\s+)?A\s+'           # 'IN' optional, then 'A'
+        r'(?P<ip>[^\s]+)'         # capture IP
+        r'.*$',                   # ignore the rest (if any)
+        re.IGNORECASE
+    )
 
     with open(filepath, 'r') as f:
         for line in f:
+            # Strip out inline comments and whitespace
             line = line.split(';', 1)[0].strip()
             if not line:
                 continue
+
             match = rr_pattern.match(line)
             if match:
-                name = match.group(1)
-                ip = match.group(4)
+                raw_name = match.group('name').strip()
+                ip = match.group('ip').strip()
+
+                # If the record name is blank, '@', or '.', treat as the domain apex
+                if not raw_name or raw_name in ('@', '.', 'IN'):
+                    raw_name = hostname
+                else:
+                    raw_name = f"{raw_name}.{hostname}"
+
                 source = determine_source(ip)
-                full_name = f"{name}.{hostname}"
+
+                full_name = raw_name
+
                 record = {
                     "name": full_name,
                     "ip_address": ip,
                     "source": source
                 }
                 records.append(record)
+
     return records
 
 # ---------------------------------------------------------
@@ -90,74 +112,87 @@ def parse_bind_zone_file(filepath, hostname):
 # ---------------------------------------------------------
 def handle_zone_file_changes(new_zone_file_path, final_filename):
     """
-    Copies/renames a newly provided zone file to 'final_filename',
-    while managing backups in BACKUP_FOLDER:
-      - If 'final_filename' already exists, compare it to the most
-        recent backup. If identical, remove the existing one to avoid duplication.
-      - Otherwise, back it up with a timestamp before overwriting.
-      - Maintain at most 100 backups.
-    Returns the 'final_filename' where the zone file ends up.
+    Handles copying and backup of a new zone file to the final destination.
+    - If final_filename doesn't exist, compare new file to the most recent backup in the domain folder.
+    - If identical, treat it as 'no change'.
+    - If different, copy as the live file (and optionally back up if there's an existing live file).
+    - If final_filename exists, do a normal compare -> backup old -> copy new if changed.
+    - Limit backups to 100 per domain.
     """
+    try:
+        # 1) Figure out domain folder for backups
+        domain_name = extract_domain_from_filename(final_filename)
+        domain_backup_folder = os.path.join(BACKUP_FOLDER, domain_name)
+        os.makedirs(domain_backup_folder, exist_ok=True)
 
-    os.makedirs(BACKUP_FOLDER, exist_ok=True)
+        # 2) Read the new file data once
+        with open(new_zone_file_path, 'rb') as f_new:
+            new_file_data = f_new.read()
 
-    # If the final file doesn't exist yet, just copy new_zone_file_path => final_filename
-    if not os.path.exists(final_filename):
+        # -----------------------------------------------------
+        # CASE A: final_filename doesn't exist
+        # -----------------------------------------------------
+        if not os.path.exists(final_filename):
+            # a) Check if there's a most recent .bak in domain_backup_folder
+            backups = sorted(
+                glob.glob(os.path.join(domain_backup_folder, '*.bak')),
+                key=os.path.getmtime,
+                reverse=True
+            )
+            if backups:
+                most_recent_backup = backups[0]
+                with open(most_recent_backup, 'rb') as f_old:
+                    old_file_data = f_old.read()
+
+                if old_file_data == new_file_data:
+                    logger.info(f"No changes found. The new file is identical to the latest backup ({most_recent_backup}).")
+                    return final_filename  # or return None if you'd like to skip
+                else:
+                    logger.info(f"New zone file differs from most recent backup {most_recent_backup}. Copying as live file...")
+            else:
+                logger.info(f"No existing backups found for domain {domain_name}. Treating file as new.")
+
+            # b) Copy the new file as final_filename
+            shutil.copy2(new_zone_file_path, final_filename)
+            logger.info(f"New zone file copied to: {final_filename}")
+            return final_filename
+
+        # -----------------------------------------------------
+        # CASE B: final_filename DOES exist
+        # -----------------------------------------------------
+        # Compare the existing final file with the new file
+        with open(final_filename, 'rb') as f_old:
+            old_file_data = f_old.read()
+
+        # If files are identical, do nothing
+        if old_file_data == new_file_data:
+            logger.info(f"No changes found. The new file is identical to the existing file at {final_filename}.")
+            return final_filename
+
+        # If different -> backup the existing file and copy the new one
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"{os.path.basename(final_filename)}-{timestamp}.bak"
+        backup_path = os.path.join(domain_backup_folder, backup_filename)
+
+        # Move old final file to domain backup
+        shutil.move(final_filename, backup_path)
+        logger.info(f"Existing zone file backed up to: {backup_path}")
+
+        # Now copy new file to final location
         shutil.copy2(new_zone_file_path, final_filename)
-        logger.info(f"No existing zone file. Copied {new_zone_file_path} to {final_filename}")
+        logger.info(f"New zone file copied to: {final_filename}")
+
+        # Manage backups: limit to 100
+        all_backups = sorted(glob.glob(f"{domain_backup_folder}/*.bak"), key=os.path.getmtime)
+        if len(all_backups) > 100:
+            oldest_backup = all_backups[0]
+            os.remove(oldest_backup)
+            logger.info(f"Oldest backup deleted: {oldest_backup}")
+
         return final_filename
 
-    # If final file exists, compare with latest backup
-    with open(final_filename, 'rb') as old_file:
-        old_file_data = old_file.read()
-    with open(new_zone_file_path, 'rb') as new_file:
-        new_file_data = new_file.read()
-
-    # We only create a new backup if the "old file" differs from "new file"
-    if old_file_data != new_file_data:
-        # Find the existing backups for final_filename
-        backups = sorted(
-            [f for f in os.listdir(BACKUP_FOLDER) if f.startswith(os.path.basename(final_filename))],
-            key=lambda x: os.path.getmtime(os.path.join(BACKUP_FOLDER, x)),
-            reverse=True
-        )
-        most_recent_backup = os.path.join(BACKUP_FOLDER, backups[0]) if backups else None
-
-        # Compare old file vs. most recent backup
-        if most_recent_backup and os.path.exists(most_recent_backup):
-            with open(most_recent_backup, 'rb') as recent_backup_file:
-                recent_backup_data = recent_backup_file.read()
-            if old_file_data == recent_backup_data:
-                os.remove(final_filename)
-                logger.info(f"Existing zone file matches the most recent backup. File {final_filename} removed before overwriting.")
-            else:
-                # Move old final file to a new backup
-                timestamp = datetime.datetime.now().strftime("%d.%m.%Y_%H%M%S")
-                backup_name = f"{os.path.basename(final_filename)}-{timestamp}"
-                backup_path = os.path.join(BACKUP_FOLDER, backup_name)
-                shutil.move(final_filename, backup_path)
-                logger.info(f"Existing zone file moved to backup: {backup_path}")
-        else:
-            # No backups exist, so let's just rename the existing file
-            timestamp = datetime.datetime.now().strftime("%d.%m.%Y_%H%M%S")
-            backup_name = f"{os.path.basename(final_filename)}-{timestamp}"
-            backup_path = os.path.join(BACKUP_FOLDER, backup_name)
-            shutil.move(final_filename, backup_path)
-            logger.info(f"Existing zone file moved to backup: {backup_path}")
-
-        # Copy the new file in place
-        shutil.copy2(new_zone_file_path, final_filename)
-        logger.info(f"New zone file {new_zone_file_path} copied to {final_filename}")
-
-        # Manage the number of backups (limit to 100)
-        if len(backups) >= 100:
-            oldest_backup = os.path.join(BACKUP_FOLDER, backups[-1])
-            os.remove(oldest_backup)
-            logger.info(f"Oldest backup {oldest_backup} deleted (limit of 100).")
-    else:
-        logger.info(f"No changes found. The new zone file is identical to {final_filename}.")
-
-    return final_filename
+    except Exception as e:
+        logger.error(f"Error handling zone file changes for {final_filename}: {e}")
 
 # ---------------------------------------------------------
 # Utility: initialize & store records in SQLite DB
@@ -197,9 +232,21 @@ def init_db(db_path=DB_PATH):
         )
     """)
 
+    # IP sources table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS ip_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_name TEXT NOT NULL,
+            ip_address TEXT NOT NULL UNIQUE
+        )
+    """)
+
     conn.commit()
     conn.close()
 
+# ---------------------------------------------------------
+# Utility: store records in SQLite DB
+# ---------------------------------------------------------
 def store_records_in_db(records, db_path=DB_PATH):
     """
     Merge new data into the DB:
@@ -251,6 +298,9 @@ def store_records_in_db(records, db_path=DB_PATH):
     conn.commit()
     conn.close()
 
+# ---------------------------------------------------------
+# Utility: add user to the allowed_users table
+# ---------------------------------------------------------
 def add_user_to_system(username, email, db_path=DB_PATH):
     """
     Add a user to the allowed_users table.
@@ -283,30 +333,57 @@ def periodic_update(interval, update_function):
     threading.Timer(interval, wrapper).start()
 
 # ---------------------------------------------------------
+# Utility: extract domain from filename
+# ---------------------------------------------------------
+def extract_domain_from_filename(filename):
+    """
+    Extract the domain name from the filename. Example:
+    "example.com_A_Records" -> "example.com"
+    """
+    match = re.match(r"(.+?)_A_Records", os.path.basename(filename))
+    return match.group(1) if match else None
+
+# ---------------------------------------------------------
 # The main data update function: works with a local zone file
 # ---------------------------------------------------------
 def update_data():
     """
-    1. Takes a local zone file path (from .env or default).
-    2. Backs up the old zone file if changed, places the new file in a final location.
-    3. Parses that final zone file and updates the DB.
+    1. Gather parsed records from all zone files.
+    2. Store them in one pass so status is consistent.
     """
     try:
         logger.info(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-        # .env holds e.g. DNS_HOSTNAME pointing to the new zone file
-        new_zone_file_path = os.getenv("SHARED_PATH") + os.getenv("DNS_HOSTNAME")
-        final_zone_file_path = os.getenv("DATA_PATH") + os.getenv("DNS_HOSTNAME")
-        logger.info(f"Using zone file at {new_zone_file_path}")
+        shared_path = os.getenv("SHARED_PATH", "")
+        zone_files = glob.glob(f"{shared_path}/*_A_Records")
+        if not zone_files:
+            logger.warning("No zone files found in shared path.")
+            return
 
-        # Backup/replace final file with the new file
-        final_zone_file = handle_zone_file_changes(new_zone_file_path, final_zone_file_path)
+        # 1) Parse each zone file, accumulate all records
+        all_records = []
+        for zone_file in zone_files:
+            domain = extract_domain_from_filename(zone_file)
+            if not domain:
+                logger.warning(f"Skipping invalid file name format: {zone_file}")
+                continue
 
-        # Parse the final zone file
-        records = parse_bind_zone_file(final_zone_file, os.getenv("DNS_HOSTNAME"))
+            logger.info(f"Processing zone file for domain: {domain}")
+            final_zone_file_path = os.path.join(os.getenv("DATA_PATH", ""), os.path.basename(zone_file))
+            final_zone_file = handle_zone_file_changes(zone_file, final_zone_file_path)
+            if not final_zone_file:
+                # If handle_zone_file_changes returned None or something invalid, skip
+                continue
 
-        # Store in the database
-        store_records_in_db(records)
+            # Parse the final zone file
+            records_this_domain = parse_bind_zone_file(final_zone_file, domain)
+            all_records.extend(records_this_domain)
+
+        # 2) Now store them all in one pass
+        if all_records:
+            store_records_in_db(all_records)
+        else:
+            logger.info("No valid records found in any zone file.")
 
         logger.info(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
     except Exception as e:
@@ -448,6 +525,140 @@ def api_delete_user():
 
     response, status_code = delete_user(username)
     return jsonify(response), status_code
+
+@app.route('/manual-update', methods=['POST'])
+@admin_required
+def manual_update():
+    """
+    Manually trigger parsing of zone files from the shared folder.
+    """
+    try:
+        update_data()
+        return jsonify({"status": "success", "message": "Records updated successfully."}), 200
+    except Exception as e:
+        logger.error(f"Manual update error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+@app.route('/ip-sources', methods=['GET'])
+@admin_required
+def get_ip_sources():
+    """
+    Returns the full list of IP→Source mappings.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, source_name, ip_address FROM ip_sources")
+        rows = c.fetchall()
+        conn.close()
+
+        # Convert rows to list of dicts
+        ip_sources = [dict(row) for row in rows]
+        return jsonify({"ip_sources": ip_sources}), 200
+    except Exception as e:
+        logger.error(f"Error retrieving IP sources: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/ip-sources', methods=['POST'])
+@admin_required
+def add_ip_source():
+    """
+    Adds a new IP→Source mapping.
+    Also updates existing records if they have this IP (source=..., status='updated').
+    JSON body: { "source_name": "...", "ip_address": "..." }
+    """
+    data = request.get_json()
+    source_name = data.get('source_name')
+    ip_address = data.get('ip_address')
+
+    if not source_name or not ip_address:
+        return jsonify({"error": "source_name and ip_address are required."}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        
+        # Insert new IP→Source mapping
+        c.execute("""
+            INSERT INTO ip_sources (source_name, ip_address)
+            VALUES (?, ?)
+        """, (source_name, ip_address))
+        conn.commit()
+
+        # Update existing records that match this IP
+        c.execute("""
+            UPDATE records
+            SET source = ?,
+                status = 'updated',
+                last_modification_date = datetime('now', '+4 hours')
+            WHERE ip_address = ?
+        """, (source_name, ip_address))
+        updated_count = c.rowcount
+
+        conn.commit()
+        conn.close()
+
+        message = f"IP source {ip_address} added as '{source_name}'. {updated_count} existing record(s) updated."
+        logger.info(message)
+        return jsonify({"message": message}), 200
+    except sqlite3.IntegrityError:
+        # likely because ip_address is UNIQUE
+        return jsonify({"error": f"IP address {ip_address} is already defined."}), 400
+    except Exception as e:
+        logger.error(f"Error adding IP source: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/ip-sources', methods=['DELETE'])
+@admin_required
+def delete_ip_source():
+    """
+    Deletes an IP→Source mapping by ip_address.
+    Also reverts any matching records to 'Other' with status='updated'.
+    JSON body: { "ip_address": "..." }
+    """
+    data = request.get_json()
+    ip_address = data.get('ip_address')
+
+    if not ip_address:
+        return jsonify({"error": "ip_address is required."}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+
+        # First find the existing source_name for that IP (if any)
+        c.execute("SELECT source_name FROM ip_sources WHERE ip_address = ?", (ip_address,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": f"No mapping found for IP {ip_address}."}), 404
+
+        source_name = row[0]
+
+        # Delete from ip_sources
+        c.execute("DELETE FROM ip_sources WHERE ip_address = ?", (ip_address,))
+        conn.commit()
+
+        # Revert any existing records that had this IP => source='Other', status='updated'
+        c.execute("""
+            UPDATE records
+            SET source = 'Other',
+                status = 'updated',
+                last_modification_date = datetime('now', '+4 hours')
+            WHERE ip_address = ?
+        """, (ip_address,))
+        updated_count = c.rowcount
+        conn.commit()
+        conn.close()
+
+        message = (f"IP source mapping for {ip_address} ('{source_name}') deleted. "
+                   f"{updated_count} record(s) reverted to 'Other'.")
+        logger.info(message)
+        return jsonify({"message": message}), 200
+    except Exception as e:
+        logger.error(f"Error deleting IP source for {ip_address}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------
 # User Authentication Endpoints

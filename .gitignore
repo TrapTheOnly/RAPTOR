@@ -2,9 +2,9 @@ backend/env
 backend/*.db
 backend/backup
 backend/static
-backend/*.com
+backend/application.log
 .env
 .DS_Store
-*.com
 __pycache__
-backend/application.log
+*Records
+*.com
