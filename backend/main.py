@@ -89,7 +89,7 @@ def parse_bind_zone_file(filepath, hostname):
                 ip = match.group('ip').strip()
 
                 # If the record name is blank, '@', or '.', treat as the domain apex
-                if not raw_name or raw_name in ('@', '.'):
+                if not raw_name or raw_name in ('@', '.', 'IN'):
                     raw_name = hostname
                 else:
                     raw_name = f"{raw_name}.{hostname}"
