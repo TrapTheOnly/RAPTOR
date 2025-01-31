@@ -113,54 +113,79 @@ def parse_bind_zone_file(filepath, hostname):
 def handle_zone_file_changes(new_zone_file_path, final_filename):
     """
     Handles copying and backup of a new zone file to the final destination.
-    - If the final file exists and is identical to the new file, no changes are made.
-    - If different, the final file is backed up and the new file is copied in its place.
-    - The number of backups is limited to 100 per domain.
-    
-    Args:
-    new_zone_file_path (str): Path to the new zone file.
-    final_filename (str): Destination path for the final zone file.
-
-    Returns:
-    str: The path of the final file.
+    - If final_filename doesn't exist, compare new file to the most recent backup in the domain folder.
+    - If identical, treat it as 'no change'.
+    - If different, copy as the live file (and optionally back up if there's an existing live file).
+    - If final_filename exists, do a normal compare -> backup old -> copy new if changed.
+    - Limit backups to 100 per domain.
     """
     try:
-        # Extract domain name and create backup folder for this domain
+        # 1) Figure out domain folder for backups
         domain_name = extract_domain_from_filename(final_filename)
         domain_backup_folder = os.path.join(BACKUP_FOLDER, domain_name)
         os.makedirs(domain_backup_folder, exist_ok=True)
 
-        # If the final file doesn't exist, just copy the new file
+        # 2) Read the new file data once
+        with open(new_zone_file_path, 'rb') as f_new:
+            new_file_data = f_new.read()
+
+        # -----------------------------------------------------
+        # CASE A: final_filename doesn't exist
+        # -----------------------------------------------------
         if not os.path.exists(final_filename):
+            # a) Check if there's a most recent .bak in domain_backup_folder
+            backups = sorted(
+                glob.glob(os.path.join(domain_backup_folder, '*.bak')),
+                key=os.path.getmtime,
+                reverse=True
+            )
+            if backups:
+                most_recent_backup = backups[0]
+                with open(most_recent_backup, 'rb') as f_old:
+                    old_file_data = f_old.read()
+
+                if old_file_data == new_file_data:
+                    logger.info(f"No changes found. The new file is identical to the latest backup ({most_recent_backup}).")
+                    return final_filename  # or return None if you'd like to skip
+                else:
+                    logger.info(f"New zone file differs from most recent backup {most_recent_backup}. Copying as live file...")
+            else:
+                logger.info(f"No existing backups found for domain {domain_name}. Treating file as new.")
+
+            # b) Copy the new file as final_filename
             shutil.copy2(new_zone_file_path, final_filename)
             logger.info(f"New zone file copied to: {final_filename}")
             return final_filename
 
-        # Read the contents of both the existing and new files
-        with open(final_filename, 'rb') as old_file, open(new_zone_file_path, 'rb') as new_file:
-            old_file_data = old_file.read()
-            new_file_data = new_file.read()
+        # -----------------------------------------------------
+        # CASE B: final_filename DOES exist
+        # -----------------------------------------------------
+        # Compare the existing final file with the new file
+        with open(final_filename, 'rb') as f_old:
+            old_file_data = f_old.read()
 
-        # If files are identical, no changes are needed
+        # If files are identical, do nothing
         if old_file_data == new_file_data:
             logger.info(f"No changes found. The new file is identical to the existing file at {final_filename}.")
             return final_filename
 
-        # Backup the existing file
+        # If different -> backup the existing file and copy the new one
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_filename = f"{os.path.basename(final_filename)}-{timestamp}.bak"
         backup_path = os.path.join(domain_backup_folder, backup_filename)
+
+        # Move old final file to domain backup
         shutil.move(final_filename, backup_path)
         logger.info(f"Existing zone file backed up to: {backup_path}")
 
-        # Copy the new file to the final location
+        # Now copy new file to final location
         shutil.copy2(new_zone_file_path, final_filename)
         logger.info(f"New zone file copied to: {final_filename}")
 
-        # Manage backups (limit to 100 backups per domain)
-        backups = sorted(glob.glob(f"{domain_backup_folder}/*.bak"), key=os.path.getmtime)
-        if len(backups) > 100:
-            oldest_backup = backups[0]
+        # Manage backups: limit to 100
+        all_backups = sorted(glob.glob(f"{domain_backup_folder}/*.bak"), key=os.path.getmtime)
+        if len(all_backups) > 100:
+            oldest_backup = all_backups[0]
             os.remove(oldest_backup)
             logger.info(f"Oldest backup deleted: {oldest_backup}")
 
@@ -168,7 +193,6 @@ def handle_zone_file_changes(new_zone_file_path, final_filename):
 
     except Exception as e:
         logger.error(f"Error handling zone file changes for {final_filename}: {e}")
-        raise
 
 # ---------------------------------------------------------
 # Utility: initialize & store records in SQLite DB
@@ -220,6 +244,9 @@ def init_db(db_path=DB_PATH):
     conn.commit()
     conn.close()
 
+# ---------------------------------------------------------
+# Utility: store records in SQLite DB
+# ---------------------------------------------------------
 def store_records_in_db(records, db_path=DB_PATH):
     """
     Merge new data into the DB:
@@ -271,6 +298,9 @@ def store_records_in_db(records, db_path=DB_PATH):
     conn.commit()
     conn.close()
 
+# ---------------------------------------------------------
+# Utility: add user to the allowed_users table
+# ---------------------------------------------------------
 def add_user_to_system(username, email, db_path=DB_PATH):
     """
     Add a user to the allowed_users table.
@@ -318,20 +348,20 @@ def extract_domain_from_filename(filename):
 # ---------------------------------------------------------
 def update_data():
     """
-    1. Process all zone files in the shared path.
-    2. For each file, parse and update records in the database.
-    3. Back up each file separately if there are changes.
+    1. Gather parsed records from all zone files.
+    2. Store them in one pass so status is consistent.
     """
     try:
         logger.info(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        
+
         shared_path = os.getenv("SHARED_PATH", "")
         zone_files = glob.glob(f"{shared_path}/*_A_Records")
-
         if not zone_files:
             logger.warning("No zone files found in shared path.")
             return
 
+        # 1) Parse each zone file, accumulate all records
+        all_records = []
         for zone_file in zone_files:
             domain = extract_domain_from_filename(zone_file)
             if not domain:
@@ -339,14 +369,21 @@ def update_data():
                 continue
 
             logger.info(f"Processing zone file for domain: {domain}")
-
-            # Handle backup and parsing
             final_zone_file_path = os.path.join(os.getenv("DATA_PATH", ""), os.path.basename(zone_file))
             final_zone_file = handle_zone_file_changes(zone_file, final_zone_file_path)
-            records = parse_bind_zone_file(final_zone_file, domain)
+            if not final_zone_file:
+                # If handle_zone_file_changes returned None or something invalid, skip
+                continue
 
-            # Store records in the database
-            store_records_in_db(records)
+            # Parse the final zone file
+            records_this_domain = parse_bind_zone_file(final_zone_file, domain)
+            all_records.extend(records_this_domain)
+
+        # 2) Now store them all in one pass
+        if all_records:
+            store_records_in_db(all_records)
+        else:
+            logger.info("No valid records found in any zone file.")
 
         logger.info(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
     except Exception as e:
