@@ -36,6 +36,7 @@ const RecordsTable = ({ userRole, darkMode }) => {
   const [editRowId, setEditRowId] = useState(null);
   const [formData, setFormData] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [sourceColors, setSourceColors] = useState(new Map());
   const isAdmin = userRole === 'admin';
   let navigate = useNavigate();
 
@@ -50,6 +51,13 @@ const RecordsTable = ({ userRole, darkMode }) => {
       },
     },
   });
+
+  const generateColor = (index, isDark) => {
+    const hue = (index * 137.5) % 360;
+    const saturation = isDark ? '60%' : '75%';
+    const lightness = isDark ? '35%' : '85%';
+    return `hsl(${hue}, ${saturation}, ${lightness})`;
+  };
 
   useEffect(() => {
     fetchRecords();
@@ -188,17 +196,29 @@ const RecordsTable = ({ userRole, darkMode }) => {
   };
 
   const getRowColor = (source) => {
-    switch (source) {
-      case 'WAF':
-        return { backgroundColor: !darkMode ? '#ffcccb' : '#803232' }; // Light red
-      case 'Nginx':
-        return { backgroundColor: !darkMode ? '#ccffcc' : '#328032' }; // Light green
-      case 'Cloud':
-        return { backgroundColor: !darkMode ? '#ccccff' : '#323280'}; // Light blue
-      default:
-        return {};
+    if (!sourceColors.has(source)) {
+      const newColors = new Map(sourceColors);
+      newColors.set(source, generateColor(sourceColors.size, darkMode));
+      setSourceColors(newColors);
     }
+    
+    return {
+      backgroundColor: sourceColors.get(source)
+    };
   };
+
+  useEffect(() => {
+    const newColors = new Map();
+    records
+      .map(record => record.source)
+      .sort()
+      .forEach((source, index) => {
+        if (!newColors.has(source)) {
+          newColors.set(source, generateColor(index, darkMode));
+        }
+      });
+    setSourceColors(newColors);
+  }, [records, darkMode]);
 
   return (
     <ThemeProvider theme={theme}>

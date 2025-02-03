@@ -17,13 +17,13 @@ from userhandler import ldap_authenticate, login_required_json, login_required_h
 from adminhandler import admin_required, init_admin_db, change_admin_password, get_existing_users, delete_user
 
 # ---------------------------------------------------------
-# Paths for DB & backups (can be overridden by environment)
+#! Paths for DB & backups (can be overridden by environment)
 # ---------------------------------------------------------
 DB_PATH = os.getenv("DATA_PATH") + "database.db"
 BACKUP_FOLDER = os.getenv("BACKUP_FOLDER")
 
 # ---------------------------------------------------------
-# Configure logging
+#! Configure logging
 # ---------------------------------------------------------
 log_folder = os.path.dirname(DB_PATH)
 os.makedirs(log_folder, exist_ok=True)
@@ -46,6 +46,9 @@ def determine_source(ip):
     """
     Look up the IP in our ip_sources table. If found, return its source_name.
     Otherwise, return "Other".
+
+    Input: IP address
+    Returns: Source name (or "Other")
     """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -64,6 +67,9 @@ def parse_bind_zone_file(filepath, hostname):
     """
     Parse a BIND zone file that contains A records, including lines
     with blank or '@' names. Any blank/'@' name is treated as the domain apex.
+
+    Input: BIND zone file path, hostname (e.g. 'example.com')
+    Returns: List of dictionaries with 'name', 'ip_address', 'source' keys.
     """
     records = []
     rr_pattern = re.compile(
@@ -78,7 +84,6 @@ def parse_bind_zone_file(filepath, hostname):
 
     with open(filepath, 'r') as f:
         for line in f:
-            # Strip out inline comments and whitespace
             line = line.split(';', 1)[0].strip()
             if not line:
                 continue
@@ -88,16 +93,13 @@ def parse_bind_zone_file(filepath, hostname):
                 raw_name = match.group('name').strip()
                 ip = match.group('ip').strip()
 
-                # If the record name is blank, '@', or '.', treat as the domain apex
                 if not raw_name or raw_name in ('@', '.', 'IN'):
                     raw_name = hostname
                 else:
                     raw_name = f"{raw_name}.{hostname}"
 
                 source = determine_source(ip)
-
                 full_name = raw_name
-
                 record = {
                     "name": full_name,
                     "ip_address": ip,
@@ -118,6 +120,9 @@ def handle_zone_file_changes(new_zone_file_path, final_filename):
     - If different, copy as the live file (and optionally back up if there's an existing live file).
     - If final_filename exists, do a normal compare -> backup old -> copy new if changed.
     - Limit backups to 100 per domain.
+
+    Input: new_zone_file_path, final_filename
+    Returns: final_filename if copied, None if no changes.
     """
     try:
         # 1) Figure out domain folder for backups
@@ -146,7 +151,7 @@ def handle_zone_file_changes(new_zone_file_path, final_filename):
 
                 if old_file_data == new_file_data:
                     logger.info(f"No changes found. The new file is identical to the latest backup ({most_recent_backup}).")
-                    return final_filename  # or return None if you'd like to skip
+                    return None
                 else:
                     logger.info(f"New zone file differs from most recent backup {most_recent_backup}. Copying as live file...")
             else:
@@ -200,6 +205,9 @@ def handle_zone_file_changes(new_zone_file_path, final_filename):
 def init_db(db_path=DB_PATH):
     """
     Create the table for A records if not existing.
+
+    Input: db_path
+    Returns: None
     """
     # Ensure the parent directory exists
     logger.info("Initializing database...")
@@ -254,6 +262,9 @@ def store_records_in_db(records, db_path=DB_PATH):
       - Update IP for existing records if changed => status = 'updated'.
       - Mark records as 'missing' if not in the new dataset.
       - Mark 'unchanged' otherwise.
+    
+    Input: list of dictionaries with 'name', 'ip_address', 'source' keys
+    Returns: None
     """
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -304,6 +315,9 @@ def store_records_in_db(records, db_path=DB_PATH):
 def add_user_to_system(username, email, db_path=DB_PATH):
     """
     Add a user to the allowed_users table.
+
+    Input: username, email
+    Returns: None
     """
     try:
         conn = sqlite3.connect(db_path)
@@ -326,6 +340,9 @@ def add_user_to_system(username, email, db_path=DB_PATH):
 def periodic_update(interval, update_function):
     """
     Runs `update_function` every `interval` seconds in a separate thread.
+
+    Input: interval (seconds), update_function
+    Returns: None
     """
     def wrapper():
         update_function()
@@ -339,6 +356,9 @@ def extract_domain_from_filename(filename):
     """
     Extract the domain name from the filename. Example:
     "example.com_A_Records" -> "example.com"
+
+    Input: filename
+    Returns: domain name (or None if not found)
     """
     match = re.match(r"(.+?)_A_Records", os.path.basename(filename))
     return match.group(1) if match else None
@@ -350,6 +370,8 @@ def update_data():
     """
     1. Gather parsed records from all zone files.
     2. Store them in one pass so status is consistent.
+
+    Returns: None
     """
     try:
         logger.info(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -372,10 +394,8 @@ def update_data():
             final_zone_file_path = os.path.join(os.getenv("DATA_PATH", ""), os.path.basename(zone_file))
             final_zone_file = handle_zone_file_changes(zone_file, final_zone_file_path)
             if not final_zone_file:
-                # If handle_zone_file_changes returned None or something invalid, skip
                 continue
 
-            # Parse the final zone file
             records_this_domain = parse_bind_zone_file(final_zone_file, domain)
             all_records.extend(records_this_domain)
 
@@ -390,7 +410,7 @@ def update_data():
         logger.error(f"Error during data update: {e}")
 
 # ---------------------------------------------------------
-# Flask App
+#! Flask App
 # ---------------------------------------------------------
 app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.getenv("SECRET_KEY")
@@ -398,11 +418,14 @@ app.permanent_session_lifetime = timedelta(hours=1)
 CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(",")}})
 
 # ---------------------------------------------------------
-# Record API Endpoints
+#! Record API Endpoints
 # ---------------------------------------------------------
 @app.route('/records', methods=['GET'])
 @login_required_json
 def get_records():
+    """
+    Returns all records from the database.
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -416,6 +439,9 @@ def get_records():
 @app.route('/records/<int:record_id>', methods=['POST'])
 @login_required_json
 def update_record(record_id):
+    """
+    Update a record by ID.
+    """
     data = request.get_json(force=True)
 
     def sanitize_string(s):
@@ -448,6 +474,9 @@ def update_record(record_id):
 @app.route('/records/<int:record_id>', methods=['DELETE'])
 @admin_required
 def delete_record(record_id):
+    """
+    Delete a record by ID.
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -460,11 +489,14 @@ def delete_record(record_id):
         return jsonify({"status": "error", "message": str(e)}), 400
 
 # ---------------------------------------------------------
-# Admin API Endpoints
+#! Admin API Endpoints
 # ---------------------------------------------------------
 @app.route('/ldap-search', methods=['GET'])
 @admin_required
 def ldap_search():
+    """
+    Search for users in the LDAP directory.
+    """
     query = request.args.get('query').lower()
     try:
         results = search_ldap_users(query)
@@ -475,6 +507,9 @@ def ldap_search():
 @app.route('/add-user', methods=['POST'])
 @admin_required
 def add_user():
+    """
+    Add a user to the allowed_users table.
+    """
     data = request.get_json()
     username = data.get('username').lower()
     email = data.get('email').lower()
@@ -500,7 +535,6 @@ def api_change_password():
 
     response, status_code = change_admin_password(current_password, new_password)
     return jsonify(response), status_code
-
 
 @app.route('/existing-users', methods=['GET'])
 @admin_required
@@ -603,7 +637,6 @@ def add_ip_source():
         logger.info(message)
         return jsonify({"message": message}), 200
     except sqlite3.IntegrityError:
-        # likely because ip_address is UNIQUE
         return jsonify({"error": f"IP address {ip_address} is already defined."}), 400
     except Exception as e:
         logger.error(f"Error adding IP source: {e}")
@@ -661,10 +694,13 @@ def delete_ip_source():
         return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------
-# User Authentication Endpoints
+#! User Authentication Endpoints
 # ---------------------------------------------------------
 @app.route('/login', methods=['POST'])
 def login():
+    """
+    Authenticate the user and set session variables.
+    """
     data = request.get_json()
     username = data.get('username').lower()
     password = data.get('password')
@@ -698,11 +734,14 @@ def session_status():
 
 @app.route('/logout', methods=['POST'])
 def logout():
+    """
+    Clear the session variables and log out the user.
+    """
     session.clear()
     return jsonify({"status": "logged_out"}), 200
 
 # ---------------------------------------------------------
-# Frontend Routes
+#! Frontend Routes
 # ---------------------------------------------------------
 @app.route('/')
 @login_required_html
@@ -714,7 +753,7 @@ def not_found(e):
     return send_from_directory(app.static_folder, 'index.html')
 
 # ---------------------------------------------------------
-# Main
+#! Main
 # ---------------------------------------------------------
 if __name__ == '__main__':
         
