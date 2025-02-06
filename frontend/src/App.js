@@ -5,6 +5,8 @@ import Login from './components/Login';
 import RecordsTable from './components/RecordsTable';
 import Header from './components/Header';
 import Settings from './components/Settings';
+import RecordDetail from './components/RecordDetail';
+import ErrorPage from './components/ErrorPage';
 
 const App = () => {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -40,7 +42,6 @@ const App = () => {
     localStorage.setItem('theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  // Show a loading indicator until the login state is verified
   if (loading) {
     return <div>Loading...</div>;
   }
@@ -85,6 +86,12 @@ const App = () => {
                 <Navigate to="/" />
           }
         />
+        <Route
+          path="/records/:domain"
+          element={loggedIn ? <RecordDetail darkMode={darkMode} /> : <Navigate to="/login" />}
+        />
+        <Route path="/records/*" element={<Navigate to="/" />} />
+        <Route path="*" element={<ErrorPage errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />
       </Routes>
     </Router>
   );

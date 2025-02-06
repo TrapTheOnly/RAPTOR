@@ -105,7 +105,7 @@ def login_required_json(f):
     def wrapper(*args, **kwargs):
         if not session.get('logged_in'):
             logger.warning("Unauthorized access attempt to JSON route")
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Unauthorized"}), 403
         return f(*args, **kwargs)
     return wrapper
 

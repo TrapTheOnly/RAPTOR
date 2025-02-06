@@ -209,7 +209,7 @@ def init_db(db_path=DB_PATH):
     Input: db_path
     Returns: None
     """
-    # Ensure the parent directory exists
+    
     logger.info("Initializing database...")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
@@ -226,7 +226,9 @@ def init_db(db_path=DB_PATH):
             status TEXT NOT NULL DEFAULT 'unchanged',
             creation_date TEXT NOT NULL,
             last_modification_date TEXT,
-            application_owner TEXT DEFAULT ''
+            application_owner TEXT DEFAULT '',
+            maintainer TEXT DEFAULT '',
+            description TEXT DEFAULT ''
         )
     """)
 
@@ -246,6 +248,23 @@ def init_db(db_path=DB_PATH):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_name TEXT NOT NULL,
             ip_address TEXT NOT NULL UNIQUE
+        )
+    """)
+
+    # Record history table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS record_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            username TEXT NOT NULL,
+            old_ip_address TEXT,
+            new_ip_address TEXT,
+            old_source TEXT,
+            new_source TEXT,
+            old_maintainer TEXT,
+            new_maintainer TEXT
         )
     """)
 
@@ -269,40 +288,104 @@ def store_records_in_db(records, db_path=DB_PATH):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
 
-    c.execute("SELECT name, ip_address, status FROM records")
-    existing_records = {row[0]: {'ip_address': row[1], 'status': row[2]} for row in c.fetchall()}
+    # Fetch ONLY the columns needed for comparison from existing records
+    c.execute("SELECT id, name, ip_address, source, maintainer FROM records")
+    existing_records = {row[1]: {
+        'id': row[0],
+        'ip_address': row[2],
+        'source': row[3],
+        'maintainer': row[4]
+    } for row in c.fetchall()}
 
     current_names = {r['name'] for r in records}
 
-    # Insert or update
     for record in records:
         if record['name'] in existing_records:
-            if existing_records[record['name']]['ip_address'] != record['ip_address']:
-                logger.info(f"IP changed for {record['name']}: {existing_records[record['name']]['ip_address']} -> {record['ip_address']}")
+            existing_record = existing_records[record['name']]
+            new_source = determine_source(record['ip_address']) # Determine new source
+
+            # ONLY check and update ip_address and source (derived from IP)
+            if (existing_record['ip_address'] != record['ip_address'] or
+                existing_record['source'] != new_source):
+
+                # Log the changes (optional, but good for debugging)
+                if existing_record['ip_address'] != record['ip_address']:
+                    logger.info(f"IP changed for {record['name']}: {existing_record['ip_address']} -> {record['ip_address']}")
+                if existing_record['source'] != new_source:
+                    logger.info(f"Source changed for {record['name']}: {existing_record['source']} -> {new_source}")
+
+                # Update ONLY ip_address and source, and set status
                 c.execute("""
                     UPDATE records
-                    SET ip_address = ?, status = 'updated', last_modification_date = datetime('now', '+4 hours')
+                    SET ip_address = ?, source = ?, status = 'updated', last_modification_date = datetime('now', '+4 hours')
                     WHERE name = ?
-                """, (record['ip_address'], record['name']))
+                """, (record['ip_address'], new_source, record['name']))
+
+                # Log history (ip_address and source changes only)
+                c.execute("""
+                    INSERT INTO record_history (record_id, action, timestamp, username,
+                                               old_ip_address, new_ip_address,
+                                               old_source, new_source,
+                                               old_maintainer, new_maintainer)
+                    VALUES (?, 'updated', datetime('now', '+4 hours'), ?,
+                            ?, ?,
+                            ?, ?,
+                            ?, ?)
+                """, (existing_record['id'], 'system',  # Use 'system' for cron job updates
+                      existing_record['ip_address'], record['ip_address'],
+                      existing_record['source'], new_source,
+                      existing_record['maintainer'], existing_record['maintainer'])) # Keep old maintainer
+
             else:
+                # No changes from the zone file's perspective
                 c.execute("""
                     UPDATE records
                     SET status = 'unchanged'
                     WHERE name = ?
                 """, (record['name'],))
-        else:
+
+        else:  # New record (from zone file)
+            new_source = determine_source(record['ip_address'])
             c.execute("""
-                INSERT INTO records (name, ip_address, source, status, creation_date, application_owner)
-                VALUES (?, ?, ?, 'unchanged', datetime('now', '+4 hours'), '')
-            """, (record['name'], record['ip_address'], record['source']))
+                INSERT INTO records (name, ip_address, source, status, creation_date, application_owner, maintainer, description)
+                VALUES (?, ?, ?, 'unchanged', datetime('now', '+4 hours'), '', '', '')
+            """, (record['name'], record['ip_address'], new_source)) # Insert determined source
             logger.info(f"Inserted new record for {record['name']}")
 
-    # Mark as 'missing' anything not in the new dataset
+            new_record_id = c.lastrowid
+
+            # Log history (creation) - only ip_address and source
+            c.execute("""
+                INSERT INTO record_history (record_id, action, timestamp, username,
+                                           old_ip_address, new_ip_address,
+                                           old_source, new_source,
+                                           old_maintainer, new_maintainer)
+                VALUES (?, 'created', datetime('now', '+4 hours'), ?,
+                        NULL, ?,
+                        NULL, ?,
+                        NULL, NULL)
+            """, (new_record_id, 'system',  # Use 'system' for cron job
+                  record['ip_address'], new_source))
+
+    # Mark as 'missing' (no change here)
     placeholders = ','.join('?' for _ in current_names)
-    if placeholders:  # Only run if there's at least one record
+    if placeholders:
         c.execute(f"""
             UPDATE records
             SET status = 'missing'
+            WHERE name NOT IN ({placeholders})
+        """, tuple(current_names))
+        # Log 'missing' records in history.  This is a type of deletion.
+        c.execute(f"""
+            INSERT INTO record_history (record_id, action, timestamp, username,
+                                        old_ip_address, new_ip_address,
+                                        old_source, new_source,
+                                        old_maintainer, new_maintainer)
+            SELECT id, 'deleted', datetime('now', '+4 hours'), 'system',
+                    ip_address, NULL,
+                    source, NULL,
+                    maintainer, NULL
+            FROM records
             WHERE name NOT IN ({placeholders})
         """, tuple(current_names))
 
@@ -448,22 +531,44 @@ def update_record(record_id):
         return re.sub(r'[^a-zA-Z0-9\.\-_ ]+', '', s)
 
     try:
-        name = sanitize_string(data.get('name', ''))
-        record_ip_address = sanitize_string(data.get('ip_address', ''))
-        record_source = sanitize_string(data.get('source', ''))
         application_owner = sanitize_string(data.get('application_owner', ''))
+        maintainer = sanitize_string(data.get('maintainer', ''))
+        description = sanitize_string(data.get('description', ''))
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
+
+        c.execute("SELECT maintainer FROM records WHERE id = ?", (record_id,))
+        old_record = c.fetchone()
+        if not old_record:
+            conn.close()
+            return jsonify({"error": "Record not found"}), 404
+
+        old_maintainer = old_record[0]
+
         c.execute("""
             UPDATE records
-            SET name = ?,
-                ip_address = ?,
-                source = ?,
-                application_owner = ?,
+            SET application_owner = ?,
+                maintainer = ?,
+                description = ?,
                 last_modification_date = datetime('now', '+4 hours')
             WHERE id = ?
-        """, (name, record_ip_address, record_source, application_owner, record_id))
+        """, (application_owner, maintainer, description, record_id))
+
+
+        if old_maintainer != maintainer:
+            c.execute("""
+                INSERT INTO record_history (record_id, action, timestamp, username,
+                                           old_ip_address, new_ip_address,
+                                           old_source, new_source,
+                                           old_maintainer, new_maintainer)
+                VALUES (?, 'updated', datetime('now', '+4 hours'), ?,
+                        NULL, NULL,
+                        NULL, NULL,
+                        ?, ?)
+            """, (record_id, session['username'],
+                  old_maintainer, maintainer))
+
         conn.commit()
         conn.close()
         return jsonify({"status": "success"}), 200
@@ -480,6 +585,32 @@ def delete_record(record_id):
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
+
+        # Fetch *only needed* data BEFORE deleting
+        c.execute("SELECT ip_address, source, maintainer FROM records WHERE id = ?", (record_id,))
+        record_data = c.fetchone()
+        if not record_data:
+            conn.close()
+            return jsonify({"error": "Record not found"}), 404
+
+        old_ip_address, old_source, old_maintainer = record_data
+
+        # Log as 'deleted' in record_history
+        c.execute("""
+            INSERT INTO record_history (record_id, action, timestamp, username,
+                                       old_ip_address, new_ip_address,
+                                       old_source, new_source,
+                                       old_maintainer, new_maintainer)
+            VALUES (?, 'deleted', datetime('now', '+4 hours'), ?,
+                    ?, NULL,
+                    ?, NULL,
+                    ?, NULL)
+        """, (record_id, session['username'],
+              old_ip_address,
+              old_source,
+              old_maintainer))  # old_* values, new_* are NULL
+
+        # Now, delete the record
         c.execute("DELETE FROM records WHERE id = ?", (record_id,))
         conn.commit()
         conn.close()
@@ -487,6 +618,35 @@ def delete_record(record_id):
     except Exception as e:
         logger.error(f"Error deleting record {record_id}: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
+
+@app.route('/records/<int:record_id>/history', methods=['GET'])
+@login_required_json
+def get_record_history(record_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # Important for getting dict-like results
+    c = conn.cursor()
+    c.execute("SELECT * FROM record_history WHERE record_id = ? ORDER BY timestamp DESC", (record_id,))
+    rows = c.fetchall()
+    conn.close()
+
+    history = [dict(ix) for ix in rows]
+    return jsonify(history)
+
+@app.route('/records/<string:domain>', methods=['GET'])
+@login_required_json
+def get_record_by_domain(domain):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM records WHERE name = ?", (domain,))
+    row = c.fetchone()
+    conn.close()
+
+    if row:
+        record = dict(row)
+        return jsonify(record)
+    else:
+        return jsonify({"error": "Record not found"}), 404
 
 # ---------------------------------------------------------
 #! Admin API Endpoints
@@ -764,8 +924,8 @@ if __name__ == '__main__':
         interval = int(os.getenv('UPDATE_TIME', '86400'))
         periodic_update(interval, update_data)
 
+    port = os.getenv("APP_PORT")
     CERT_FILE = os.getenv("CERT_FILE")
     KEY_FILE = os.getenv("KEY_FILE")
-    port = os.getenv("APP_PORT")
     logger.info(f"Starting Flask server on port {port}...")
     app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE), debug=True)
