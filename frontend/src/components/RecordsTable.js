@@ -26,10 +26,24 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import UpdateIcon from '@mui/icons-material/Update';
 import WarningIcon from '@mui/icons-material/Warning';
 import Papa from 'papaparse'; // For CSV export
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'; // Import icons
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+
 
 function sanitizeInput(str) {
   return str.replace(/[^a-zA-Z0-9.\-_ ]+/g, '');
 }
+
+const columnOrder = [
+  'name',
+  'ip_address',
+  'source',
+  'application_owner',
+  'maintainer',
+  'status',
+  'creation_date',
+  'last_modification_date',
+];
 
 const RecordsTable = ({ userRole, darkMode }) => {
   const [records, setRecords] = useState([]);
@@ -75,7 +89,7 @@ const RecordsTable = ({ userRole, darkMode }) => {
         navigate('/login');
       }
     };
-  
+
     checkSession();
 
     const interval = setInterval(checkSession, 1 * 60 * 1000);
@@ -108,10 +122,29 @@ const RecordsTable = ({ userRole, darkMode }) => {
     }).format(new Date(datetime));
   };
 
-  const fetchRecords = async () => {
+ const fetchRecords = async () => {
     try {
       const response = await axios.get(`/records`);
-      setRecords(response.data);
+      let fetchedRecords = response.data; 
+
+      if (sortConfig.key !== null) {
+        fetchedRecords = [...fetchedRecords].sort((a, b) => {
+          let aValue = a[sortConfig.key];
+          let bValue = b[sortConfig.key];
+
+          if (sortConfig.key === 'creation_date' || sortConfig.key === 'last_modification_date') {
+            aValue = new Date(aValue);
+            bValue = new Date(bValue);
+          }
+
+          if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+          if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }
+
+      setRecords(fetchedRecords);
+
     } catch (error) {
       console.error('Error fetching records:', error);
     }
@@ -124,6 +157,8 @@ const RecordsTable = ({ userRole, darkMode }) => {
       ip_address: record.ip_address,
       source: record.source,
       application_owner: record.application_owner,
+      maintainer: record.maintainer,
+      description: record.description
     });
   };
 
@@ -145,6 +180,7 @@ const RecordsTable = ({ userRole, darkMode }) => {
       await axios.post(`/records/${id}`, formData);
       await fetchRecords();
       setEditRowId(null);
+      setFormData({});
     } catch (error) {
       console.error('Error updating record:', error);
     }
@@ -183,7 +219,16 @@ const RecordsTable = ({ userRole, darkMode }) => {
   };
 
   const handleExportCSV = () => {
-    const csv = Papa.unparse(records);
+    const reorderedRecords = records.map(record => {
+      const newRecord = {};
+      columnOrder.forEach(key => {
+        newRecord[key] = record[key] === undefined ? '' : record[key];
+      });
+      return newRecord;
+    });
+  
+  
+    const csv = Papa.unparse(reorderedRecords);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -196,21 +241,25 @@ const RecordsTable = ({ userRole, darkMode }) => {
   };
 
   const getRowColor = (source) => {
+    if (source === 'Other') {
+      return {}
+    }
+
     if (!sourceColors.has(source)) {
       const newColors = new Map(sourceColors);
       newColors.set(source, generateColor(sourceColors.size, darkMode));
       setSourceColors(newColors);
     }
-    
+
     return {
-      backgroundColor: sourceColors.get(source)
+      backgroundColor: sourceColors.get(source),
     };
   };
 
   useEffect(() => {
     const newColors = new Map();
     records
-      .map(record => record.source)
+      .map((record) => record.source)
       .sort()
       .forEach((source, index) => {
         if (!newColors.has(source)) {
@@ -247,74 +296,177 @@ const RecordsTable = ({ userRole, darkMode }) => {
         </Box>
         <TableContainer component={Paper}>
           <Table>
-            <TableHead>
+           <TableHead>
               <TableRow>
-                <TableCell onClick={() => handleSort('name')}>Name</TableCell>
-                <TableCell onClick={() => handleSort('ip_address')}>IP Address</TableCell>
-                <TableCell onClick={() => handleSort('source')}>Source</TableCell>
-                <TableCell onClick={() => handleSort('application_owner')}>Application Owner</TableCell>                
-                <TableCell onClick={() => handleSort('status')}>Status</TableCell>
-                <TableCell onClick={() => handleSort('creation_date')}>Creation Date</TableCell>
-                <TableCell onClick={() => handleSort('last_modification_date')}>Last Modified Date</TableCell>
+                <TableCell onClick={() => handleSort('name')} sx={{ cursor: 'pointer',  verticalAlign: 'middle' }} >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span>Name</span> {
+                      sortConfig.key === 'name' ? 
+                        sortConfig.direction === 'asc' ? 
+                          <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> : 
+                          <ArrowDownwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> :
+                        <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#1C1C1C' : '#fff' }} />
+                      }
+                  </Box>
+                </TableCell>
+                <TableCell onClick={() => handleSort('ip_address')} sx={{ cursor: 'pointer',  verticalAlign: 'middle' }} >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span>IP Address</span> {
+                      sortConfig.key === 'ip_address' ? 
+                        sortConfig.direction === 'asc' ? 
+                          <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> : 
+                          <ArrowDownwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> :
+                        <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#1C1C1C' : '#fff' }} />
+                      }
+                  </Box>
+                </TableCell>
+                <TableCell onClick={() => handleSort('source')} sx={{ cursor: 'pointer',  verticalAlign: 'middle' }} >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span>Source</span> {
+                      sortConfig.key === 'source' ? 
+                        sortConfig.direction === 'asc' ? 
+                          <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> : 
+                          <ArrowDownwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> :
+                        <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#1C1C1C' : '#fff' }} />
+                      }
+                  </Box>
+                </TableCell>
+                <TableCell onClick={() => handleSort('application_owner')} sx={{ cursor: 'pointer',  verticalAlign: 'middle' }} >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span>Application Owner</span> {
+                      sortConfig.key === 'application_owner' ? 
+                        sortConfig.direction === 'asc' ? 
+                          <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> : 
+                          <ArrowDownwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> :
+                        <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#1C1C1C' : '#fff' }} />
+                      }
+                  </Box>
+                </TableCell>
+                <TableCell onClick={() => handleSort('maintainer')} sx={{ cursor: 'pointer',  verticalAlign: 'middle' }} >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span>Maintainer</span> {
+                      sortConfig.key === 'maintainer' ? 
+                        sortConfig.direction === 'asc' ? 
+                          <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> : 
+                          <ArrowDownwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> :
+                        <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#1C1C1C' : '#fff' }} />
+                      }
+                  </Box>
+                </TableCell>
+                <TableCell onClick={() => handleSort('status')} sx={{ cursor: 'pointer',  verticalAlign: 'middle' }} >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span>Status</span> {
+                      sortConfig.key === 'status' ? 
+                        sortConfig.direction === 'asc' ? 
+                          <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> : 
+                          <ArrowDownwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> :
+                        <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#1C1C1C' : '#fff' }} />
+                      }
+                  </Box>
+                </TableCell>
+                <TableCell onClick={() => handleSort('creation_date')} sx={{ cursor: 'pointer',  verticalAlign: 'middle' }} >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span>Creation Date</span> {
+                      sortConfig.key === 'creation_date' ? 
+                        sortConfig.direction === 'asc' ? 
+                          <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> : 
+                          <ArrowDownwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> :
+                        <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#1C1C1C' : '#fff' }} />
+                      }
+                  </Box>
+                </TableCell>
+                <TableCell onClick={() => handleSort('last_modification_date')} sx={{ cursor: 'pointer',  verticalAlign: 'middle' }} >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span>Last Modified Date</span> {
+                      sortConfig.key === 'last_modification_date' ? 
+                        sortConfig.direction === 'asc' ? 
+                          <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> : 
+                          <ArrowDownwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} /> :
+                        <ArrowUpwardIcon sx={{ fontSize: '1rem', color: theme.palette.mode === 'dark' ? '#1C1C1C' : '#fff' }} />
+                      }
+                  </Box>
+                </TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-                {records.map((record) => (
-                    <TableRow
-                    key={record.name}
-                    style={getRowColor(record.source)}
-                    >
-                    {editRowId === record.id ? (
-                        <>
-                        <TableCell>{record.name}</TableCell>
-                        <TableCell>{record.ip_address}</TableCell>
-                        <TableCell>{record.source}</TableCell>
-                        <TableCell>
-                          <input
-                            name="application_owner"
-                            value={formData.application_owner || ''}
-                            onChange={handleChange}
-                          />
-                        </TableCell>
-                        <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
-                        <TableCell>{formatDateTime(record.creation_date)}</TableCell>
-                        <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
-                        <TableCell>
-                            <IconButton onClick={() => handleSave(record.id)}>
-                            <SaveIcon color="primary" />
-                            </IconButton>
-                            <IconButton onClick={handleCancel}>
-                            <CancelIcon color="secondary" />
-                            </IconButton>
-                        </TableCell>
-                        </>
-                    ) : (
-                        <>
-                        {/* Display Mode */}
-                        <TableCell>{record.name}</TableCell>
-                        <TableCell>{record.ip_address}</TableCell>
-                        <TableCell>{record.source}</TableCell>
-                        <TableCell>{record.application_owner || 'N/A'}</TableCell>
-                        <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
-                        <TableCell>{formatDateTime(record.creation_date)}</TableCell>
-                        <TableCell>{record.last_modification_date ? formatDateTime(record.last_modification_date) : "Never"}</TableCell>
-                        <TableCell>
-                          <IconButton onClick={() => handleEdit(record)}>
-                            <EditIcon color="primary" />
+              {records.map((record) => (
+                <TableRow key={record.name} style={getRowColor(record.source)}>
+                  {editRowId === record.id ? (
+                    <>
+                      <TableCell>{record.name}</TableCell>
+                      <TableCell>{record.ip_address}</TableCell>
+                      <TableCell>{record.source}</TableCell>
+                      <TableCell>
+                        <input
+                          name="application_owner"
+                          value={formData.application_owner || ''}
+                          onChange={handleChange}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <input
+                          name="maintainer"
+                          value={formData.maintainer || ''}
+                          onChange={handleChange}
+                        />
+                      </TableCell>
+                      <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
+                      <TableCell>{formatDateTime(record.creation_date)}</TableCell>
+                      <TableCell>
+                        {record.last_modification_date
+                          ? formatDateTime(record.last_modification_date)
+                          : 'Never'}
+                      </TableCell>
+                      <TableCell>
+                        <IconButton onClick={() => handleSave(record.id)}>
+                          <SaveIcon color="primary" />
+                        </IconButton>
+                        <IconButton onClick={handleCancel}>
+                          <CancelIcon color="secondary" />
+                        </IconButton>
+                      </TableCell>
+                    </>
+                  ) : (
+                    <>
+                      {/* Display Mode */}
+                      <TableCell>
+                        <Button
+                            color="primary"
+                            onClick={() => navigate(`/records/${record.name}`)}
+                            style={{textTransform: 'none'}}
+                        >
+                            {record.name}
+                        </Button>
+                      </TableCell>
+                      <TableCell>{record.ip_address}</TableCell>
+                      <TableCell>{record.source}</TableCell>
+                      <TableCell>{record.application_owner || 'N/A'}</TableCell>
+                      <TableCell>{record.maintainer || 'N/A'}</TableCell>
+                      <TableCell>{getStatusIcon(record.status, darkMode)}</TableCell>
+                      <TableCell>{formatDateTime(record.creation_date)}</TableCell>
+                      <TableCell>
+                        {record.last_modification_date
+                          ? formatDateTime(record.last_modification_date)
+                          : 'Never'}
+                      </TableCell>
+                      <TableCell>
+                        <IconButton onClick={() => handleEdit(record)}>
+                          <EditIcon color="primary" />
+                        </IconButton>
+                        {isAdmin ? (
+                          <IconButton onClick={() => handleDelete(record.id)}>
+                            <DeleteIcon color="error" />
                           </IconButton>
-                          { isAdmin ? 
-                            <IconButton onClick={() => handleDelete(record.id)}>
-                              <DeleteIcon color="error" />
-                            </IconButton> : <></>
-                          }
-                        </TableCell> 
-                        
-                        </>
-                    )}
-                    </TableRow>
-                ))}
-                </TableBody>
+                        ) : (
+                          <></>
+                        )}
+                      </TableCell>
+                    </>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
           </Table>
         </TableContainer>
       </Box>

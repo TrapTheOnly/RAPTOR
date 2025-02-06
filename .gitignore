@@ -2,6 +2,8 @@ backend/env
 backend/*.db
 backend/backup
 backend/static
+backend/shared
+backend/data
 backend/application.log
 .env
 .DS_Store

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { AppBar, Toolbar, Button, Typography, Box, Switch } from '@mui/material';
+import { AppBar, Toolbar, Button, Typography, Box, Switch, useTheme } from '@mui/material'; // Import useTheme
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 
@@ -9,11 +9,13 @@ const Header = ({ username, userRole, setUserRole, setLoggedIn, setUsername, dar
   const navigate = useNavigate();
   const appBarColor = userRole === "admin" ? "error" : "primary";
 
+  const theme = useTheme();
+
   const handleLogout = async () => {
     try {
       await axios.post(`/logout`);
-      navigate('/login'); 
-      setLoggedIn(false); 
+      navigate('/login');
+      setLoggedIn(false);
       setUsername('');
       setUserRole(null);
     } catch (error) {}
@@ -35,10 +37,25 @@ const Header = ({ username, userRole, setUserRole, setLoggedIn, setUsername, dar
             onChange={() => setDarkMode(!darkMode)}
             sx={{
               '& .MuiSwitch-thumb': {
-                backgroundColor: darkMode ? 'warning.main' : 'white',
+                backgroundColor: darkMode ? theme.palette.warning.main : 'white',
               },
               '& .MuiSwitch-track': {
-                backgroundColor: darkMode ? '#fdd835' : '#e0e0e0',
+                backgroundColor: darkMode ? theme.palette.warning.light : theme.palette.grey[400],
+                opacity: 0.5, // Keep the opacity
+              },
+              '& .MuiSwitch-switchBase': {
+                '&.Mui-checked': {
+                  '& + .MuiSwitch-track': {
+                    backgroundColor: darkMode ? theme.palette.warning.main : theme.palette.grey[400], // Use theme colors
+                    opacity: 0.5,
+                  },
+                  '& .MuiSwitch-thumb': {
+                    backgroundColor: darkMode ? theme.palette.warning.main: 'white', // Use theme.palette.getContrastText
+                  },
+                },
+                '&:not(.Mui-checked) .MuiSwitch-thumb': {
+                  backgroundColor: darkMode ? theme.palette.warning.main : 'white',
+                },
               },
             }}
           />
