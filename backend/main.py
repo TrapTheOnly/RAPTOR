@@ -3,18 +3,19 @@ import logging
 from dotenv import load_dotenv
 load_dotenv()
 
-import sqlite3
 import re
+import time
 import glob
-from flask import Flask, request, jsonify, send_from_directory, session
-from flask_cors import CORS
 import shutil
+import sqlite3
 import datetime
 import threading
-import time
+from flask_cors import CORS
 from datetime import timedelta
-from userhandler import ldap_authenticate, login_required_json, login_required_html, search_ldap_users
-from adminhandler import admin_required, init_admin_db, change_admin_password, get_existing_users, delete_user
+from modules.user import *
+from modules.admin import *
+from modules.offsec import *
+from flask import Flask, request, jsonify, send_from_directory, session
 
 # ---------------------------------------------------------
 #! Paths for DB & backups (can be overridden by environment)
@@ -204,12 +205,13 @@ def handle_zone_file_changes(new_zone_file_path, final_filename):
 # ---------------------------------------------------------
 def init_db(db_path=DB_PATH):
     """
-    Create the table for A records if not existing.
+    Create the tables for A records, allowed users, IP sources,
+    record history, pentest data and port scan history, if they do not exist.
 
     Input: db_path
     Returns: None
     """
-    
+
     logger.info("Initializing database...")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
@@ -238,7 +240,8 @@ def init_db(db_path=DB_PATH):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             email TEXT,
-            added_date TEXT NOT NULL
+            added_date TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user'
         )
     """)
 
@@ -268,8 +271,28 @@ def init_db(db_path=DB_PATH):
         )
     """)
 
+    # Pentest data table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS pentest_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_id INTEGER NOT NULL,
+            dns_name TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            source TEXT NOT NULL,
+            report_file TEXT,
+            vulnerable INTEGER,
+            tested_by TEXT,
+            test_start_date TEXT,
+            test_end_date TEXT,
+            vulnerability_fixed INTEGER,
+            service_desk_link TEXT,
+            FOREIGN KEY (record_id) REFERENCES records(id)
+        )
+    """)
+
     conn.commit()
     conn.close()
+    logger.info("Database initialized successfully.")
 
 # ---------------------------------------------------------
 # Utility: store records in SQLite DB
@@ -395,22 +418,22 @@ def store_records_in_db(records, db_path=DB_PATH):
 # ---------------------------------------------------------
 # Utility: add user to the allowed_users table
 # ---------------------------------------------------------
-def add_user_to_system(username, email, db_path=DB_PATH):
+def add_user_to_system(username, email, role='user', db_path=DB_PATH): # Added role, default 'user'
     """
     Add a user to the allowed_users table.
 
-    Input: username, email
+    Input: username, email, role (optional, defaults to 'user')
     Returns: None
     """
     try:
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         c.execute("""
-            INSERT INTO allowed_users (username, email, added_date)
-            VALUES (?, ?, datetime('now', '+4 hours'))
-        """, (username, email))
+            INSERT INTO allowed_users (username, email, added_date, role)
+            VALUES (?, ?, datetime('now', '+4 hours'), ?)
+        """, (username, email, role)) # Insert the role
         conn.commit()
-        logger.info(f"User {username} added to the system.")
+        logger.info(f"User {username} added to the system with role {role}.") # Log the role
         conn.close()
     except sqlite3.IntegrityError:
         raise ValueError(f"User {username} already exists in the system.")
@@ -447,7 +470,7 @@ def extract_domain_from_filename(filename):
     return match.group(1) if match else None
 
 # ---------------------------------------------------------
-# The main data update function: works with a local zone file
+# Main data update function: works with a local zone file
 # ---------------------------------------------------------
 def update_data():
     """
@@ -649,6 +672,14 @@ def get_record_by_domain(domain):
         return jsonify({"error": "Record not found"}), 404
 
 # ---------------------------------------------------------
+#! OffSec API Endpoints
+# ---------------------------------------------------------
+app.add_url_rule('/pentest/<int:record_id>', methods=['POST'], view_func=create_or_update_pentest_data)
+app.add_url_rule('/pentest/<int:record_id>', methods=['GET'], view_func=get_pentest_data)
+app.add_url_rule('/pentest/<int:record_id>', methods=['DELETE'], view_func=delete_pentest_data)
+app.add_url_rule('/pentest/<int:record_id>/report', methods=['GET'], view_func=get_report)
+
+# ---------------------------------------------------------
 #! Admin API Endpoints
 # ---------------------------------------------------------
 @app.route('/ldap-search', methods=['GET'])
@@ -673,9 +704,15 @@ def add_user():
     data = request.get_json()
     username = data.get('username').lower()
     email = data.get('email').lower()
+    role = data.get('role', 'user').lower() # Get role, default to user
+
+    #Basic role validation
+    if role not in ['user', 'pentester']:
+        return jsonify({"error": "Invalid role specified."}), 400
+
     try:
-        add_user_to_system(username, email)
-        return jsonify({"message": f"User {username} added successfully."}), 200
+        add_user_to_system(username, email, role) # Pass the role
+        return jsonify({"message": f"User {username} added successfully with role {role}."}), 200
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")
         return jsonify({"error": str(e)}), 500
@@ -704,6 +741,34 @@ def api_get_existing_users():
     """
     response, status_code = get_existing_users()
     return jsonify(response), status_code
+
+# In main.py
+@app.route('/update-user-role', methods=['POST'])
+@admin_required
+def update_user_role():
+    data = request.get_json()
+    username = data.get('username')
+    new_role = data.get('role')
+
+    if not username or not new_role:
+        return jsonify({"error": "Username and role are required"}), 400
+
+    if new_role not in ['user', 'pentester']:
+        return jsonify({"error": "Invalid user role"}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("UPDATE allowed_users SET role = ? WHERE username = ?", (new_role, username))
+        if c.rowcount == 0:
+            conn.close()
+            return jsonify({"error": f"User {username} not found"}), 404
+        conn.commit()
+        conn.close()
+        return jsonify({"message": f"Role for user {username} updated to {new_role}"}), 200
+    except Exception as e:
+        logger.error(f"Error updating role for user {username}: {e}")
+        return jsonify({"error": "Failed to update user role"}), 500
 
 @app.route('/delete-user', methods=['DELETE'])
 @admin_required
@@ -866,19 +931,31 @@ def login():
     password = data.get('password')
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT * FROM allowed_users WHERE username = ?", (username,))
+    c.execute("SELECT username, role FROM allowed_users WHERE username = ?", (username,)) # Get role too
     user = c.fetchone()
     conn.close()
-    if not user and username != os.getenv("ADMIN_USERNAME"):
-        return jsonify({"error": "Invalid credentials"}), 401
 
-    if ldap_authenticate(username, password):
-        session.permanent = True
-        session['logged_in'] = True
-        session['username'] = username
-        user_type = "admin" if session.get('admin_logged_in') else "user"
-        logger.info(f"User {username} logged in.")
-        return jsonify({"status": "logged_in", "username": username, "user_type": user_type}), 200
+    if username == os.getenv("ADMIN_USERNAME"):
+        if admin_login(username, password):
+            session.permanent = True
+            session['logged_in'] = True
+            session['username'] = username
+            session['user_type'] = 'admin'
+            logger.info(f"Admin user {username} logged in.")
+            return jsonify({"status": "logged_in", "username": username, "user_type": 'admin'}), 200
+        else:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+    if user:
+        if ldap_authenticate(username, password):
+            session.permanent = True
+            session['logged_in'] = True
+            session['username'] = user[0]
+            session['user_type'] = user[1] if user[1] else 'user'
+            logger.info(f"User {username} logged in.")
+            return jsonify({"status": "logged_in", "username": username, "user_type": session['user_type']}), 200
+        else:
+            return jsonify({"error": "Invalid credentials"}), 401
     else:
         return jsonify({"error": "Invalid credentials"}), 401
     
@@ -921,11 +998,13 @@ if __name__ == '__main__':
         init_db()
         init_admin_db()
         update_data()
-        interval = int(os.getenv('UPDATE_TIME', '86400'))
-        periodic_update(interval, update_data)
+
+        zone_update_interval = int(os.getenv('UPDATE_TIME', '86400'))
+        periodic_update(zone_update_interval, update_data)
 
     port = os.getenv("APP_PORT")
-    CERT_FILE = os.getenv("CERT_FILE")
-    KEY_FILE = os.getenv("KEY_FILE")
+    # CERT_FILE = os.getenv("CERT_FILE")
+    # KEY_FILE = os.getenv("KEY_FILE")
     logger.info(f"Starting Flask server on port {port}...")
-    app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE), debug=True)
+    # app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE))
+    app.run(host='0.0.0.0', port=port, debug=True)

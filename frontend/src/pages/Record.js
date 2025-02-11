@@ -21,7 +21,7 @@ import {
 import { MuiMarkdown } from 'mui-markdown';
 
 
-const RecordDetail = ({ darkMode }) => {
+const Record = ({ darkMode }) => {
   const [record, setRecord] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -269,4 +269,4 @@ const RecordDetail = ({ darkMode }) => {
   );
 };
 
-export default RecordDetail;
+export default Record;

@@ -13,10 +13,7 @@ services:
       - certs_volume:/certs:ro
     environment:
       - ENVIRONMENT=production
-      - WAF=${WAF}
-      - DNS_HOSTNAME=${DNS_HOSTNAME}
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - NGINX=${NGINX}
       - UPDATE_TIME=${UPDATE_TIME}
       - DATA_PATH=${DATA_PATH}
       - SHARED_PATH=${SHARED_PATH}

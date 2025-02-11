@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-const Settings = ({ darkMode }) => {
+const AdminSettings = ({ darkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [message, setMessage] = useState('');
@@ -26,13 +26,15 @@ const Settings = ({ darkMode }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [retypePassword, setRetypePassword] = useState('');
-  const [sourceTypes, setSourceTypes] = useState([]);    // list of distinct source_name strings
-  const [ipsBySource, setIpsBySource] = useState({});    // { sourceName: [ '1.2.3.4', '2.2.2.2' ], ... }
+  const [sourceTypes, setSourceTypes] = useState([]);
+  const [ipsBySource, setIpsBySource] = useState({}); 
   const [selectedSource, setSelectedSource] = useState(''); 
-  const [newSourceName, setNewSourceName] = useState(''); // to add a new type
-  const [newIpAddress, setNewIpAddress] = useState('');   // to add a new IP under selected source
-  const [ipsToAdd, setIpsToAdd] = useState([]);           // IPs staged for addition
-  const [ipsToDelete, setIpsToDelete] = useState([]);     // IPs staged for deletion
+  const [newSourceName, setNewSourceName] = useState('');
+  const [newIpAddress, setNewIpAddress] = useState('');
+  const [ipsToAdd, setIpsToAdd] = useState([]);
+  const [ipsToDelete, setIpsToDelete] = useState([]);
+  const [selectedUserRoles, setSelectedUserRoles] = useState({});
+  const [editedUserRoles, setEditedUserRoles] = useState({}); //Store edited roles 
 
   /*************************************************************************
    * 1) FETCH & PARSE IP SOURCES ON LOAD
@@ -190,6 +192,7 @@ const Settings = ({ darkMode }) => {
     if (!selectedUsers.some((selected) => selected.username === user.username)) {
       setSelectedUsers([...selectedUsers, user]);
       setSearchResults(searchResults.filter((result) => result.username !== user.username));
+      setSelectedUserRoles({ ...selectedUserRoles, [user.username]: 'user' });
     }
   };
 
@@ -200,6 +203,8 @@ const Settings = ({ darkMode }) => {
   const handleRemoveUser = (user) => {
     setSearchResults([...searchResults, user]);
     setSelectedUsers(selectedUsers.filter((selected) => selected.username !== user.username));
+    const { [user.username]: removedRole, ...restRoles } = selectedUserRoles;
+    setSelectedUserRoles(restRoles);
   };
 
   /**
@@ -207,8 +212,15 @@ const Settings = ({ darkMode }) => {
    */
   const handleSubmit = async () => {
     try {
+      // Map selected users to include their selected roles.
+      const usersWithRoles = selectedUsers.map(user => ({
+        username: user.username,
+        email: user.email,
+        role: selectedUserRoles[user.username] || 'user', // Get the role, default to 'user'
+      }));
+  
       const responses = await Promise.all(
-        selectedUsers.map(user => axios.post('/add-user', { username: user.username, email: user.email }))
+        usersWithRoles.map(user => axios.post('/add-user', user)) // Send user object directly
       );
   
       // Check if all requests were successful
@@ -216,6 +228,7 @@ const Settings = ({ darkMode }) => {
         setMessageType('success');
         setMessage('Users added successfully.');
         setSelectedUsers([]);
+        setSelectedUserRoles({}); // Clear roles after successful submission
   
         setTimeout(() => {
           window.location.reload();
@@ -224,6 +237,41 @@ const Settings = ({ darkMode }) => {
     } catch (error) {
       setMessageType('error');
       setMessage('Failed to add users. Please try again.');
+    } finally {
+      setTimeout(() => setMessage(''), 2000);
+    }
+  };
+
+  const handleSaveRole = async (username, newRole) => {
+    try {
+      const response = await axios.post('/update-user-role', {
+        username: username,
+        role: newRole
+      });
+        if (response.status === 200) {
+          //Update the role, to reflect changes without reloading
+            setExistingUsers(prevUsers => {
+                const updatedUsers = prevUsers.map(user => {
+                  if (user.username === username) {
+                    return { ...user, role: newRole }; // Update the role
+                  }
+                  return user;
+                });
+                return updatedUsers;
+            });
+            setMessageType('success');
+            setMessage(response.data.message);
+
+        } else {
+            setMessageType('error');
+            setMessage('Failed to update role. Please try again.');
+        }
+
+    } catch (error) {
+        setMessageType('error');
+        setMessage(
+          error.response?.data?.error || 'Failed to update user role.  Please try again.'
+        );
     } finally {
       setTimeout(() => setMessage(''), 2000);
     }
@@ -602,27 +650,45 @@ const Settings = ({ darkMode }) => {
   
             {/* Selected Users Panel */}
             <Box flex={1} padding="1rem" marginLeft="1rem" overflow="auto" border="1px solid" borderColor={theme.palette.divider}>
-              <Typography variant="h6" gutterBottom>
-                Selected Users
-              </Typography>
-              {selectedUsers.length === 0 ? (
-                <Typography variant="body2" color="textSecondary">
-                  No users selected. Click a user to add them here.
+                <Typography variant="h6" gutterBottom>
+                    Selected Users
                 </Typography>
-              ) : (
-                <List>
-                  {selectedUsers.map((user) => (
-                    <ListItem key={user.username} button onClick={() => handleRemoveUser(user)}>
-                      <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-              {selectedUsers.length > 0 && (
-                <Button variant="contained" color="secondary" fullWidth onClick={handleSubmit}>
-                  Submit Users
-                </Button>
-              )}
+                {selectedUsers.length === 0 ? (
+                    <Typography variant="body2" color="textSecondary">
+                        No users selected. Click a user to add them here.
+                    </Typography>
+                ) : (
+                    <List>
+                        {selectedUsers.map((user) => (
+                            <ListItem key={user.username}>
+                                <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
+                                <select
+                                    value={selectedUserRoles[user.username] || 'user'} // Get role, default to 'user'
+                                    onChange={(e) => {
+                                        const newRole = e.target.value;
+                                        setSelectedUserRoles({
+                                          ...selectedUserRoles,
+                                          [user.username]: newRole,
+                                        }); // Update local state
+                                      }}
+                                    style={{marginRight: "10px"}}
+                                >
+                                    <option value="user">User</option>
+                                    <option value="pentester">Pentester</option>
+                                    {/* No 'admin' option */}
+                                </select>
+                                <IconButton edge="end" color="error" onClick={() => handleRemoveUser(user)}>
+                                    <DeleteIcon />
+                                </IconButton>
+                            </ListItem>
+                        ))}
+                    </List>
+                )}
+                {selectedUsers.length > 0 && (
+                    <Button variant="contained" color="secondary" fullWidth onClick={handleSubmit}>
+                        Submit Users
+                    </Button>
+                )}
             </Box>
           </Box>
   
@@ -638,21 +704,26 @@ const Settings = ({ darkMode }) => {
             ) : (
               <List>
                 {existingUsers.map((user) => (
-                  <ListItem
-                    key={user.username}
-                    sx={{
-                      cursor: 'pointer',
-                      '&:hover': {
-                        backgroundColor: 'action.hover',
-                      },
-                    }}
-                    secondaryAction={
-                      <IconButton edge="end" color="error" onClick={() => handleDeleteUser(user.username)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    }
-                  >
-                    <ListItemText primary={`${user.username}`} secondary={`Email: ${user.email}`} />
+                  <ListItem key={user.username}>
+                    <ListItemText
+                      primary={user.username}
+                      secondary={`Email: ${user.email}`}
+                    />
+                    <select
+                      value={editedUserRoles[user.username] || user.role}
+                      onChange={(e) => {
+                          const newRole = e.target.value;
+                          setEditedUserRoles({...editedUserRoles, [user.username]: newRole});
+                          handleSaveRole(user.username, newRole);
+                      }}
+                      style={{marginRight: '10px'}}
+                    >
+                      <option value="user">User</option>
+                      <option value="pentester">Pentester</option>
+                    </select>
+                    <IconButton edge="end" color="error" onClick={() => handleDeleteUser(user.username)}>
+                      <DeleteIcon />
+                    </IconButton>
                   </ListItem>
                 ))}
               </List>
@@ -664,4 +735,4 @@ const Settings = ({ darkMode }) => {
   );
 };
 
-export default Settings;
+export default AdminSettings;

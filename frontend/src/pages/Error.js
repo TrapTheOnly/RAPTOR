@@ -3,7 +3,7 @@ import { Box, Typography, Button, ThemeProvider, createTheme, CssBaseline } from
 import { Link as RouterLink } from 'react-router-dom'; // Import Link from react-router-dom
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 
-const ErrorPage = ({ errorCode, errorMessage, darkMode }) => { // Accept props
+const Error = ({ errorCode, errorMessage, darkMode }) => { // Accept props
 
   const theme = createTheme({
     palette: {
@@ -70,4 +70,4 @@ const ErrorPage = ({ errorCode, errorMessage, darkMode }) => { // Accept props
   );
 };
 
-export default ErrorPage;
+export default Error;

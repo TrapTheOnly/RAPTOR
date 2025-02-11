@@ -118,7 +118,7 @@ def get_existing_users():
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
 
-        c.execute("SELECT username, email, added_date FROM allowed_users")
+        c.execute("SELECT username, email, added_date, role FROM allowed_users")
         rows = c.fetchall()
         conn.close()
 

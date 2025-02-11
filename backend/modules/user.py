@@ -1,9 +1,9 @@
 import os
 import logging
-from flask import session, jsonify, redirect
 from functools import wraps
+from flask import session, jsonify, redirect
+from modules.admin import admin_login
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE
-from adminhandler import admin_login
 
 # Configure logging
 logger = logging.getLogger(__name__)

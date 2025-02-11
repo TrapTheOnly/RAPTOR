@@ -5,8 +5,11 @@ backend/static
 backend/shared
 backend/data
 backend/application.log
+nmap/
+*.nmap
 .env
 .DS_Store
 __pycache__
 *Records
 *.com
+*.sh

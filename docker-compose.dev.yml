@@ -7,16 +7,15 @@ services:
     container_name: wams-dev
     ports:
       - "1337:5000"
+    # networks:
+    #     - app_network
     volumes:
       - dns_zonefiles_volume:/usr/app/src/shared
       - db_and_backups_volume:/appdata
       - certs_volume:/certs:ro
     environment:
       - ENVIRONMENT=development
-      - WAF=${WAF}
-      - DNS_HOSTNAME=${DNS_HOSTNAME}
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - NGINX=${NGINX}
       - UPDATE_TIME=${UPDATE_TIME}
       - DATA_PATH=${DATA_PATH}
       - SHARED_PATH=${SHARED_PATH}
@@ -31,6 +30,21 @@ services:
       - CERT_FILE=${CERT_FILE}
       - KEY_FILE=${KEY_FILE}
     restart: unless-stopped
+
+  # nmap:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.nmap
+  #   image: wams-nmap-dev
+  #   container_name: wams-nmap-dev
+  #   networks:
+  #     - app_network
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 256M
+  #   restart: unless-stopped
 
   sftp:
     build:
@@ -53,3 +67,6 @@ volumes:
     driver: local
   certs_volume:
     driver: local
+
+# networks:
+#   app_network:
