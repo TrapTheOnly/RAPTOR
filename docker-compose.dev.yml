@@ -35,21 +35,6 @@ services:
       - FTP_BASE_PATH=${FTP_BASE_PATH}
     restart: unless-stopped
 
-  # nmap:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.nmap
-  #   image: wams-nmap-dev
-  #   container_name: wams-nmap-dev
-  #   networks:
-  #     - app_network
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: '0.5'
-  #         memory: 256M
-  #   restart: unless-stopped
-
   sftp:
     build:
       context: .

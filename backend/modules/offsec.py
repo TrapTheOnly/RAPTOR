@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = os.getenv("DATA_PATH") + "database.db"
 FTP_HOST = os.getenv("FTP_HOST")
-FTP_USER = os.getenv("FTP_USER")
-FTP_PASS = os.getenv("FTP_PASS")
+FTP_USER = os.getenv("FTP_USER_NAME")
+FTP_PASS = os.getenv("FTP_USER_PASS")
 FTP_BASE_PATH = os.getenv("FTP_BASE_PATH")
 
 def ftp_connect():
