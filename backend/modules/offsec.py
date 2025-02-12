@@ -16,7 +16,6 @@ FTP_HOST = os.getenv("FTP_HOST")
 FTP_USER = os.getenv("FTP_USER")
 FTP_PASS = os.getenv("FTP_PASS")
 FTP_BASE_PATH = os.getenv("FTP_BASE_PATH")
-NMAP_IMAGE = os.getenv("NMAP_IMAGE", "instrumentisto/nmap")
 
 def ftp_connect():
     """
@@ -80,8 +79,6 @@ def pentest_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-@login_required_json
-@pentest_required
 def get_pentest_data_internal(record_id):
     """
     Internal function to retrieve pentest data for a record ID,
@@ -104,8 +101,6 @@ def get_pentest_data_internal(record_id):
         logger.error(f"Error retrieving pentest data for record {record_id}: {e}")
         return None
 
-@login_required_json
-@pentest_required
 def get_record_details_internal(record_id):
     """
     Internal function to fetch record details
@@ -161,7 +156,8 @@ def create_or_update_pentest_data(record_id):
             'test_start_date': data.get('test_start_date', None) if data else None,
             'test_end_date': data.get('test_end_date', None) if data else None,
             'vulnerability_fixed': data.get('vulnerability_fixed', 0) if data else 0,
-            'service_desk_link': data.get('service_desk_link', '') if data else ''
+            'service_desk_link': data.get('service_desk_link', '') if data else '',
+            'status': data.get('status', 'Not Started') if data else 'Not Started'
         }
 
         conn = sqlite3.connect(DB_PATH)

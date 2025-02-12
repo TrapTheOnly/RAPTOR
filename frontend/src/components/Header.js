@@ -60,6 +60,11 @@ const Header = ({ username, userRole, setUserRole, setLoggedIn, setUsername, dar
             }}
           />
           <DarkModeIcon />
+          {(userRole === 'pentester' || userRole === 'admin') && (
+            <Button color="inherit" onClick={() => navigate('/pentest')}>
+              Pentest Dashboard
+            </Button>
+          )}
           {userRole === "admin" && (
             <Button color="inherit" onClick={() => navigate('/settings')}>
               Settings

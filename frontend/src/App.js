@@ -5,6 +5,7 @@ import Header from './components/Header';
 import Login from './pages/Login';
 import RecordsTable from './pages/RecordsTable';
 import AdminSettings from './pages/AdminSettings';
+import PentestDashboard from './pages/PentestDashboard';
 import Record from './pages/Record';
 import Error from './pages/Error';
 
@@ -85,6 +86,12 @@ const App = () => {
               <AdminSettings darkMode={darkMode}/> : 
                 <Navigate to="/" />
           }
+        />
+        <Route
+            path="/pentest"
+            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
+                <PentestDashboard darkMode={darkMode} /> : <Navigate to="/login" />
+            }
         />
         <Route
           path="/records/:domain"

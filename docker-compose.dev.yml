@@ -7,8 +7,8 @@ services:
     container_name: wams-dev
     ports:
       - "1337:5000"
-    # networks:
-    #     - app_network
+    networks:
+        - app_network
     volumes:
       - dns_zonefiles_volume:/usr/app/src/shared
       - db_and_backups_volume:/appdata
@@ -29,6 +29,10 @@ services:
       - APP_PORT=${APP_PORT}
       - CERT_FILE=${CERT_FILE}
       - KEY_FILE=${KEY_FILE}
+      - FTP_HOST=ftp
+      - FTP_USER=${FTP_USER}
+      - FTP_PASS=${FTP_PASS}
+      - FTP_BASE_PATH=${FTP_BASE_PATH}
     restart: unless-stopped
 
   # nmap:
@@ -60,6 +64,21 @@ services:
       - dns_zonefiles_volume:/chroot/upload
     restart: unless-stopped
 
+  ftp:
+    image: stilliard/pure-ftpd:latest
+    ports:
+      - "21"
+    environment:
+      - FTP_USER_NAME=${FTP_USER}
+      - FTP_USER_PASS=${FTP_PASS}
+      - FTP_USER_HOME=/home/ftpuser/ftp
+      - PUBLICHOST=127.0.0.1
+    volumes:
+      - ftp_data_volume:/home/ftpuser/ftp
+    networks:
+      - app_network 
+    restart: unless-stopped
+
 volumes:
   db_and_backups_volume:
     driver: local
@@ -67,6 +86,7 @@ volumes:
     driver: local
   certs_volume:
     driver: local
+  ftp_data_volume: {}
 
-# networks:
-#   app_network:
+networks:
+  app_network:

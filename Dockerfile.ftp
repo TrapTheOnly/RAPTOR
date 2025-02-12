@@ -1,0 +1,9 @@
+FROM stilliard/pure-ftpd:latest
+
+ENV FTP_USER_NAME=ftpuser
+ENV FTP_USER_PASS=password
+ENV FTP_USER_HOME=/home/ftpuser/ftp
+
+RUN mkdir -p ${FTP_USER_HOME}
+
+EXPOSE 21

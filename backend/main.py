@@ -286,6 +286,7 @@ def init_db(db_path=DB_PATH):
             test_end_date TEXT,
             vulnerability_fixed INTEGER,
             service_desk_link TEXT,
+            status TEXT NOT NULL DEFAULT 'Not Started',
             FOREIGN KEY (record_id) REFERENCES records(id)
         )
     """)
@@ -1003,8 +1004,7 @@ if __name__ == '__main__':
         periodic_update(zone_update_interval, update_data)
 
     port = os.getenv("APP_PORT")
-    # CERT_FILE = os.getenv("CERT_FILE")
-    # KEY_FILE = os.getenv("KEY_FILE")
+    CERT_FILE = os.getenv("CERT_FILE")
+    KEY_FILE = os.getenv("KEY_FILE")
     logger.info(f"Starting Flask server on port {port}...")
-    # app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE))
