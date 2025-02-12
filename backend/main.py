@@ -679,6 +679,7 @@ app.add_url_rule('/pentest/<int:record_id>', methods=['POST'], view_func=create_
 app.add_url_rule('/pentest/<int:record_id>', methods=['GET'], view_func=get_pentest_data)
 app.add_url_rule('/pentest/<int:record_id>', methods=['DELETE'], view_func=delete_pentest_data)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['GET'], view_func=get_report)
+app.add_url_rule('/pentest/<int:record_id>/report', methods=['DELETE'], view_func=delete_report_route)
 
 # ---------------------------------------------------------
 #! Admin API Endpoints
