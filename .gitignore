@@ -12,4 +12,4 @@ nmap/
 __pycache__
 *Records
 *.com
-*.sh
+test.*
