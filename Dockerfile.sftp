@@ -29,7 +29,7 @@ RUN mkdir -p /chroot/upload && \
     chown sftpuser:sftpusers /chroot/upload
     
 # --- Final Setup and Start ---
-    EXPOSE 22
+EXPOSE 22
 ARG DNS_SERVER_SSH_PUBKEY
 RUN echo "$DNS_SERVER_SSH_PUBKEY" >> /home/sftpuser/.ssh/authorized_keys && \
     chown sftpuser:sftpusers /home/sftpuser/.ssh/authorized_keys && \

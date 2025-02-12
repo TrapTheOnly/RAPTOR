@@ -1,9 +1,9 @@
 FROM stilliard/pure-ftpd:latest
 
-ENV FTP_USER_NAME=ftpuser
-ENV FTP_USER_PASS=password
-ENV FTP_USER_HOME=/home/ftpuser/ftp
+COPY entrypoint.sh /entrypoint.sh
 
-RUN mkdir -p ${FTP_USER_HOME}
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 EXPOSE 21

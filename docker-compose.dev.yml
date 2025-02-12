@@ -65,19 +65,22 @@ services:
     restart: unless-stopped
 
   ftp:
-    image: stilliard/pure-ftpd:latest
+    build:
+      context: ./ftp 
+      dockerfile: Dockerfile.ftp
+    image: wams-ftp-dev
+    container_name: wams-ftp-dev
     ports:
       - "21"
     environment:
-      - FTP_USER_NAME=${FTP_USER}
-      - FTP_USER_PASS=${FTP_PASS}
-      - FTP_USER_HOME=/home/ftpuser/ftp
+      - FTP_USER_NAME=${FTP_USER:-ftpuser}
       - PUBLICHOST=127.0.0.1
     volumes:
       - ftp_data_volume:/home/ftpuser/ftp
     networks:
-      - app_network 
+      - app_network
     restart: unless-stopped
+
 
 volumes:
   db_and_backups_volume:
