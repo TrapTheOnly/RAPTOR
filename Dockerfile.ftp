@@ -1,6 +1,6 @@
 FROM stilliard/pure-ftpd:latest
 
-COPY entrypoint.sh /entrypoint.sh
+COPY ftp/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
 
