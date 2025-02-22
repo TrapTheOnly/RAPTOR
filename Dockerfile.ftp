@@ -15,10 +15,5 @@ RUN mkdir -p /home/ftpuser
 # Expose the FTP port
 EXPOSE 21
 
-# Set default username, directory, and password from environment variables
-ENV FTP_USER=ftpuser
-ENV FTP_DIRECTORY=/home/ftpuser
-ENV FTP_PASS=${FTP_PASS}
-
 # Directly run pyftpdlib with environment variables
-CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "${FTP_USER}", "--password", "${FTP_PASS}", "--directory", "${FTP_DIRECTORY}"]
+CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "$FTP_USER", "--password", "$FTP_PASS", "--directory", "/home/ftpuser"]
