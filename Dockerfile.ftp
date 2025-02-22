@@ -13,7 +13,7 @@ RUN echo "Acquire::HTTP::Proxy \"$http_proxy\";" > /etc/apt/apt.conf.d/99proxy \
     && echo "Acquire::HTTPS::Proxy \"$http_proxy\";" >> /etc/apt/apt.conf.d/99proxy \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        netcat \
+        netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Create the FTP user's home directory
