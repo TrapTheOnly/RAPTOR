@@ -55,16 +55,15 @@ services:
       dockerfile: Dockerfile.ftp
     image: wams-ftp-dev
     container_name: wams-ftp-dev
-    ports:
-      - "21"
     environment:
       - FTP_USER_NAME=${FTP_USER:-ftpuser}
-      - PUBLICHOST=127.0.0.1
+      - FTP_DIRECTORY=/home/ftpuser
     volumes:
-      - ftp_data_volume:/home/ftpuser/ftp
+      - ftp_data_volume:/home/ftpuser
     networks:
       - app_network
     restart: unless-stopped
+
 
 
 volumes:
