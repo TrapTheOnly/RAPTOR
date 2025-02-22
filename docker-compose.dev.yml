@@ -1,22 +1,4 @@
 services:
-
-  ftp:
-    build:
-      context: .
-      dockerfile: Dockerfile.ftp
-      args:
-        - http_proxy=${http_proxy}
-    image: wams-ftp-dev
-    container_name: wams-ftp-dev
-    environment:
-      - FTP_USER=${FTP_USER}
-      - FTP_DIRECTORY=/home/ftpuser
-    volumes:
-      - ftp_data_volume:/home/ftpuser
-    networks:
-      - app_network
-    restart: unless-stopped
-    
   app:
     build:
       context: .
@@ -53,6 +35,9 @@ services:
       - FTP_USER=${FTP_USER}
       - FTP_PASS=
       - FTP_BASE_PATH=${FTP_BASE_PATH}
+    depends_on:
+      ftp:
+        condition: service_healthy
     command: /bin/sh -c "FTP_PASSWORD_FROM_FTP=\$(docker logs wams-ftp-dev 2>&1 | grep 'Generated FTP password:' | awk '{print \$5}'); export FTP_PASS=\$FTP_PASSWORD_FROM_FTP; python src/main.py"
     restart: unless-stopped
 
@@ -70,6 +55,29 @@ services:
     volumes:
       - dns_zonefiles_volume:/chroot/upload
     restart: unless-stopped
+
+  ftp:
+    build:
+      context: .
+      dockerfile: Dockerfile.ftp
+      args:
+        - http_proxy=${http_proxy}
+    image: wams-ftp-dev
+    container_name: wams-ftp-dev
+    environment:
+      - FTP_USER=${FTP_USER}
+      - FTP_DIRECTORY=/home/ftpuser
+    volumes:
+      - ftp_data_volume:/home/ftpuser
+    networks:
+      - app_network
+    restart: unless-stopped
+    healthcheck:
+      test: nc -z localhost 21
+      interval: 5s
+      timeout: 5s
+      retries: 3 
+      start_period: 10s
 
 volumes:
   db_and_backups_volume:
