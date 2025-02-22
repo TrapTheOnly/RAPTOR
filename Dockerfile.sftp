@@ -4,11 +4,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 ARG http_proxy
 ENV http_proxy=$http_proxy
 ENV https_proxy=$http_proxy
-RUN echo 'Acquire::HTTP::Proxy "$http_proxy";' > /etc/apt/apt.conf.d/99proxy \
-    && echo 'Acquire::HTTPS::Proxy "$http_proxy";' >> /etc/apt/apt.conf.d/99proxy \
+RUN echo "Acquire::HTTP::Proxy \"$http_proxy\";" > /etc/apt/apt.conf.d/99proxy \
+    && echo "Acquire::HTTPS::Proxy \"$http_proxy\";" >> /etc/apt/apt.conf.d/99proxy \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-       openssh-server \
+        openssh-server \
     && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /run/sshd
 
