@@ -390,6 +390,12 @@ def store_records_in_db(records, db_path=DB_PATH):
                         NULL, NULL)
             """, (new_record_id, 'system',  # Use 'system' for cron job
                   record['ip_address'], new_source))
+            
+            c.execute("""
+                INSERT INTO pentest_data (record_id, dns_name, ip_address, source)
+                VALUES (?, ?, ?, ?)
+            """, (new_record_id, record['name'], record['ip_address'], new_source))
+            logger.info(f"Created initial pentest data entry for record_id: {new_record_id}")
 
     # Mark as 'missing' (no change here)
     placeholders = ','.join('?' for _ in current_names)
@@ -419,7 +425,7 @@ def store_records_in_db(records, db_path=DB_PATH):
 # ---------------------------------------------------------
 # Utility: add user to the allowed_users table
 # ---------------------------------------------------------
-def add_user_to_system(username, email, role='user', db_path=DB_PATH): # Added role, default 'user'
+def add_user_to_system(username, email, role='user', db_path=DB_PATH):
     """
     Add a user to the allowed_users table.
 

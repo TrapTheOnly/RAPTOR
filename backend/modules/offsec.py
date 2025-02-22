@@ -57,7 +57,8 @@ def pentest_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('logged_in') or session.get('user_type') not in ('pentester', 'admin'):
-            return jsonify({"error": "Unauthorized access - Pentester or Admin role required"}), 403
+            response = jsonify({"error": "Unauthorized access"})
+            return response, 403 
         return f(*args, **kwargs)
     return decorated_function
 
@@ -154,7 +155,14 @@ def create_or_update_pentest_data(record_id):
 def get_pentest_data(record_id):
     """GET /pentest/<record_id>: Retrieve pentest data."""
     data = get_pentest_data_internal(record_id)
-    return jsonify(data), 200 if data else jsonify({"error": "Pentest data not found"}), 404
+    if data:
+        response = jsonify(data)
+        status_code = 200
+    else:
+        response = jsonify({"error": "Pentest data not found"})
+        status_code = 404
+
+    return response, status_code
 
 @login_required_json
 @pentest_required
