@@ -16,6 +16,6 @@ RUN mkdir -p /home/ftpuser
 EXPOSE 21
 
 # Run pyftpdlib with environment variables
-RUN echo "$FTP_USER" > /home/ftpuser/ftpuser.txt
-RUN echo "$FTP_PASS" > /home/ftpuser/ftppass.txt
-RUN python -m pyftpdlib -i 0.0.0.0 -p 21 --username "$FTP_USER" --password "$FTP_PASS" --directory /home/ftpuser
+RUN echo "$FTP_USER" > /home/ftpuser/ftpuser.txt && echo "$FTP_PASS" > /home/ftpuser/ftppass.txt
+
+CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "$FTP_USER", "--password", "$FTP_PASS", "--directory", "/home/ftpuser"]
