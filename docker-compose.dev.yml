@@ -38,7 +38,7 @@ services:
     depends_on:
       ftp:
         condition: service_healthy
-    command: /bin/sh -c "FTP_PASSWORD_FROM_FTP=\$(docker logs wams-ftp-dev 2>&1 | grep 'Generated FTP password:' | awk '{print \$5}'); export FTP_PASS=\$FTP_PASSWORD_FROM_FTP; python /usr/app/src/backend/main.py"
+    command: /bin/sh -c "FTP_PASSWORD_FROM_FTP=\$(docker logs wams-ftp-dev 2>&1 | grep 'Generated FTP password:' | awk '{print \$4}'); export FTP_PASS=\$FTP_PASSWORD_FROM_FTP; python /usr/app/src/backend/main.py"
     restart: unless-stopped
 
   sftp:
