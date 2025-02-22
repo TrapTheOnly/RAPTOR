@@ -22,4 +22,4 @@ RUN useradd -m myappuser
 RUN mkdir -p /appdata && chown myappuser:myappuser /appdata
 USER myappuser
 EXPOSE 5000
-CMD ["python", "/usr/app/src/backend/main.py"]
+# CMD ["python", "/usr/app/src/backend/main.py"]
