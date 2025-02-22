@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-RUN pip install --proxy http://proxy.azercell.com:8080 --no-cache-dir pyftpdlib
+RUN pip install --proxy http://proxy.azercell.com:8080 pyftpdlib
 
 # Create the FTP user's home directory
 RUN mkdir -p /home/ftpuser
