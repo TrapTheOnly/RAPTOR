@@ -1,8 +1,11 @@
 # --- Base Image and Environment Setup ---
 FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN echo 'Acquire::HTTP::Proxy "http://proxy.azercell.com:8080";' > /etc/apt/apt.conf.d/99proxy \
-    && echo 'Acquire::HTTPS::Proxy "http://proxy.azercell.com:8080";' >> /etc/apt/apt.conf.d/99proxy \
+ARG http_proxy
+ENV http_proxy=$http_proxy
+ENV https_proxy=$http_proxy
+RUN echo 'Acquire::HTTP::Proxy "$http_proxy";' > /etc/apt/apt.conf.d/99proxy \
+    && echo 'Acquire::HTTPS::Proxy "$http_proxy";' >> /etc/apt/apt.conf.d/99proxy \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
        openssh-server \
@@ -10,7 +13,7 @@ RUN echo 'Acquire::HTTP::Proxy "http://proxy.azercell.com:8080";' > /etc/apt/apt
 RUN mkdir -p /run/sshd
 
 # --- User and SSH Configuration ---
-    RUN groupadd sftpusers && \
+RUN groupadd sftpusers && \
     useradd -m -g sftpusers -s /usr/sbin/nologin sftpuser
 RUN mkdir -p /home/sftpuser/.ssh && \
     chmod 700 /home/sftpuser/.ssh && \

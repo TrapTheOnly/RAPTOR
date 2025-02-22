@@ -2,15 +2,19 @@
 FROM node:16 AS frontend_builder
 WORKDIR /app
 COPY frontend/package*.json ./
-RUN npm --proxy http://proxy.azercell.com:8080 install
+ARG http_proxy
+RUN npm --proxy $http_proxy install
 COPY frontend/ .
 RUN npm run build
 
 # --- Backend Setup Stage ---
 FROM python:3.12-slim
 WORKDIR /usr/app/src
+ARG http_proxy
+ENV http_proxy=$http_proxy
+ENV https_proxy=$http_proxy
 COPY backend/ /usr/app/src/backend/
-RUN pip install --proxy http://proxy.azercell.com:8080 --no-cache-dir -r /usr/app/src/backend/requirements.txt
+RUN pip install --no-cache-dir -r /usr/app/src/backend/requirements.txt
 
 # --- Final Stage ---
 COPY --from=frontend_builder /app/build/ /usr/app/src/backend/static/

@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - http_proxy=${http_proxy}
     image: wams-dev
     container_name: wams-dev
     ports:
@@ -40,7 +42,8 @@ services:
       context: .
       dockerfile: Dockerfile.sftp
       args:
-        DNS_SERVER_SSH_PUBKEY: ${DNS_SERVER_SSH_PUBKEY}
+        - DNS_SERVER_SSH_PUBKEY=${DNS_SERVER_SSH_PUBKEY}
+        - http_proxy=${http_proxy}
     image: wams-sftp-dev
     container_name: wams-sftp-dev
     ports:
@@ -53,6 +56,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ftp
+      args:
+        - http_proxy=${http_proxy}
     image: wams-ftp-dev
     container_name: wams-ftp-dev
     environment:
@@ -63,8 +68,6 @@ services:
     networks:
       - app_network
     restart: unless-stopped
-
-
 
 volumes:
   db_and_backups_volume:

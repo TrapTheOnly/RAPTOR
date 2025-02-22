@@ -1,11 +1,18 @@
 FROM python:3.12-slim
 
-RUN pip install --proxy http://proxy.azercell.com:8080 pyftpdlib
+# Define build arguments for the proxy (before any RUN that needs network)
+ARG http_proxy
+
+# Set environment variables *during the build* (these are NOT persistent)
+ENV http_proxy=$http_proxy
+ENV https_proxy=$http_proxy
+
+RUN pip install pyftpdlib
 
 # Create the FTP user's home directory
 RUN mkdir -p /home/ftpuser
 
-# Expose the FTP port
+# Expose the FTP port 
 EXPOSE 21
 
 # Set default username and directory (password will be handled in entrypoint)
