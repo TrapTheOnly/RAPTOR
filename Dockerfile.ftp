@@ -1,34 +1,24 @@
 FROM python:3.12-slim
 
-# Define build arguments for the proxy (before any RUN that needs network)
+# Define build arguments for the proxy
 ARG http_proxy
 
-# Set environment variables *during the build* (these are NOT persistent)
+# Set environment variables *during the build*
 ENV http_proxy=$http_proxy
 ENV https_proxy=$http_proxy
 
 RUN pip install pyftpdlib
 
-RUN echo "Acquire::HTTP::Proxy \"$http_proxy\";" > /etc/apt/apt.conf.d/99proxy \
-    && echo "Acquire::HTTPS::Proxy \"$http_proxy\";" >> /etc/apt/apt.conf.d/99proxy \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/*
-
 # Create the FTP user's home directory
 RUN mkdir -p /home/ftpuser
 
-# Expose the FTP port 
+# Expose the FTP port
 EXPOSE 21
 
-# Set default username and directory (password will be handled in entrypoint)
+# Set default username, directory, and password from environment variables
 ENV FTP_USER=ftpuser
 ENV FTP_DIRECTORY=/home/ftpuser
+ENV FTP_PASS=${FTP_PASS}
 
-# Copy the entrypoint script
-COPY ftp/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-# Use the entrypoint script
-ENTRYPOINT ["/entrypoint.sh"]
+# Directly run pyftpdlib with environment variables
+CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "${FTP_USER}", "--password", "${FTP_PASS}", "--directory", "${FTP_DIRECTORY}"]

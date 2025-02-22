@@ -33,12 +33,8 @@ services:
       - KEY_FILE=${KEY_FILE}
       - FTP_HOST=ftp
       - FTP_USER=${FTP_USER}
-      - FTP_PASS=
+      - FTP_PASS=${FTP_PASS}
       - FTP_BASE_PATH=${FTP_BASE_PATH}
-    depends_on:
-      ftp:
-        condition: service_healthy
-    command: /bin/sh -c "FTP_PASSWORD_FROM_FTP=\$(docker logs wams-ftp-dev 2>&1 | grep 'Generated FTP password:' | awk '{print \$4}'); export FTP_PASS=\$FTP_PASSWORD_FROM_FTP; python /usr/app/src/backend/main.py"
     restart: unless-stopped
 
   sftp:
@@ -67,17 +63,12 @@ services:
     environment:
       - FTP_USER=${FTP_USER}
       - FTP_DIRECTORY=/home/ftpuser
+      - FTP_PASS=${FTP_PASS}
     volumes:
       - ftp_data_volume:/home/ftpuser
     networks:
       - app_network
     restart: unless-stopped
-    healthcheck:
-      test: nc -z localhost 21
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
 volumes:
   db_and_backups_volume:
