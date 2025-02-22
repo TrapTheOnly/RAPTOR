@@ -16,7 +16,7 @@ RUN mkdir -p /home/ftpuser
 EXPOSE 21
 
 # Set default username and directory (password will be handled in entrypoint)
-ENV FTP_USER_NAME=ftpuser
+ENV FTP_USER=ftpuser
 ENV FTP_DIRECTORY=/home/ftpuser
 
 # Copy the entrypoint script

@@ -61,7 +61,7 @@ services:
     image: wams-ftp-dev
     container_name: wams-ftp-dev
     environment:
-      - FTP_USER_NAME=${FTP_USER:-ftpuser}
+      - FTP_USER=${FTP_USER}
       - FTP_DIRECTORY=/home/ftpuser
     volumes:
       - ftp_data_volume:/home/ftpuser
