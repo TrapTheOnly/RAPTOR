@@ -21,6 +21,9 @@ def ftp_connect():
     """Connects to the FTP server and returns the FTP object."""
     try:
         ftp = ftplib.FTP(FTP_HOST)
+        logger.info(f"Connecting to FTP server {FTP_HOST}")
+        logger.info(f"Logging in as {FTP_USER}")
+        logger.info(f"Using password: {FTP_PASS}")
         ftp.login(user=FTP_USER, passwd=FTP_PASS)
         if FTP_BASE_PATH:
             ftp.cwd(FTP_BASE_PATH)
