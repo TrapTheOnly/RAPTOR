@@ -73,7 +73,7 @@ services:
       - app_network
     restart: unless-stopped
     healthcheck:
-      test: nc -z localhost 21
+      test: ["CMD-SHELL", "docker exec wams-ftp-dev sh -c 'if printenv FTP_PASS; then exit 0; else exit 1; fi'"]
       interval: 5s
       timeout: 5s
       retries: 3 
