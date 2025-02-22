@@ -9,6 +9,13 @@ ENV https_proxy=$http_proxy
 
 RUN pip install pyftpdlib
 
+RUN echo "Acquire::HTTP::Proxy \"$http_proxy\";" > /etc/apt/apt.conf.d/99proxy \
+    && echo "Acquire::HTTPS::Proxy \"$http_proxy\";" >> /etc/apt/apt.conf.d/99proxy \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        netcat \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create the FTP user's home directory
 RUN mkdir -p /home/ftpuser
 
