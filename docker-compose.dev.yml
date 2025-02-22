@@ -58,11 +58,12 @@ services:
       dockerfile: Dockerfile.ftp
       args:
         - http_proxy=${http_proxy}
+        - FTP_USER=${FTP_USER}
+        - FTP_PASS=${FTP_PASS}
     image: wams-ftp-dev
     container_name: wams-ftp-dev
     environment:
       - FTP_USER=${FTP_USER}
-      - FTP_DIRECTORY=/home/ftpuser
       - FTP_PASS=${FTP_PASS}
     volumes:
       - ftp_data_volume:/home/ftpuser
