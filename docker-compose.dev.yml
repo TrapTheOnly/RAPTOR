@@ -56,8 +56,8 @@ services:
     image: python:3.12-slim
     container_name: wams-ftp-dev
     command: >
-      pip install --root-user-action ignore pyftpdlib &&
       echo "${FTP_PASS} ${FTP_USER}" &&
+      pip install --root-user-action ignore pyftpdlib &&
       python -m pyftpdlib \
       -i 0.0.0.0 \
       -p 21 \
