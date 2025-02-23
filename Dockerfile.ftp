@@ -11,6 +11,7 @@ ENV https_proxy=$http_proxy
 
 RUN pip install pyftpdlib
 
+USER root
 RUN adduser --no-create-home --system --group ftpuser
 RUN mkdir -p /ftp/reports && chown ftpuser:ftpuser /ftp/reports
 

@@ -30,8 +30,8 @@ build_dev:
   - dev
   script:
   - echo "Building Docker images for DEV..."
-  - docker builder prune -f
-  - docker rmi wams-ftp-dev || true
+  # - docker builder prune -f
+  # - docker rmi wams-ftp-dev || true
   - docker compose -f $COMPOSE_FILE_DEV build --no-cache
   - echo "Docker images built locally on callisto."
   tags:
