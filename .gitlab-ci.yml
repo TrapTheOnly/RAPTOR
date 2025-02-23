@@ -29,8 +29,7 @@ build_dev:
   only:
   - dev
   script:
-  - echo "Building Docker images for DEV..."
-  - docker compose -f $COMPOSE_FILE_DEV down || true
+  - echo "Building Docker images for DEV..." 
   - docker compose -f $COMPOSE_FILE_DEV build --no-cache
   - echo "Docker images built locally on callisto."
   tags:
