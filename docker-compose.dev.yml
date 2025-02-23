@@ -52,8 +52,6 @@ services:
       - dns_zonefiles_volume:/chroot/upload
     restart: unless-stopped
 
-
-
 volumes:
   db_and_backups_volume:
     driver: local
