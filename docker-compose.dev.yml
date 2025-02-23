@@ -69,7 +69,7 @@ services:
       - http_proxy=${http_proxy}
       - https_proxy=${http_proxy}
     volumes:
-      - ftp_data_volume:/home/ftpuser
+      - ftp_data_volume:/ftp/reports
     networks:
       - app_network
     ports:
