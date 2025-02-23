@@ -2,6 +2,8 @@ FROM python:3.12-slim
 
 # Define build arguments for the proxy
 ARG http_proxy
+ARG ftp_user
+ARG ftp_pass
 
 # Set environment variables
 ENV http_proxy=$http_proxy
@@ -10,12 +12,13 @@ ENV https_proxy=$http_proxy
 RUN pip install pyftpdlib
 
 # Create the FTP user's home directory
-RUN mkdir -p /home/ftpuser
+RUN mkdir -p /home/ftpuser && \
+    chown ftp:ftp /home/ftpuser
 
 # Expose the FTP port
 EXPOSE 21
 
 # Run pyftpdlib with environment variables
-RUN echo "$FTP_USER" > /home/ftpuser/ftpuser.txt && echo "$FTP_PASS" > /home/ftpuser/ftppass.txt
+RUN echo '${ftp_pass} ${ftp_user}'
 
-CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "$FTP_USER", "--password", "$FTP_PASS", "--directory", "/home/ftpuser"]
+CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "$ftp_user", "--password", "$ftp_pass", "--directory", "/home/ftpuser"]
