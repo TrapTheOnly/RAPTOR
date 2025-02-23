@@ -13,8 +13,7 @@ RUN pip install pyftpdlib
 
 # Create the FTP user's home directory
 RUN useradd -m ftpuser
-# RUN mkdir -p /home/ftpuser && \
-#     chown ftp:ftp /home/ftpuser
+RUN chown ftpuser:ftpuser /home/ftpuser
 
 # Expose the FTP port
 EXPOSE 21
