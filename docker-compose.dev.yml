@@ -53,22 +53,27 @@ services:
     restart: unless-stopped
 
   ftp:
-    build:
-      context: .
-      dockerfile: Dockerfile.ftp
-      args:
-        - http_proxy=${http_proxy}
-        - FTP_USER=${FTP_USER}
-        - FTP_PASS=${FTP_PASS}
-    image: wams-ftp-dev
+    image: python:3.12-slim
     container_name: wams-ftp-dev
+    command: >
+      python -m pip install pyftpdlib &&
+      python -m pyftpdlib \
+      -i 0.0.0.0 \
+      -p 21 \
+      --username "${FTP_USER}" \
+      --password "${FTP_PASS}" \
+      --directory /home/ftpuser
     environment:
       - FTP_USER=${FTP_USER}
       - FTP_PASS=${FTP_PASS}
+      - http_proxy=${http_proxy}
+      - https_proxy=${http_proxy}
     volumes:
       - ftp_data_volume:/home/ftpuser
     networks:
       - app_network
+    ports:
+      - "21:21"
     restart: unless-stopped
 
 volumes:

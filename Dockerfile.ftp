@@ -2,14 +2,10 @@ FROM python:3.12-slim
 
 # Define build arguments for the proxy
 ARG http_proxy
-ARG FTP_USER
-ARG FTP_PASS
 
 # Set environment variables
 ENV http_proxy=$http_proxy
 ENV https_proxy=$http_proxy
-ENV FTP_USER=$FTP_USER
-ENV FTP_PASS=$FTP_PASS
 
 RUN pip install pyftpdlib
 
