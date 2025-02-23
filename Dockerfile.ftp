@@ -12,9 +12,9 @@ ENV https_proxy=$http_proxy
 RUN pip install pyftpdlib
 
 # Create the FTP user's home directory if it doesn't exist
-RUN if ! id ftpuser &>/dev/null; then \
-    useradd -m ftpuser; \
-fi
+# RUN if ! id ftpuser &>/dev/null; then \
+#     useradd -m ftpuser; \
+# fi
 RUN mkdir -p /ftp/reports && chown ftpuser:ftpuser /ftp/reports
 
 # Expose the FTP port
