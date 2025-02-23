@@ -83,7 +83,6 @@ volumes:
     driver: local
   certs_volume:
     driver: local
-  ftp_data_volume: {}
 
 networks:
   app_network:
