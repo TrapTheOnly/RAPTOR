@@ -1,4 +1,5 @@
 # --- Frontend Build Stage ---
+USER root
 FROM node:16 AS frontend_builder
 WORKDIR /app
 COPY frontend/package*.json ./
@@ -8,6 +9,7 @@ COPY frontend/ .
 RUN npm run build
 
 # --- Backend Setup Stage ---
+USER root
 FROM python:3.12-slim
 WORKDIR /usr/app/src
 ARG http_proxy
