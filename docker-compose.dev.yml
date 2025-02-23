@@ -55,7 +55,7 @@ services:
   ftp:
     image: python:3.12-slim
     container_name: wams-ftp-dev
-    command: echo "${FTP_PASS} ${FTP_USER}" && pip install --root-user-action ignore pyftpdlib && python -m pyftpdlib -i 0.0.0.0 -p 21 --username "${FTP_USER}" --password "${FTP_PASS}" --directory /home/ftpuser # Combined commands with &&
+    command: /bin/sh -c "echo '${FTP_PASS} ${FTP_USER}'; pip install --root-user-action ignore pyftpdlib; python -m pyftpdlib -i 0.0.0.0 -p 21 --username '${FTP_USER}' --password '${FTP_PASS}' --directory /home/ftpuser"
     environment:
       - FTP_USER=${FTP_USER}
       - FTP_PASS=${FTP_PASS}
