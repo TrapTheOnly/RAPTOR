@@ -12,9 +12,9 @@ ENV https_proxy=$http_proxy
 RUN pip install pyftpdlib
 
 # Create the FTP user's home directory
-RUN useradd -m ftp
-RUN mkdir -p /home/ftpuser && \
-    chown ftp:ftp /home/ftpuser
+RUN useradd -m ftpuser
+# RUN mkdir -p /home/ftpuser && \
+#     chown ftp:ftp /home/ftpuser
 
 # Expose the FTP port
 EXPOSE 21
