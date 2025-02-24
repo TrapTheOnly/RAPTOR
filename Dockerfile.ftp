@@ -1,0 +1,20 @@
+# --- Build the FTP server ---
+FROM python:3.12-slim AS ftp_builder
+USER root
+ARG http_proxy
+ARG https_proxy
+ARG ftp_user
+ARG ftp_pass
+ARG ftp_basedir
+
+# --- Install FTP server ---
+RUN pip install pyftpdlib
+
+# --- Create FTP user and directory ---
+RUN useradd -m ftpuser
+RUN mkdir -p "${ftp_basedir}" && chown "${ftp_user}":"${ftp_user}" "${ftp_basedir}"
+USER ${ftp_user}
+EXPOSE 21
+
+# --- Run FTP server ---
+CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "${ftp_user}", "--password", "${ftp_pass}", "--directory", "${ftp_basedir}"]

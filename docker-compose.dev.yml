@@ -4,7 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - http_proxy=${http_proxy}
+        - http_proxy=${HTTP_PROXY}
+        - https_proxy=${HTTP_PROXY}
     image: wams-dev
     container_name: wams-dev
     ports:
@@ -12,29 +13,48 @@ services:
     networks:
         - app_network
     volumes:
-      - dns_zonefiles_volume:/usr/app/src/shared
-      - db_and_backups_volume:/appdata
+      - dns_zonefiles_volume:/usr/app/src/shared:ro
       - certs_volume:/certs:ro
+      - db_and_backups_volume:/appdata
+      - ftp_volume:/ftp/reports
     environment:
       - ENVIRONMENT=development
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - UPDATE_TIME=${UPDATE_TIME}
-      - DATA_PATH=${DATA_PATH}
-      - SHARED_PATH=${SHARED_PATH}
-      - BACKUP_FOLDER=${BACKUP_FOLDER}
-      - LDAP_DOMAIN=${LDAP_DOMAIN}
-      - LDAP_SERVER=${LDAP_SERVER}
-      - LDAP_USER=${LDAP_USER}
-      - LDAP_PASS=${LDAP_PASS}
-      - SECRET_KEY=${SECRET_KEY}
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - APP_PORT=${APP_PORT}
-      - CERT_FILE=${CERT_FILE}
-      - KEY_FILE=${KEY_FILE}
+      - CORS_ORIGINS
+      - UPDATE_TIME
+      - DATA_PATH
+      - SHARED_PATH
+      - BACKUP_FOLDER
+      - LDAP_DOMAIN
+      - LDAP_SERVER
+      - LDAP_USER
+      - LDAP_PASS
+      - SECRET_KEY
+      - ADMIN_USERNAME
+      - APP_PORT
+      - CERT_FILE
+      - KEY_FILE
+      - FTP_USER
+      - FTP_PASS
+      - FTP_BASEDIR
       - FTP_HOST=ftp
-      - FTP_USER=${FTP_USER}
-      - FTP_PASS=${FTP_PASS}
-      - FTP_BASE_PATH=${FTP_BASE_PATH}
+    restart: unless-stopped
+
+  ftp:
+    build:
+      context: .
+      dockerfile: Dockerfile.ftp
+      args:
+        - http_proxy=${HTTP_PROXY}
+        - https_proxy=${HTTP_PROXY}
+        - ftp_user=${FTP_USER}
+        - ftp_pass=${FTP_PASS}
+        - ftp_basedir=${FTP_BASEDIR}
+    image: wams-ftp-dev
+    container_name: wams-ftp-dev
+    networks:
+        - app_network
+    volumes:
+      - ftp_volume:/ftp/reports
     restart: unless-stopped
 
   sftp:
@@ -43,7 +63,7 @@ services:
       dockerfile: Dockerfile.sftp
       args:
         - DNS_SERVER_SSH_PUBKEY=${DNS_SERVER_SSH_PUBKEY}
-        - http_proxy=${http_proxy}
+        - http_proxy=${HTTP_PROXY}
     image: wams-sftp-dev
     container_name: wams-sftp-dev
     ports:
@@ -58,6 +78,8 @@ volumes:
   dns_zonefiles_volume:
     driver: local
   certs_volume:
+    driver: local
+  ftp_volume:
     driver: local
 
 networks:

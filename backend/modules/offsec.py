@@ -15,7 +15,7 @@ DB_PATH = os.getenv("DATA_PATH") + "database.db"
 FTP_HOST = os.getenv("FTP_HOST")
 FTP_USER = os.getenv("FTP_USER")
 FTP_PASS = os.getenv("FTP_PASS")
-FTP_BASE_PATH = os.getenv("FTP_BASE_PATH")
+FTP_BASEDIR = os.getenv("FTP_BASEDIR")
 
 def ftp_connect():
     """Connects to the FTP server and returns the FTP object."""
@@ -25,8 +25,8 @@ def ftp_connect():
         logger.info(f"Logging in as {FTP_USER}")
         logger.info(f"Using password: {FTP_PASS}")
         ftp.login(user=FTP_USER, passwd=FTP_PASS)
-        if FTP_BASE_PATH:
-            ftp.cwd(FTP_BASE_PATH)
+        if FTP_BASEDIR:
+            ftp.cwd(FTP_BASEDIR)
         return ftp
     except Exception as e:
         logger.error(f"FTP connection error: {e}")
@@ -40,7 +40,7 @@ def save_report(record_id, file_data):
         file_stream = BytesIO(file_data)
         ftp.storbinary(f'STOR {unique_filename}', file_stream)
         ftp.quit()
-        return os.path.join(FTP_BASE_PATH, unique_filename) if FTP_BASE_PATH else unique_filename
+        return os.path.join(FTP_BASEDIR, unique_filename) if FTP_BASEDIR else unique_filename
     except Exception as e:
         logger.error(f"Error saving report for record {record_id}: {e}")
         raise
