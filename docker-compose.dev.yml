@@ -68,7 +68,7 @@ services:
     command: [
       "python", "ftpd.py",
       "--user", "${FTP_USER}",
-      "--password", "${FTP_PASSWORD}"
+      "--password", "${FTP_PASS}"
     ]
     networks:
         - app_network
