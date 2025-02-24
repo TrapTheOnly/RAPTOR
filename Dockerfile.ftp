@@ -6,6 +6,9 @@ ARG https_proxy
 ARG ftp_user
 ARG ftp_pass
 ARG ftp_basedir
+ENV ftp_user=${ftp_user}
+ENV ftp_pass=${ftp_pass}
+ENV ftp_basedir=${ftp_basedir}
 
 # --- Install FTP server ---
 RUN pip install pyftpdlib
@@ -15,7 +18,6 @@ RUN useradd -m "${ftp_user}"
 RUN mkdir -p "${ftp_basedir}" && chown "${ftp_user}":"${ftp_user}" "${ftp_basedir}"
 USER ${ftp_user}
 EXPOSE 21
-RUN echo "Using username ${ftp_user} and password ${ftp_pass} with base directory ${ftp_basedir}"
 
 # --- Run FTP server ---
-CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "${ftp_user}", "--password", "${ftp_pass}", "--directory", "${ftp_basedir}"]
+CMD python -m pyftpdlib -i 0.0.0.0 -p 21 --username ${ftp_user} --password ${ftp_pass} --directory ${ftp_basedir}
