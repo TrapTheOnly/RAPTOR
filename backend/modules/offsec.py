@@ -92,17 +92,18 @@ def create_or_update_pentest_data(record_id):
     """POST /pentest/<record_id>: Create or update pentest data."""
     record = get_record_details_internal(record_id)
     if not record:
-        logger.debug(f"Record not found for ID {record_id}")
+        logger.debug("line 95:" + f"Record not found for ID {record_id}")
         return jsonify({"error": "Record not found"}), 404
 
     try:
+        logger.debug("line 99: " + request.form.values())
         existing_data = get_pentest_data_internal(record_id) or {}
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
-        logger.debug(data)
+        logger.debug("line 105:" + data)
 
         relative_path = existing_data.get('report_file')
         logger.debug(f"Existing report file: {relative_path}")
