@@ -66,6 +66,7 @@ services:
       - FTP_USER=${FTP_USER}
       - FTP_PASS=${FTP_PASS}
     command: [
+      "python ftpd.py",
       "--user", "${FTP_USER}",
       "--password", "${FTP_PASSWORD}",
       "--anon", "false"
