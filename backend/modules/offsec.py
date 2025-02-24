@@ -104,7 +104,7 @@ def create_or_update_pentest_data(record_id):
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
-        logger.debug("line 105:" + data)
+        logger.debug(data)
 
         relative_path = existing_data.get('report_file')
         logger.debug(f"Existing report file: {relative_path}")
