@@ -25,8 +25,6 @@ def ftp_connect():
         logger.info(f"Logging in as {FTP_USER}")
         logger.info(f"Using password: {FTP_PASS}")
         ftp.login(user=FTP_USER, passwd=FTP_PASS)
-        if FTP_BASEDIR != ftp.pwd():
-            ftp.cwd(FTP_BASEDIR)
         return ftp
     except Exception as e:
         logger.error(f"FTP connection error: {e}")
@@ -36,6 +34,8 @@ def save_report(record_id, file_data):
     """Saves a report file to the FTP server."""
     try:
         ftp = ftp_connect()
+        if FTP_BASEDIR != ftp.pwd():
+            ftp.cwd(FTP_BASEDIR)
         unique_filename = f"{record_id}_{uuid.uuid4()}.pdf"
         file_stream = BytesIO(file_data)
         logger.info(f"Current directory in FTP session: {ftp.pwd()}")
