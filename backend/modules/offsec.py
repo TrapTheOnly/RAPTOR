@@ -92,6 +92,7 @@ def create_or_update_pentest_data(record_id):
     """POST /pentest/<record_id>: Create or update pentest data."""
     record = get_record_details_internal(record_id)
     if not record:
+        logger.debug(f"Record not found for ID {record_id}")
         return jsonify({"error": "Record not found"}), 404
 
     try:
@@ -101,18 +102,20 @@ def create_or_update_pentest_data(record_id):
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
+        logger.debug(data)
+
         relative_path = existing_data.get('report_file')
+        logger.debug(f"Existing report file: {relative_path}")
         if 'report' in request.files:
             report_file = request.files['report']
             if report_file.filename != '' and report_file.filename.lower().endswith('.pdf'):
                 try:
                     relative_path = save_report(record_id, report_file.read())
+                    logger.debug(f"Saved report file: {relative_path}")
                 except Exception as e:
                     return jsonify({"error": f"Failed to upload report: {e}"}), 500
             else:
                 return jsonify({"error": "Invalid file. Please upload a PDF file."}), 400
-            
-        
 
         pentest_data = {
             'record_id': record_id,
@@ -137,7 +140,7 @@ def create_or_update_pentest_data(record_id):
             'status': data.get('status', existing_data.get('status', 'Not Started'))
         }
 
-        print(pentest_data)
+        logger.debug(pentest_data)
 
         with sqlite3.connect(DB_PATH) as conn:
             c = conn.cursor()
@@ -146,7 +149,7 @@ def create_or_update_pentest_data(record_id):
                 if filtered_pentest_data:
                     update_query = "UPDATE pentest_data SET " + ", ".join([f"{key} = ?" for key in filtered_pentest_data.keys()]) + " WHERE record_id = ?"
                     c.execute(update_query, list(filtered_pentest_data.values()) + [record_id])
-
+                    logger.debug(f"Updated pentest data for record {record_id}")
             else:
                 c.execute("""
                     INSERT INTO pentest_data (record_id, dns_name, ip_address, source, report_file, vulnerable,
@@ -154,6 +157,7 @@ def create_or_update_pentest_data(record_id):
                     VALUES (:record_id, :dns_name, :ip_address, :source, :report_file, :vulnerable,
                             :tested_by, :test_start_date, :test_end_date, :vulnerability_fixed, :service_desk_link, :status)
                 """, pentest_data)
+                logger.debug(f"Inserted new pentest data for record {record_id}")
                 
             conn.commit()
 
