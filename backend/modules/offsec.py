@@ -35,7 +35,8 @@ def save_report(record_id, file_data):
     try:
         ftp = ftp_connect()
         if FTP_BASEDIR != ftp.pwd():
-            ftp.cwd(FTP_BASEDIR)
+            logger.info(f"current directory in FTP session: {ftp.pwd()} and changing to {FTP_BASEDIR}")
+            # ftp.cwd(FTP_BASEDIR)
         unique_filename = f"{record_id}_{uuid.uuid4()}.pdf"
         file_stream = BytesIO(file_data)
         logger.info(f"Current directory in FTP session: {ftp.pwd()}")
