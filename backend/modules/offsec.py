@@ -137,6 +137,8 @@ def create_or_update_pentest_data(record_id):
             'status': data.get('status', existing_data.get('status', 'Not Started'))
         }
 
+        print(pentest_data)
+
         with sqlite3.connect(DB_PATH) as conn:
             c = conn.cursor()
             if existing_data:
@@ -144,6 +146,7 @@ def create_or_update_pentest_data(record_id):
                 if filtered_pentest_data:
                     update_query = "UPDATE pentest_data SET " + ", ".join([f"{key} = ?" for key in filtered_pentest_data.keys()]) + " WHERE record_id = ?"
                     c.execute(update_query, list(filtered_pentest_data.values()) + [record_id])
+
             else:
                 c.execute("""
                     INSERT INTO pentest_data (record_id, dns_name, ip_address, source, report_file, vulnerable,
@@ -151,6 +154,7 @@ def create_or_update_pentest_data(record_id):
                     VALUES (:record_id, :dns_name, :ip_address, :source, :report_file, :vulnerable,
                             :tested_by, :test_start_date, :test_end_date, :vulnerability_fixed, :service_desk_link, :status)
                 """, pentest_data)
+                
             conn.commit()
 
         return jsonify({"message": "Pentest data updated successfully."}), 200
