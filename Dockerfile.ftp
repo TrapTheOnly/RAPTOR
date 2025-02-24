@@ -15,7 +15,7 @@ RUN pip install pyftpdlib
 
 # --- Create FTP user and directory ---
 RUN useradd -m "${ftp_user}"
-RUN mkdir -p "${ftp_basedir}" && chown "${ftp_user}":"${ftp_user}" "${ftp_basedir}"
+RUN mkdir -p "${ftp_basedir}" && chown -R "${ftp_user}":"${ftp_user}" /ftp
 USER ${ftp_user}
 EXPOSE 21
 
