@@ -15,7 +15,6 @@ DB_PATH = os.getenv("DATA_PATH") + "database.db"
 FTP_HOST = os.getenv("FTP_HOST")
 FTP_USER = os.getenv("FTP_USER")
 FTP_PASS = os.getenv("FTP_PASS")
-FTP_BASEDIR = ''
 
 def ftp_connect():
     """Connects to the FTP server and returns the FTP object."""
@@ -37,7 +36,7 @@ def save_report(record_id, file_data):
 
         ftp.storbinary(f'STOR {unique_filename}', file_stream)
         ftp.quit()
-        return os.path.join(FTP_BASEDIR, unique_filename) if FTP_BASEDIR else unique_filename
+        return unique_filename
     except Exception as e:
         logger.error(f"Error saving report for record {record_id}: {e}")
         raise
