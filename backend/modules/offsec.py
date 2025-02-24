@@ -15,7 +15,7 @@ DB_PATH = os.getenv("DATA_PATH") + "database.db"
 FTP_HOST = os.getenv("FTP_HOST")
 FTP_USER = os.getenv("FTP_USER")
 FTP_PASS = os.getenv("FTP_PASS")
-FTP_BASEDIR = os.getenv("FTP_BASEDIR")
+FTP_BASEDIR = "/"
 
 def ftp_connect():
     """Connects to the FTP server and returns the FTP object."""
