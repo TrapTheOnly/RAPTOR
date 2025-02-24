@@ -1,5 +1,6 @@
 # --- Frontend Build Stage ---
 FROM node:20 AS frontend_builder
+USER root
 WORKDIR /app
 COPY frontend/package*.json ./
 ARG http_proxy
@@ -10,11 +11,13 @@ RUN npm run build
 
 # --- Backend Setup Stage ---
 FROM python:3.12-slim AS backend_builder
+USER root
 WORKDIR /usr/app/src
 ARG http_proxy
 ARG https_proxy
 COPY backend/ /usr/app/src/backend/
 RUN pip install --no-cache-dir -r /usr/app/src/backend/requirements.txt
+RUN echo "Finished installing backend dependencies"
 
 # --- Final Stage ---
 COPY --from=frontend_builder /app/build/ /usr/app/src/backend/static/
