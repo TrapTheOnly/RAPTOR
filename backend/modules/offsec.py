@@ -25,8 +25,8 @@ def ftp_connect():
         logger.info(f"Logging in as {FTP_USER}")
         logger.info(f"Using password: {FTP_PASS}")
         ftp.login(user=FTP_USER, passwd=FTP_PASS)
-        # if FTP_BASEDIR != ftp.pwd():
-        #     ftp.cwd(FTP_BASEDIR)
+        if FTP_BASEDIR != ftp.pwd():
+            ftp.cwd(FTP_BASEDIR)
         return ftp
     except Exception as e:
         logger.error(f"FTP connection error: {e}")
