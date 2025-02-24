@@ -15,6 +15,7 @@ RUN useradd -m "${ftp_user}"
 RUN mkdir -p "${ftp_basedir}" && chown "${ftp_user}":"${ftp_user}" "${ftp_basedir}"
 USER ${ftp_user}
 EXPOSE 21
+RUN echo "Using username ${ftp_user} and password ${ftp_pass} with base directory ${ftp_basedir}"
 
 # --- Run FTP server ---
 CMD ["python", "-m", "pyftpdlib", "-i", "0.0.0.0", "-p", "21", "--username", "${ftp_user}", "--password", "${ftp_pass}", "--directory", "${ftp_basedir}"]
