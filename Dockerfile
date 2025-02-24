@@ -1,5 +1,5 @@
 # --- Frontend Build Stage ---
-FROM node:16 AS frontend_builder
+FROM node:20 AS frontend_builder
 USER root
 WORKDIR /app
 COPY frontend/package*.json ./
