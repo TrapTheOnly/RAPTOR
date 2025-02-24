@@ -118,6 +118,8 @@ def create_or_update_pentest_data(record_id):
                     return jsonify({"error": f"Failed to upload report: {e}"}), 500
             else:
                 return jsonify({"error": "Invalid file. Please upload a PDF file."}), 400
+            
+        
 
         pentest_data = {
             'record_id': record_id,
@@ -125,11 +127,19 @@ def create_or_update_pentest_data(record_id):
             'ip_address': record['ip_address'],
             'source': record['source'],
             'report_file': relative_path,
-            'vulnerable': int(data.get('vulnerable', existing_data.get('vulnerable', 0))),
+            'vulnerable': (
+                0
+                if data.get('vulnerable', existing_data.get('vulnerable', 0)) is None
+                else int(data.get('vulnerable', existing_data.get('vulnerable', 0)))
+            ),
             'tested_by': data.get('tested_by', existing_data.get('tested_by', '')),
             'test_start_date': data.get('test_start_date', existing_data.get('test_start_date', None)),
             'test_end_date': data.get('test_end_date', existing_data.get('test_end_date', None)),
-            'vulnerability_fixed': int(data.get('vulnerability_fixed', existing_data.get('vulnerability_fixed', 0))),
+            'vulnerability_fixed': (
+                0
+                if data.get('vulnerability_fixed', existing_data.get('vulnerability_fixed', 0)) is None
+                else int(data.get('vulnerability_fixed', existing_data.get('vulnerability_fixed', 0)))
+            ),
             'service_desk_link': data.get('service_desk_link', existing_data.get('service_desk_link', '')),
             'status': data.get('status', existing_data.get('status', 'Not Started'))
         }
