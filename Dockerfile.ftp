@@ -20,4 +20,4 @@ USER ${ftp_user}
 EXPOSE 21
 
 # --- Run FTP server ---
-CMD python -m pyftpdlib -i 0.0.0.0 -p 21 --username ${ftp_user} --password ${ftp_pass} --directory ${ftp_basedir}
+CMD python -m pyftpdlib -i 0.0.0.0 -p 21 --username ${ftp_user} --password ${ftp_pass} --directory ${ftp_basedir} -D

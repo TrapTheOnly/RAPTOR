@@ -35,26 +35,43 @@ services:
       - KEY_FILE
       - FTP_USER
       - FTP_PASS
-      - FTP_BASEDIR
+      - FTP_BASEDIR=/ftp_root/${FTP_USER}
       - FTP_HOST=ftp
     restart: unless-stopped
 
+  # ftp:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.ftp
+  #     args:
+  #       - http_proxy=${HTTP_PROXY}
+  #       - https_proxy=${HTTP_PROXY}
+  #       - ftp_user=${FTP_USER}
+  #       - ftp_pass=${FTP_PASS}
+  #       - ftp_basedir=${FTP_BASEDIR}
+  #   image: wams-ftp-dev
+  #   container_name: wams-ftp-dev
+  #   networks:
+  #       - app_network
+  #   volumes:
+  #     - ftp_volume:/ftp/reports
+  #   restart: unless-stopped
+
   ftp:
-    build:
-      context: .
-      dockerfile: Dockerfile.ftp
-      args:
-        - http_proxy=${HTTP_PROXY}
-        - https_proxy=${HTTP_PROXY}
-        - ftp_user=${FTP_USER}
-        - ftp_pass=${FTP_PASS}
-        - ftp_basedir=${FTP_BASEDIR}
-    image: wams-ftp-dev
+    image: akogut/docker-pyftpdlib
     container_name: wams-ftp-dev
+    volumes:
+      - ftp_volume:/ftp_root/dnsradar_ftp_user
+    environment:
+      - FTP_USER=${FTP_USER}
+      - FTP_PASS=${FTP_PASS}
+    command: [
+      "--user", "${FTP_USER}",
+      "--password", "${FTP_PASSWORD}",
+      "--anon", "false"
+    ]
     networks:
         - app_network
-    volumes:
-      - ftp_volume:/ftp/reports
     restart: unless-stopped
 
   sftp:
