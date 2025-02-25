@@ -686,7 +686,6 @@ app.add_url_rule('/pentest/<int:record_id>', methods=['GET'], view_func=get_pent
 app.add_url_rule('/pentest/<int:record_id>', methods=['DELETE'], view_func=delete_pentest_data)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['GET'], view_func=get_report)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['DELETE'], view_func=delete_report_route)
-app.add_url_rule('/pentest/<int:record_id>/assign_me', methods=['POST'], view_func=assign_pentest_to_me)
 app.add_url_rule('/pentest_users', methods=['GET'], view_func=get_pentest_users)
 
 # ---------------------------------------------------------

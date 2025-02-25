@@ -6,7 +6,7 @@ import logging
 from io import BytesIO
 from functools import wraps
 import xml.etree.ElementTree as ET
-from modules.user import login_required_json
+from modules.user import login_required_json, get_current_user
 from modules.admin import admin_required
 from flask import jsonify, request, send_file, session, current_app
 
@@ -58,7 +58,7 @@ def pentest_required(f):
     def decorated_function(*args, **kwargs):
         if not session.get('logged_in') or session.get('user_type') not in ('pentester', 'admin'):
             response = jsonify({"error": "Unauthorized access"})
-            return response, 403 
+            return response, 403
         return f(*args, **kwargs)
     return decorated_function
 
@@ -100,29 +100,6 @@ def get_pentest_users_internal():
     except Exception as e:
         logger.error(f"Error fetching pentesters: {e}")
         return None
-    
-def assign_pentest_to_me_internal(record_id, username):
-    """Assigns a pentest record to the logged-in user."""
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            existing_pentest_data = c.execute(
-                "SELECT tested_by FROM pentest_data WHERE record_id = ?", (record_id,)
-            ).fetchone()
-
-            if existing_pentest_data and existing_pentest_data['tested_by']:
-                return False, "This pentest is already assigned to another user." 
-
-            c.execute(
-                "INSERT OR REPLACE INTO pentest_data (record_id, tested_by) VALUES (?, ?)",
-                (record_id, username),
-            )
-            c.commit()
-            return True
-    except Exception as e:
-        logger.error(f"Error assigning pentest to user: {e}")
-        return False
 
 @login_required_json
 @admin_required
@@ -134,16 +111,6 @@ def get_pentest_users():
     except Exception as e:
         current_app.logger.error(f"Error fetching pentest users: {e}")
         return jsonify({"message": "Error fetching pentest users"}), 500
-    
-@login_required_json
-@pentest_required
-def assign_pentest_to_me(record_id):
-    """POST /pentest/<record_id>/assign_me: Assign a pentest to oneself."""
-    success = assign_pentest_to_me_internal(record_id, session['username'])
-    if success:
-        return jsonify({"message": "Pentest assigned successfully"}), 200
-    else:
-        return jsonify({"message": "Unable to assign pentest to yourself"}), 400
 
 @login_required_json
 @pentest_required
@@ -159,6 +126,11 @@ def create_or_update_pentest_data(record_id):
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
+
+        requested_tested_by = data.get('tested_by')
+        current_user = get_current_user()
+        if current_user['role'] != 'admin' and requested_tested_by and requested_tested_by != current_user['username']:
+            return jsonify({"error": "Unauthorized to assign pentest to another user."}), 403
 
         relative_path = existing_data.get('report_file')
         if 'report' in request.files:
@@ -207,9 +179,9 @@ def create_or_update_pentest_data(record_id):
                     INSERT INTO pentest_data (record_id, dns_name, ip_address, source, report_file, vulnerable,
                                              tested_by, test_start_date, test_end_date, vulnerability_fixed, service_desk_link, status)
                     VALUES (:record_id, :dns_name, :ip_address, :source, :report_file, :vulnerable,
-                            :tested_by, :test_start_date, :test_end_date, :vulnerability_fixed, :service_desk_link, :status)
+                                             :tested_by, :test_start_date, :test_end_date, :vulnerability_fixed, :service_desk_link, :status)
                 """, pentest_data)
-                
+
             conn.commit()
 
         return jsonify({"message": "Pentest data updated successfully."}), 200
