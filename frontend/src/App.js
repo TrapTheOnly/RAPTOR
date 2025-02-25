@@ -90,7 +90,7 @@ const App = () => {
         <Route
             path="/pentest"
             element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
-                <PentestDashboard darkMode={darkMode} /> : <Navigate to="/login" />
+                <PentestDashboard darkMode={darkMode} isAdmin={userRole === 'admin'}/> : <Navigate to="/login" />
             }
         />
         <Route

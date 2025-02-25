@@ -438,9 +438,9 @@ def add_user_to_system(username, email, role='user', db_path=DB_PATH):
         c.execute("""
             INSERT INTO allowed_users (username, email, added_date, role)
             VALUES (?, ?, datetime('now', '+4 hours'), ?)
-        """, (username, email, role)) # Insert the role
+        """, (username, email, role))
         conn.commit()
-        logger.info(f"User {username} added to the system with role {role}.") # Log the role
+        logger.info(f"User {username} added to the system with role {role}.")
         conn.close()
     except sqlite3.IntegrityError:
         raise ValueError(f"User {username} already exists in the system.")
@@ -686,6 +686,8 @@ app.add_url_rule('/pentest/<int:record_id>', methods=['GET'], view_func=get_pent
 app.add_url_rule('/pentest/<int:record_id>', methods=['DELETE'], view_func=delete_pentest_data)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['GET'], view_func=get_report)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['DELETE'], view_func=delete_report_route)
+app.add_url_rule('/pentest/<int:record_id>/assign_me', methods=['POST'], view_func=assign_pentest_to_me)
+app.add_url_rule('/pentest_users', methods=['GET'], view_func=get_pentest_users)
 
 # ---------------------------------------------------------
 #! Admin API Endpoints
@@ -712,14 +714,14 @@ def add_user():
     data = request.get_json()
     username = data.get('username').lower()
     email = data.get('email').lower()
-    role = data.get('role', 'user').lower() # Get role, default to user
+    role = data.get('role', 'user').lower()
 
     #Basic role validation
     if role not in ['user', 'pentester']:
         return jsonify({"error": "Invalid role specified."}), 400
 
     try:
-        add_user_to_system(username, email, role) # Pass the role
+        add_user_to_system(username, email, role)
         return jsonify({"message": f"User {username} added successfully with role {role}."}), 200
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")
@@ -1014,5 +1016,5 @@ if __name__ == '__main__':
     CERT_FILE = os.getenv("CERT_FILE")
     KEY_FILE = os.getenv("KEY_FILE")
     logger.info(f"Starting Flask server on port {port}...")
-    # app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE))
+    # app.run(host='0.0.0.0', port=port, debug=True)

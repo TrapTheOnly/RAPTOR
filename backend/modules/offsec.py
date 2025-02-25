@@ -7,7 +7,8 @@ from io import BytesIO
 from functools import wraps
 import xml.etree.ElementTree as ET
 from modules.user import login_required_json
-from flask import jsonify, request, send_file, session
+from modules.admin import admin_required
+from flask import jsonify, request, send_file, session, current_app
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,68 @@ def get_record_details_internal(record_id):
     except Exception as e:
         logger.error(f"Error fetching record details for ID {record_id}: {e}")
         return None
+
+def get_pentest_users_internal():
+    """Fetches users with the 'pentest' role from the database."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            users = c.execute(
+                "SELECT id, username FROM allowed_users WHERE role = 'pentester'"
+            ).fetchall()
+            return [{"id": user['id'], "username": user['username']} for user in users]
+    except Exception as e:
+        logger.error(f"Error fetching pentesters: {e}")
+        return None
+    
+def assign_pentest_to_me_internal(record_id, user_id):
+    """Assigns a pentest record to the logged-in user."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            existing_pentest_data = c.execute(
+                "SELECT tested_by FROM pentest_data WHERE record_id = ?", (record_id,)
+            ).fetchone()
+
+            if existing_pentest_data and existing_pentest_data['tested_by']:
+                return False, "This pentest is already assigned to another user." 
+
+            c.execute(
+                "INSERT OR REPLACE INTO pentest_data (record_id, tested_by) VALUES (?, ?)",
+                (record_id, user_id),
+            )
+            c.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Error assigning pentest to user: {e}")
+        return False
+
+@login_required_json
+@admin_required
+def get_pentest_users():
+    """GET /pentest_users: Get users with pentest role."""
+    try:
+        users = get_pentest_users_internal()
+        return jsonify(users), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching pentest users: {e}")
+        return jsonify({"message": "Error fetching pentest users"}), 500
+    
+@login_required_json
+@pentest_required
+def assign_pentest_to_me(record_id):
+    """POST /pentest/<record_id>/assign_me: Assign a pentest to oneself."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"message": "User not logged in"}), 401
+
+    success, error_message = assign_pentest_to_me_internal(record_id, user_id)
+    if success:
+        return jsonify({"message": "Pentest assigned successfully"}), 200
+    else:
+        return jsonify({"message": error_message}), 400
 
 @login_required_json
 @pentest_required
