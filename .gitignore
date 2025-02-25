@@ -16,3 +16,4 @@ __pycache__
 *.com
 test.*
 .copyignore
+sqleditor.py
