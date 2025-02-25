@@ -96,8 +96,6 @@ def create_or_update_pentest_data(record_id):
         return jsonify({"error": "Record not found"}), 404
 
     try:
-        logger.debug("line 100: ")
-        logger.debug()
         existing_data = get_pentest_data_internal(record_id) or {}
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
