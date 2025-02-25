@@ -97,12 +97,16 @@ def create_or_update_pentest_data(record_id):
 
     try:
         logger.debug("line 100: ")
-        logger.debug(request.form.values())
+        logger.debug()
         existing_data = get_pentest_data_internal(record_id) or {}
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
+        
+        logger.debug("line 105: Request Data:")
+        for key, value in request.form.items():
+            logger.debug(f"  {key}: {value}")
 
         logger.debug("line 108: ")
         logger.debug(data)
