@@ -128,8 +128,7 @@ def create_or_update_pentest_data(record_id):
                 data[key] = value
 
         requested_tested_by = data.get('tested_by')
-        current_user = session['username']
-        if current_user['role'] != 'admin' and requested_tested_by and requested_tested_by != current_user['username']:
+        if session['user_type'] != 'admin' and requested_tested_by and requested_tested_by != session['username']:
             return jsonify({"error": "Unauthorized to pentest to another user."}), 403
 
         relative_path = existing_data.get('report_file')
