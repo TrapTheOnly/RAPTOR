@@ -6,7 +6,7 @@ import logging
 from io import BytesIO
 from functools import wraps
 import xml.etree.ElementTree as ET
-from modules.user import login_required_json, get_current_user
+from modules.user import login_required_json
 from modules.admin import admin_required
 from flask import jsonify, request, send_file, session, current_app
 
@@ -128,9 +128,9 @@ def create_or_update_pentest_data(record_id):
                 data[key] = value
 
         requested_tested_by = data.get('tested_by')
-        current_user = get_current_user()
+        current_user = session['username']
         if current_user['role'] != 'admin' and requested_tested_by and requested_tested_by != current_user['username']:
-            return jsonify({"error": "Unauthorized to assign pentest to another user."}), 403
+            return jsonify({"error": "Unauthorized to pentest to another user."}), 403
 
         relative_path = existing_data.get('report_file')
         if 'report' in request.files:
