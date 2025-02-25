@@ -101,7 +101,7 @@ def get_pentest_users_internal():
         logger.error(f"Error fetching pentesters: {e}")
         return None
     
-def assign_pentest_to_me_internal(record_id, user_id):
+def assign_pentest_to_me_internal(record_id, username):
     """Assigns a pentest record to the logged-in user."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -116,7 +116,7 @@ def assign_pentest_to_me_internal(record_id, user_id):
 
             c.execute(
                 "INSERT OR REPLACE INTO pentest_data (record_id, tested_by) VALUES (?, ?)",
-                (record_id, user_id),
+                (record_id, username),
             )
             c.commit()
             return True
@@ -139,11 +139,7 @@ def get_pentest_users():
 @pentest_required
 def assign_pentest_to_me(record_id):
     """POST /pentest/<record_id>/assign_me: Assign a pentest to oneself."""
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"message": "User not logged in"}), 401
-
-    success, error_message = assign_pentest_to_me_internal(record_id, user_id)
+    success, error_message = assign_pentest_to_me_internal(record_id, session['username'])
     if success:
         return jsonify({"message": "Pentest assigned successfully"}), 200
     else:
@@ -155,7 +151,6 @@ def create_or_update_pentest_data(record_id):
     """POST /pentest/<record_id>: Create or update pentest data."""
     record = get_record_details_internal(record_id)
     if not record:
-        logger.debug("line 96:" + f"Record not found for ID {record_id}")
         return jsonify({"error": "Record not found"}), 404
 
     try:
@@ -164,16 +159,8 @@ def create_or_update_pentest_data(record_id):
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
-        
-        logger.debug("line 105: Request Data:")
-        for key, value in request.form.items():
-            logger.debug(f"  {key}: {value}")
-
-        logger.debug("line 108: ")
-        logger.debug(data)
 
         relative_path = existing_data.get('report_file')
-        logger.debug(f"Existing report file: {relative_path}")
         if 'report' in request.files:
             report_file = request.files['report']
             if report_file.filename != '' and report_file.filename.lower().endswith('.pdf'):
@@ -207,8 +194,6 @@ def create_or_update_pentest_data(record_id):
             'service_desk_link': data.get('service_desk_link', existing_data.get('service_desk_link', '')),
             'status': data.get('status', existing_data.get('status', 'Not Started'))
         }
-        logger.debug("line 146: ")
-        logger.debug(pentest_data)
 
         with sqlite3.connect(DB_PATH) as conn:
             c = conn.cursor()
@@ -217,7 +202,6 @@ def create_or_update_pentest_data(record_id):
                 if filtered_pentest_data:
                     update_query = "UPDATE pentest_data SET " + ", ".join([f"{key} = ?" for key in filtered_pentest_data.keys()]) + " WHERE record_id = ?"
                     c.execute(update_query, list(filtered_pentest_data.values()) + [record_id])
-                    logger.debug(f"Updated pentest data for record {record_id}")
             else:
                 c.execute("""
                     INSERT INTO pentest_data (record_id, dns_name, ip_address, source, report_file, vulnerable,
@@ -225,7 +209,6 @@ def create_or_update_pentest_data(record_id):
                     VALUES (:record_id, :dns_name, :ip_address, :source, :report_file, :vulnerable,
                             :tested_by, :test_start_date, :test_end_date, :vulnerability_fixed, :service_desk_link, :status)
                 """, pentest_data)
-                logger.debug(f"Inserted new pentest data for record {record_id}")
                 
             conn.commit()
 
