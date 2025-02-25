@@ -14,7 +14,7 @@ services:
         - app_network
     volumes:
       - dns_zonefiles_volume:/usr/app/src/shared:ro
-      - certs_volume:/certs:ro
+      - certs_volume:/certs
       - db_and_backups_volume:/appdata
       - ftp_volume:/ftp/reports
     environment:
