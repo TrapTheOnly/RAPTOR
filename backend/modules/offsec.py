@@ -92,11 +92,11 @@ def create_or_update_pentest_data(record_id):
     """POST /pentest/<record_id>: Create or update pentest data."""
     record = get_record_details_internal(record_id)
     if not record:
-        logger.debug("line 95:" + f"Record not found for ID {record_id}")
+        logger.debug("line 96:" + f"Record not found for ID {record_id}")
         return jsonify({"error": "Record not found"}), 404
 
     try:
-        logger.debug("line 99: ")
+        logger.debug("line 100: ")
         logger.debug(request.form.values())
         existing_data = get_pentest_data_internal(record_id) or {}
         data = {}
@@ -104,6 +104,7 @@ def create_or_update_pentest_data(record_id):
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
+        logger.debug("line 108: ")
         logger.debug(data)
 
         relative_path = existing_data.get('report_file')
@@ -141,7 +142,7 @@ def create_or_update_pentest_data(record_id):
             'service_desk_link': data.get('service_desk_link', existing_data.get('service_desk_link', '')),
             'status': data.get('status', existing_data.get('status', 'Not Started'))
         }
-
+        logger.debug("line 146: ")
         logger.debug(pentest_data)
 
         with sqlite3.connect(DB_PATH) as conn:
