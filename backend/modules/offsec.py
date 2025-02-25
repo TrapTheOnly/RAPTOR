@@ -139,11 +139,11 @@ def get_pentest_users():
 @pentest_required
 def assign_pentest_to_me(record_id):
     """POST /pentest/<record_id>/assign_me: Assign a pentest to oneself."""
-    success, error_message = assign_pentest_to_me_internal(record_id, session['username'])
+    success = assign_pentest_to_me_internal(record_id, session['username'])
     if success:
         return jsonify({"message": "Pentest assigned successfully"}), 200
     else:
-        return jsonify({"message": error_message}), 400
+        return jsonify({"message": "Unable to assign pentest to yourself"}), 400
 
 @login_required_json
 @pentest_required
