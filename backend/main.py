@@ -1016,6 +1016,6 @@ if __name__ == '__main__':
     KEY_FILE = os.getenv("KEY_FILE")
     logger.info(f"Starting Flask server on port {port}...")
     if port == "5000":
-        app.run(host='0.0.0.0', port=port, ssl_context=(CERT_FILE, KEY_FILE), debug=True)
+        app.run(host='0.0.0.0', port=port, debug=True)
     else:
         app.run(host='0.0.0.0', port=port, debug=True)

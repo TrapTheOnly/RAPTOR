@@ -56,7 +56,7 @@ build_prod:
   - main
   script:
   - echo "Building Docker images for PROD..."
-  - docker compose -f $COMPOSE_FILE_PROD up -d
+  - docker compose -f $COMPOSE_FILE_PROD build
   - echo "Docker images built locally on kali01."
   tags:
   - prod-kali
