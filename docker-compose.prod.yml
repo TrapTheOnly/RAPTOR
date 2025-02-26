@@ -3,30 +3,56 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - http_proxy=${HTTP_PROXY}
+        - https_proxy=${HTTP_PROXY}
     image: dnsradar-prod
     container_name: dnsradar-prod
     ports:
       - "1337:5000"
+    networks:
+        - app_network
     volumes:
-      - dns_zonefiles_volume:/usr/app/src/shared
-      - db_and_backups_volume:/appdata
+      - dns_zonefiles_volume:/usr/app/src/shared:ro
       - certs_volume:/certs:ro
+      - db_and_backups_volume:/appdata
+      - ftp_volume:/ftp/reports
     environment:
-      - ENVIRONMENT=production
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - UPDATE_TIME=${UPDATE_TIME}
-      - DATA_PATH=${DATA_PATH}
-      - SHARED_PATH=${SHARED_PATH}
-      - BACKUP_FOLDER=${BACKUP_FOLDER}
-      - LDAP_DOMAIN=${LDAP_DOMAIN}
-      - LDAP_SERVER=${LDAP_SERVER}
-      - LDAP_USER=${LDAP_USER}
-      - LDAP_PASS=${LDAP_PASS}
-      - SECRET_KEY=${SECRET_KEY}
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - APP_PORT=${APP_PORT}
-      - CERT_FILE=${CERT_FILE}
-      - KEY_FILE=${KEY_FILE}
+      - ENVIRONMENT=development
+      - CORS_ORIGINS
+      - UPDATE_TIME
+      - DATA_PATH
+      - SHARED_PATH
+      - BACKUP_FOLDER
+      - LDAP_DOMAIN
+      - LDAP_SERVER
+      - LDAP_USER
+      - LDAP_PASS
+      - SECRET_KEY
+      - ADMIN_USERNAME
+      - APP_PORT
+      - CERT_FILE
+      - KEY_FILE
+      - FTP_USER
+      - FTP_PASS
+      - FTP_HOST=ftp
+    restart: unless-stopped
+
+  ftp:
+    image: akogut/docker-pyftpdlib
+    container_name: dnsradar-ftp-prod
+    volumes:
+      - ftp_volume:/ftp_root/dnsradar_ftp_user
+    environment:
+      - FTP_USER=${FTP_USER}
+      - FTP_PASS=${FTP_PASS}
+    command: [
+      "python", "ftpd.py",
+      "--user", "${FTP_USER}",
+      "--password", "${FTP_PASS}"
+    ]
+    networks:
+        - app_network
     restart: unless-stopped
 
   sftp:
@@ -34,7 +60,8 @@ services:
       context: .
       dockerfile: Dockerfile.sftp
       args:
-        DNS_SERVER_SSH_PUBKEY: ${DNS_SERVER_SSH_PUBKEY}
+        - DNS_SERVER_SSH_PUBKEY=${DNS_SERVER_SSH_PUBKEY}
+        - http_proxy=${HTTP_PROXY}
     image: dnsradar-sftp-prod
     container_name: dnsradar-sftp-prod
     ports:
@@ -50,3 +77,8 @@ volumes:
     driver: local
   certs_volume:
     driver: local
+  ftp_volume:
+    driver: local
+
+networks:
+  app_network:
