@@ -22,7 +22,7 @@ RUN echo "Finished installing backend dependencies"
 # --- Final Stage ---
 COPY --from=frontend_builder /app/build/ /usr/app/src/backend/static/
 RUN useradd -m dnsradar_data_user
-RUN mkdir -p /appdata && chown dnsradar_data_user:dnsradar_data_user /appdata
+RUN mkdir -p /appdata && chown -R dnsradar_data_user:dnsradar_data_user /appdata
 USER dnsradar_data_user
 EXPOSE 5000
 CMD ["python", "/usr/app/src/backend/main.py"]
