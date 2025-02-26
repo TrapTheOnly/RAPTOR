@@ -43,7 +43,6 @@ def admin_login(username, password):
             c.execute("SELECT password FROM admin_users WHERE username = ?", (username,))
             result = c.fetchone()
             if result and bcrypt.checkpw(password.encode(), result[0]):
-                session['admin_logged_in'] = True
                 return True
             return False
     except Exception as e:
@@ -109,7 +108,7 @@ def admin_required(f):
     """Decorator to protect admin-only routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('admin_logged_in'):
+        if not session.get('user_type') == 'admin':
             return jsonify({"error": "Unauthorized access"}), 403
         return f(*args, **kwargs)
     return decorated_function

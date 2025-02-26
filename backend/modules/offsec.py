@@ -127,9 +127,11 @@ def create_or_update_pentest_data(record_id):
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
-        requested_tested_by = data.get('tested_by')
-        if session['user_type'] != 'admin' and requested_tested_by and requested_tested_by != session['username']:
-            return jsonify({"error": "Unauthorized to pentest to another user."}), 403
+        if existing_data.get('tested_by') and existing_data.get('tested_by') != session['username']:
+            return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
+        
+        if session['user_type'] != 'admin' and data.get('tested_by') and data.get('tested_by') != session['username']:
+            return jsonify({"error": "Unauthorized to assign pentest to another user."}), 403
 
         relative_path = existing_data.get('report_file')
         if 'report' in request.files:
@@ -142,7 +144,7 @@ def create_or_update_pentest_data(record_id):
                     return jsonify({"error": f"Failed to upload report: {e}"}), 500
             else:
                 return jsonify({"error": "Invalid file. Please upload a PDF file."}), 400
-
+            
         pentest_data = {
             'record_id': record_id,
             'dns_name': record['name'],

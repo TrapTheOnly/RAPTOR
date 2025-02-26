@@ -974,7 +974,7 @@ def session_status():
     Check if the user is logged in.
     """
     if 'logged_in' in session and session['logged_in']:
-        user_type = "admin" if session.get('admin_logged_in') else "user"
+        user_type = session.get('user_type')
         return jsonify({"status": "logged_in", "username": session.get("username"), "user_type": user_type}), 200
     return jsonify({"status": "logged_out"}), 401
 
