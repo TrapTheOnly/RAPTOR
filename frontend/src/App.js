@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import axios from 'axios';
-import Login from './components/Login';
-import RecordsTable from './components/RecordsTable';
 import Header from './components/Header';
-import Settings from './components/Settings';
-import RecordDetail from './components/RecordDetail';
-import ErrorPage from './components/ErrorPage';
+import Login from './pages/Login';
+import RecordsTable from './pages/RecordsTable';
+import AdminSettings from './pages/AdminSettings';
+import PentestDashboard from './pages/PentestDashboard';
+import Record from './pages/Record';
+import Error from './pages/Error';
 
 const App = () => {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -82,16 +83,22 @@ const App = () => {
           path="/settings"
           element={
             loggedIn && userRole === "admin" ? 
-              <Settings darkMode={darkMode}/> : 
+              <AdminSettings darkMode={darkMode}/> : 
                 <Navigate to="/" />
           }
         />
         <Route
+            path="/pentest"
+            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
+                <PentestDashboard darkMode={darkMode} isAdmin={userRole === 'admin'} username={username}/> : <Navigate to="/login" />
+            }
+        />
+        <Route
           path="/records/:domain"
-          element={loggedIn ? <RecordDetail darkMode={darkMode} /> : <Navigate to="/login" />}
+          element={loggedIn ? <Record darkMode={darkMode} /> : <Navigate to="/login" />}
         />
         <Route path="/records/*" element={<Navigate to="/" />} />
-        <Route path="*" element={<ErrorPage errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />
+        <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />
       </Routes>
     </Router>
   );

@@ -14,6 +14,8 @@ before_script:
 
 variables:
   DOCKER_DRIVER: overlay2
+  COMPOSE_FILE_DEV: docker-compose.dev.yml
+  COMPOSE_FILE_PROD: docker-compose.prod.yml
 
 ########################
 # DEV Branch Jobs
@@ -24,8 +26,7 @@ build_dev:
   - dev
   script:
   - echo "Building Docker images for DEV..."
-  - docker build -t wams-dev -f Dockerfile .
-  - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t wams-sftp-dev -f Dockerfile.sftp .
+  - docker compose -f $COMPOSE_FILE_DEV build
   - echo "Docker images built locally on callisto."
   tags:
   - callisto
@@ -37,9 +38,9 @@ deploy_dev:
   when: on_success
   script:
   - echo "Deploying DEV environment on callisto..."
-  - docker-compose -f docker-compose.dev.yml down || true
-  - docker-compose -f docker-compose.dev.yml up -d
-  - echo "DEV environment is running with HTTPS."
+  - docker compose -f $COMPOSE_FILE_DEV down || true
+  - docker compose -f $COMPOSE_FILE_DEV up -d
+  - echo "DEV environment is running."
   tags:
   - callisto
   environment:
@@ -55,8 +56,7 @@ build_prod:
   - main
   script:
   - echo "Building Docker images for PROD..."
-  - docker build -t dnsradar-prod -f Dockerfile .
-  - docker build --build-arg DNS_SERVER_SSH_PUBKEY="$DNS_SERVER_SSH_PUBKEY" -t dnsradar-sftp-prod -f Dockerfile.sftp .
+  - docker compose -f $COMPOSE_FILE_PROD up -d
   - echo "Docker images built locally on kali01."
   tags:
   - prod-kali
@@ -68,9 +68,9 @@ deploy_prod:
   when: manual
   script:
   - echo "Deploying PROD environment on kali01..."
-  - docker-compose -f docker-compose.prod.yml down || true
-  - docker-compose -f docker-compose.prod.yml up -d
-  - echo "PROD environment is running with HTTPS."
+  - docker compose -f $COMPOSE_FILE_PROD down || true
+  - docker compose -f $COMPOSE_FILE_PROD up -d
+  - echo "PROD environment is running."
   tags:
   - prod-kali
   environment:

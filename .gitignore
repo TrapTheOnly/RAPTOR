@@ -5,8 +5,15 @@ backend/static
 backend/shared
 backend/data
 backend/application.log
+frontend/node_modules
+frontend/build
+nmap/
+*.nmap
 .env
 .DS_Store
 __pycache__
 *Records
 *.com
+test.*
+.copyignore
+sqleditor.py
