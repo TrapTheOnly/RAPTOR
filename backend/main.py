@@ -682,7 +682,7 @@ def get_record_by_domain(domain):
 #! OffSec API Endpoints
 # ---------------------------------------------------------
 app.add_url_rule('/pentest/<int:record_id>', methods=['POST'], view_func=create_or_update_pentest_data)
-app.add_url_rule('/pentest/<int:record_id>', methods=['GET'], view_func=get_pentest_data)
+app.add_url_rule('/pentest/records', methods=['GET'], view_func=get_pentest_data)
 app.add_url_rule('/pentest/<int:record_id>', methods=['DELETE'], view_func=delete_pentest_data)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['GET'], view_func=get_report)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['DELETE'], view_func=delete_report_route)
@@ -940,7 +940,7 @@ def login():
     password = data.get('password')
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT username, role FROM allowed_users WHERE username = ?", (username,)) # Get role too
+    c.execute("SELECT username, role FROM allowed_users WHERE username = ?", (username,))
     user = c.fetchone()
     conn.close()
 
