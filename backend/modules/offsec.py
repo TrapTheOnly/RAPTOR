@@ -144,7 +144,6 @@ def create_or_update_pentest_data(record_id):
         c.execute("SELECT * FROM pentest_data")
         rows = c.fetchall()
         existing_data = [dict(ix) for ix in rows if ix['record_id'] == record_id][0] or {}
-        logger.debug(existing_data)
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
