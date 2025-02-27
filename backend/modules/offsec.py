@@ -62,17 +62,34 @@ def pentest_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def get_pentest_data_internal(record_id):
-    """Internal function to retrieve pentest data for a record ID."""
+def get_pentest_data_internal():
+    """Internal function to fetch record details."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT * FROM pentest_data WHERE record_id = ?", (record_id,))
-            row = c.fetchone()
-            return dict(row) if row else None
+            
+            c.execute("SELECT * FROM records")
+            rows = c.fetchall()
+            dns_records = [dict(ix) for ix in rows]
+
+            c.execute("SELECT * FROM pentest_data")            
+            pentest_records = {row['record_id']: dict(row) for row in c.fetchall()}
+
+            return [
+                {
+                    **pentest_records.get(record['id'], {
+                        'report_file': None, 'vulnerable': 0, 'tested_by': None,
+                        'test_start_date': None, 'test_end_date': None,
+                        'vulnerability_fixed': 0, 'service_desk_link': None, 'status': 'Not Started'
+                    }),
+                    'recordId': record['id'], 'name': record['name'],
+                    'ip_address': record['ip_address'], 'source': record['source'],
+                } for record in dns_records
+            ]
+        
     except Exception as e:
-        logger.error(f"Error retrieving pentest data for record {record_id}: {e}")
+        logger.error(f"Error fetching record details: {e}")
         return None
 
 def get_record_details_internal(record_id):
@@ -121,7 +138,12 @@ def create_or_update_pentest_data(record_id):
         return jsonify({"error": "Record not found"}), 404
 
     try:
-        existing_data = get_pentest_data_internal(record_id) or {}
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT * FROM pentest_data")
+        rows = c.fetchall()
+        existing_data = [dict(ix) for ix in rows if ix['record_id'] == record_id][0] or {}
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
@@ -193,9 +215,9 @@ def create_or_update_pentest_data(record_id):
 
 @login_required_json
 @pentest_required
-def get_pentest_data(record_id):
-    """GET /pentest/<record_id>: Retrieve pentest data."""
-    data = get_pentest_data_internal(record_id)
+def get_pentest_data():
+    """GET /pentest/records: Retrieve pentest data."""
+    data = get_pentest_data_internal()
     if data:
         response = jsonify(data)
         status_code = 200
@@ -205,8 +227,9 @@ def get_pentest_data(record_id):
 
     return response, status_code
 
+
 @login_required_json
-@pentest_required
+@admin_required
 def delete_pentest_data(record_id):
     """DELETE /pentest/<record_id>: Delete pentest data and report."""
     try:
