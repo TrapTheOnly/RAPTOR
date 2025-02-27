@@ -85,35 +85,22 @@ def get_pentest_data_internal():
             c.execute("SELECT * FROM records")
             rows = c.fetchall()
             dns_records = [dict(ix) for ix in rows]
-            
-            c.execute("SELECT * FROM pentest_data")
-            rows = c.fetchall()
-            pentest_records = [dict(ix) for ix in rows]
 
-            final_records = []
-            for record in dns_records:
-                record_id = record['id']
-                pentest_data = next((item for item in pentest_records if item["record_id"] == record_id), None)
-                if pentest_data:
-                    final_records.append(pentest_data)
-                else:
-                    final_records.append(
-                        {
-                            'recordId': record['id'] ,
-                            'name': record['name'], 
-                            'ip_address': record['ip_address'], 
-                            'source': record['source'],
-                            'report_file': None, 
-                            'vulnerable': 0, 
-                            'tested_by': None, 
-                            'test_start_date': None, 
-                            'test_end_date': None, 
-                            'vulnerability_fixed': 0, 
-                            'service_desk_link': None, 
-                            'status': 'Not Started'
-                        }
-                    )
-            return final_records
+            c.execute("SELECT * FROM pentest_data")            
+            pentest_records = {row['record_id']: dict(row) for row in c.fetchall()}
+
+            return [
+                {
+                    **pentest_records.get(record['id'], {
+                        'report_file': None, 'vulnerable': 0, 'tested_by': None,
+                        'test_start_date': None, 'test_end_date': None,
+                        'vulnerability_fixed': 0, 'service_desk_link': None, 'status': 'Not Started'
+                    }),
+                    'recordId': record['id'], 'name': record['name'],
+                    'ip_address': record['ip_address'], 'source': record['source'],
+                } for record in dns_records
+            ]
+        
     except Exception as e:
         logger.error(f"Error fetching record details: {e}")
         return None
