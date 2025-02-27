@@ -250,7 +250,7 @@ def create_or_update_pentest_data(record_id):
 
 @login_required_json
 @pentest_required
-def get_pentest_data(record_id):
+def get_pentest_data():
     """GET /pentest/records: Retrieve pentest data."""
     data = get_pentest_data_internal()
     if data:
