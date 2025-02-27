@@ -62,19 +62,6 @@ def pentest_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# def get_pentest_data_internal(record_id):
-#     """Internal function to retrieve pentest data for a record ID."""
-#     try:
-#         with sqlite3.connect(DB_PATH) as conn:
-#             conn.row_factory = sqlite3.Row
-#             c = conn.cursor()
-#             c.execute("SELECT * FROM pentest_data WHERE record_id = ?", (record_id,))
-#             row = c.fetchone()
-#             return dict(row) if row else None
-#     except Exception as e:
-#         logger.error(f"Error retrieving pentest data for record {record_id}: {e}")
-#         return None
-
 def get_pentest_data_internal():
     """Internal function to fetch record details."""
     try:
@@ -220,20 +207,6 @@ def create_or_update_pentest_data(record_id):
     except Exception as e:
         logger.error(f"Error creating/updating pentest data for record {record_id}: {e}")
         return jsonify({"error": str(e)}), 500
-
-# @login_required_json
-# @pentest_required
-# def get_pentest_data(record_id):
-#     """GET /pentest/<record_id>: Retrieve pentest data."""
-#     data = get_pentest_data_internal(record_id)
-#     if data:
-#         response = jsonify(data)
-#         status_code = 200
-#     else:
-#         response = jsonify({"error": "Pentest data not found"})
-#         status_code = 404
-
-#     return response, status_code
 
 @login_required_json
 @pentest_required
