@@ -157,7 +157,7 @@ def create_or_update_pentest_data(record_id):
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
-        if existing_data.get('tested_by') and existing_data.get('tested_by') != session['username']:
+        if existing_data.get('tested_by') and existing_data.get('tested_by') != session['username'] and session['user_type'] != 'admin':
             return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
         
         if session['user_type'] != 'admin' and data.get('tested_by') and data.get('tested_by') != session['username']:
