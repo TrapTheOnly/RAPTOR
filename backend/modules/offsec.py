@@ -143,11 +143,14 @@ def create_or_update_pentest_data(record_id):
         c = conn.cursor()
         c.execute("SELECT * FROM pentest_data")
         rows = c.fetchall()
+        # pentest_records = [dict(ix) for ix in rows]
+        # existing_data = [ix for ix in pentest_records if ix['record_id'] == record_id]
         existing_data = [dict(ix) for ix in rows if ix['record_id'] == record_id]
-        if existing_data.count > 0:
+        if len(existing_data) > 0:
             existing_data = existing_data[0]
         else:
             existing_data = {}
+
         
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
