@@ -143,25 +143,28 @@ def create_or_update_pentest_data(record_id):
         c = conn.cursor()
         c.execute("SELECT * FROM pentest_data")
         rows = c.fetchall()
-        # pentest_records = [dict(ix) for ix in rows]
-        # existing_data = [ix for ix in pentest_records if ix['record_id'] == record_id]
         existing_data = [dict(ix) for ix in rows if ix['record_id'] == record_id]
         if len(existing_data) > 0:
             existing_data = existing_data[0]
         else:
             existing_data = {}
-
         
+        admin = session['user_type'] == 'admin'
+
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
-        if existing_data.get('tested_by') and existing_data.get('tested_by') != session['username'] and session['user_type'] != 'admin':
-            return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
-        
-        if session['user_type'] != 'admin' and data.get('tested_by') and data.get('tested_by') != session['username']:
-            return jsonify({"error": "Unauthorized to assign pentest to another user."}), 403
+        if not admin:
+            if data.get('tested_by') != session['username']:
+                return jsonify({"error": "Unauthorized to complete this action."}), 403
+            
+            if existing_data.get('tested_by') not in [session['username'], 'Unassigned']:
+                return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
+            
+        if data.get('status') not in ['Not Started', 'In Progress', 'Completed']:
+            return jsonify({"error": "Invalid status. Please select from 'Not Started', 'In Progress', 'Completed."}), 400
 
         relative_path = existing_data.get('report_file')
         if 'report' in request.files:

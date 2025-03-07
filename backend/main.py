@@ -563,7 +563,7 @@ def update_record(record_id):
     try:
         application_owner = sanitize_string(data.get('application_owner', ''))
         maintainer = sanitize_string(data.get('maintainer', ''))
-        description = sanitize_string(data.get('description', ''))
+        description = data.get('description', '')
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
