@@ -163,7 +163,7 @@ def create_or_update_pentest_data(record_id):
             if data.get('tested_by') != session['username']:
                 return jsonify({"error": "Unauthorized to assign pentest to another user."}), 403
 
-            if existing_data.get('tested_by') == session['username'] and data.get['tested_by'] != session['username']:
+            if existing_data.get('tested_by') == session['username'] and data.get('tested_by') != session['username']:
                 return jsonify({"error": "You cannot unassign a pentest from yourself."}), 403
 
         relative_path = existing_data.get('report_file')
