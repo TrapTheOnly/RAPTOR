@@ -157,14 +157,14 @@ def create_or_update_pentest_data(record_id):
                 data[key] = value
 
         if not admin:
-            if existing_data.get('tested_by') not in [session['username'], 'Unassigned'] and data.get('tested_by') != session['username']:
+            if data.get('tested_by') != session['username']:
+                return jsonify({"error": "Unauthorized to complete this action."}), 403
+            
+            if existing_data.get('tested_by') not in [session['username'], 'Unassigned']:
                 return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
             
-            if data.get('tested_by') != session['username']:
-                return jsonify({"error": "Unauthorized to assign pentest to another user."}), 403
-
-            if existing_data.get('tested_by') == session['username'] and data.get('tested_by') != session['username']:
-                return jsonify({"error": "You cannot unassign a pentest from yourself."}), 403
+        if data.get('status') not in ['Not Started', 'In Progress', 'Completed']:
+            return jsonify({"error": "Invalid status. Please select from 'Not Started', 'In Progress', 'Completed."}), 400
 
         relative_path = existing_data.get('report_file')
         if 'report' in request.files:
@@ -177,9 +177,6 @@ def create_or_update_pentest_data(record_id):
                     return jsonify({"error": f"Failed to upload report: {e}"}), 500
             else:
                 return jsonify({"error": "Invalid file. Please upload a PDF file."}), 400
-            
-        if data.get('status') not in ['Not Started', 'In Progress', 'Completed']:
-            return jsonify({"error": "Invalid status. Please select from 'Not Started', 'In Progress', 'Completed."}), 400
             
         pentest_data = {
             'record_id': record_id,
