@@ -157,7 +157,7 @@ def create_or_update_pentest_data(record_id):
                 data[key] = value
 
         if not admin:
-            if existing_data.get('tested_by') not in [session['username'], 'Unassigned']:
+            if existing_data.get('tested_by') not in [session['username'], 'Unassigned'] and data.get('tested_by') != session['username']:
                 return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
             
             if data.get('tested_by') != session['username']:
