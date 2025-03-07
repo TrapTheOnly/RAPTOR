@@ -148,17 +148,23 @@ def create_or_update_pentest_data(record_id):
             existing_data = existing_data[0]
         else:
             existing_data = {}
+        
+        admin = session['user_type'] == 'admin'
 
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
-        if existing_data.get('tested_by') and existing_data.get('tested_by') not in [session['username'], 'Unassigned'] and session['user_type'] != 'admin':
-            return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
-        
-        if session['user_type'] != 'admin' and data.get('tested_by') and data.get('tested_by') != session['username']:
-            return jsonify({"error": "Unauthorized to assign pentest to another user."}), 403
+        if not admin:
+            if existing_data.get('tested_by') not in [session['username'], 'Unassigned']:
+                return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
+            
+            if data.get('tested_by') != session['username']:
+                return jsonify({"error": "Unauthorized to assign pentest to another user."}), 403
+
+            if existing_data.get('tested_by') == session['username'] and data.get['tested_by'] != session['username']:
+                return jsonify({"error": "You cannot unassign a pentest from yourself."}), 403
 
         relative_path = existing_data.get('report_file')
         if 'report' in request.files:
