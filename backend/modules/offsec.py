@@ -143,15 +143,12 @@ def create_or_update_pentest_data(record_id):
         c = conn.cursor()
         c.execute("SELECT * FROM pentest_data")
         rows = c.fetchall()
-        # pentest_records = [dict(ix) for ix in rows]
-        # existing_data = [ix for ix in pentest_records if ix['record_id'] == record_id]
         existing_data = [dict(ix) for ix in rows if ix['record_id'] == record_id]
         if len(existing_data) > 0:
             existing_data = existing_data[0]
         else:
             existing_data = {}
 
-        
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
             if (value := request.form.get(key)) is not None:
@@ -174,6 +171,9 @@ def create_or_update_pentest_data(record_id):
                     return jsonify({"error": f"Failed to upload report: {e}"}), 500
             else:
                 return jsonify({"error": "Invalid file. Please upload a PDF file."}), 400
+            
+        if data.get('status') not in ['Not Started', 'In Progress', 'Completed']:
+            return jsonify({"error": "Invalid status. Please select from 'Not Started', 'In Progress', 'Completed."}), 400
             
         pentest_data = {
             'record_id': record_id,
