@@ -160,7 +160,7 @@ def create_or_update_pentest_data(record_id):
             if data.get('tested_by') != session['username']:
                 return jsonify({"error": "Unauthorized to complete this action."}), 403
             
-            if existing_data.get('tested_by') not in [session['username'], 'Unassigned']:
+            if existing_data and existing_data.get('tested_by') not in [session['username'], 'Unassigned', None]:
                 return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
             
         if data.get('status') not in ['Not Started', 'In Progress', 'Completed']:
