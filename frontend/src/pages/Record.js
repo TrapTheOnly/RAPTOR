@@ -86,7 +86,7 @@ const Record = ({ darkMode }) => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" padding="2rem" bgcolor={theme.palette.background.default}>
-        <Paper elevation={3} style={{ padding: '2rem', width: '900px', maxWidth: '95%' }}>
+        <Paper elevation={3} style={{ padding: '2rem', maxWidth: '95%' }}>
           <Typography variant="h4" align="center" gutterBottom>Record Details: {record.name}</Typography>
           <Box mb={3}>
             <Typography variant="h6">Record Information</Typography>
