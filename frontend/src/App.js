@@ -7,6 +7,7 @@ import RecordsTable from './pages/RecordsTable';
 import AdminSettings from './pages/AdminSettings';
 import PentestDashboard from './pages/PentestDashboard';
 import Record from './pages/Record';
+import PentestRecord from './pages/PentestRecord';
 import Error from './pages/Error';
 
 const App = () => {
@@ -92,6 +93,10 @@ const App = () => {
             element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
                 <PentestDashboard darkMode={darkMode} isAdmin={userRole === 'admin'} username={username}/> : <Navigate to="/login" />
             }
+        />
+        <Route
+          path="/pentest/record/:recordId"
+          element={loggedIn ? <PentestRecord darkMode={darkMode} /> : <Navigate to="/login" />}
         />
         <Route
           path="/records/:domain"
