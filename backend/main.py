@@ -287,6 +287,9 @@ def init_db(db_path=DB_PATH):
             vulnerability_fixed INTEGER,
             service_desk_link TEXT,
             status TEXT NOT NULL DEFAULT 'Not Started',
+            open_ports TEXT,
+            notes TEXT,
+            owasp_checklist TEXT,
             FOREIGN KEY (record_id) REFERENCES records(id)
         )
     """)
