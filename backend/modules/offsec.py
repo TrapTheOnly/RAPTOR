@@ -79,12 +79,22 @@ def get_pentest_data_internal():
             return [
                 {
                     **pentest_records.get(record['id'], {
-                        'report_file': None, 'vulnerable': 0, 'tested_by': None,
-                        'test_start_date': None, 'test_end_date': None,
-                        'vulnerability_fixed': 0, 'service_desk_link': None, 'status': 'Not Started'
+                        'report_file': None,
+                        'vulnerable': 0,
+                        'tested_by': None,
+                        'test_start_date': None,
+                        'test_end_date': None,
+                        'vulnerability_fixed': 0,
+                        'service_desk_link': None,
+                        'status': 'Not Started',
+                        'open_ports': "",
+                        'notes': "",
+                        'owasp_checklist': ""
                     }),
-                    'recordId': record['id'], 'name': record['name'],
-                    'ip_address': record['ip_address'], 'source': record['source'],
+                    'recordId': record['id'],
+                    'name': record['name'],
+                    'ip_address': record['ip_address'],
+                    'source': record['source'],
                 } for record in dns_records
             ]
         
@@ -152,7 +162,7 @@ def create_or_update_pentest_data(record_id):
         admin = session['user_type'] == 'admin'
 
         data = {}
-        for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status']:
+        for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status', 'open_ports', 'notes', 'owasp_checklist']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
@@ -198,7 +208,10 @@ def create_or_update_pentest_data(record_id):
                 else int(data.get('vulnerability_fixed', existing_data.get('vulnerability_fixed', 0)))
             ),
             'service_desk_link': data.get('service_desk_link', existing_data.get('service_desk_link', '')),
-            'status': data.get('status', existing_data.get('status', 'Not Started'))
+            'status': data.get('status', existing_data.get('status', 'Not Started')),
+            'open_ports': data.get('open_ports', existing_data.get('open_ports', "")),
+            'notes': data.get('notes', existing_data.get('notes', "")),
+            'owasp_checklist': data.get('owasp_checklist', existing_data.get('owasp_checklist', ""))
         }
 
         with sqlite3.connect(DB_PATH) as conn:
