@@ -22,7 +22,7 @@ SCA_Check:
     - echo "Etc/UTC" > /etc/timezone
     - ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime
     - export DEBIAN_FRONTEND=noninteractive
-    - apt-get update && apt-get install -y tzdata
+    - apt-get update && apt-get install -y tzdata curl 
     - dpkg-reconfigure --frontend noninteractive tzdata
 
     # Install Node.js (NodeSource)
