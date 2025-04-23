@@ -48,7 +48,7 @@ SCA_Check:
     - python3 -m venv .venv
     - source .venv/bin/activate
     - pip install --upgrade pip setuptools wheel 
-    - REQ_FILE=$(find . -type f -name 'requirements.txt' | head -n 1)
+    - $REQ_FILE= (find . -type f -name 'requirements.txt' | head -n 1)
     - echo "Found: $REQ_FILE"
     - if [ -n "$REQ_FILE" ]; then pip install -r "$REQ_FILE"; else echo "requirements.txt not found"; exit 1; fi
 
