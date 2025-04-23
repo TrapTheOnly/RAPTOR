@@ -48,7 +48,9 @@ SCA_Check:
     - python3 -m venv .venv
     - source .venv/bin/activate
     - pip install --upgrade pip setuptools wheel 
-    - pip install -r backend/requirements.txt
+    - REQ_FILE=$(find . -type f -name 'requirements.txt' | head -n 1)
+    - echo "Found: $REQ_FILE"
+    - if [ -n "$REQ_FILE" ]; then pip install -r "$REQ_FILE"; else echo "requirements.txt not found"; exit 1; fi
 
     # Configure npm proxy
     - npm config set proxy $HTTP_PROXY
@@ -61,8 +63,5 @@ SCA_Check:
     - snyk auth "$SNYK_TOKEN"
 
   script:
-    # Install project dependencies
-    - if [ -f package-lock.json ]; then npm ci; elif [ -f yarn.lock ]; then npm install -g yarn && yarn install; else echo "No lockfile found"; fi
-
     # Run Snyk scan
     - snyk test --all-projects --detection-depth=4 --color=always
