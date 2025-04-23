@@ -33,6 +33,22 @@ SCA_Check:
     - node -v
     - npm -v
 
+    # Install Python 3.11 from deadsnakes PPA
+    - apt-get install -y software-properties-common
+    - add-apt-repository ppa:deadsnakes/ppa -y
+    - apt-get update && apt-get install -y python3.11 python3.11-venv python3.11-distutils curl git gcc g++ libffi-dev libssl-dev
+
+    # Set Python 3.11 as default
+    - update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+    - curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+
+    # Configure pip proxy + virtualenv
+    - mkdir -p ~/.pip
+    - echo -e "[global]\nproxy = $HTTP_PROXY\nindex-url = https://pypi.org/simple" > ~/.pip/pip.conf
+    - python3 -m venv .venv
+    - source .venv/bin/activate
+    - pip install --upgrade pip setuptools wheel
+
     # Configure npm proxy
     - npm config set proxy $HTTP_PROXY
     - npm config set https-proxy $HTTPS_PROXY
