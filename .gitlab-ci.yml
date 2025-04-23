@@ -1,78 +1,51 @@
 stages:
-- security_preprocess
 - security_check
-- build
-- deploy
 
-include:
-- project: 'security/sast-integrations/templates'
-  file: 'sast-check-gate-critical-new-stages.yaml'
+SCA_Check:
+  stage: security_preprocess
+  image: ubuntu:20.04
 
-before_script:
-- export http_proxy=http://proxy.azercell.com:8080
-- export https_proxy=http://proxy.azercell.com:8080
+  variables:
+    SNYK_TOKEN: $SNYK_TOKEN
+    HTTP_PROXY: "http://proxy.azercell.com:8080"
+    HTTPS_PROXY: "http://proxy.azercell.com:8080"
+    http_proxy: "http://proxy.azercell.com:8080"
+    https_proxy: "http://proxy.azercell.com:8080"
+    NODE_VERSION: "18"
 
-variables:
-  DOCKER_DRIVER: overlay2
-  COMPOSE_FILE_DEV: docker-compose.dev.yml
-  COMPOSE_FILE_PROD: docker-compose.prod.yml
+  before_script:
+    # Proxy settings
+    - export http_proxy=$HTTP_PROXY
+    - export https_proxy=$HTTPS_PROXY
 
-########################
-# DEV Branch Jobs
-########################
-build_dev:
-  stage: build
-  only:
-  - dev
+    # Timezone setup
+    - echo "Etc/UTC" > /etc/timezone
+    - ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime
+    - export DEBIAN_FRONTEND=noninteractive
+    - apt-get update && apt-get install -y tzdata
+    - dpkg-reconfigure --frontend noninteractive tzdata
+
+    # Install Node.js (NodeSource)
+    - curl -fsSL https://deb.nodesource.com/setup_$NODE_VERSION.x | bash -
+    - apt-get install -y nodejs git
+
+    # Verify
+    - node -v
+    - npm -v
+
+    # Configure npm proxy
+    - npm config set proxy $HTTP_PROXY
+    - npm config set https-proxy $HTTPS_PROXY
+
+    # Install Snyk CLI
+    - curl -sL https://static.snyk.io/cli/latest/snyk-linux -o /usr/local/bin/snyk
+    - chmod +x /usr/local/bin/snyk
+    - snyk config set proxy=$HTTP_PROXY
+    - snyk auth "$SNYK_TOKEN"
+
   script:
-  - echo "Building Docker images for DEV..."
-  - docker compose -f $COMPOSE_FILE_DEV build
-  - echo "Docker images built locally on callisto."
-  tags:
-  - callisto
+    # Install project dependencies
+    - if [ -f package-lock.json ]; then npm ci; elif [ -f yarn.lock ]; then npm install -g yarn && yarn install; else echo "No lockfile found"; fi
 
-deploy_dev:
-  stage: deploy
-  only:
-  - dev
-  when: on_success
-  script:
-  - echo "Deploying DEV environment on callisto..."
-  - docker compose -f $COMPOSE_FILE_DEV down || true
-  - docker compose -f $COMPOSE_FILE_DEV up -d
-  - echo "DEV environment is running."
-  tags:
-  - callisto
-  environment:
-    name: dev
-    url: https://callisto.azercell.com:1337
-
-########################
-# PROD Branch Jobs
-########################
-build_prod:
-  stage: build
-  only:
-  - main
-  script:
-  - echo "Building Docker images for PROD..."
-  - docker compose -f $COMPOSE_FILE_PROD up -d
-  - echo "Docker images built locally on kali01."
-  tags:
-  - prod-kali
-
-deploy_prod:
-  stage: deploy
-  only:
-  - main
-  when: manual
-  script:
-  - echo "Deploying PROD environment on kali01..."
-  - docker compose -f $COMPOSE_FILE_PROD down || true
-  - docker compose -f $COMPOSE_FILE_PROD up -d
-  - echo "PROD environment is running."
-  tags:
-  - prod-kali
-  environment:
-    name: production
-    url: https://kali01.azercell.com:1337
+    # Run Snyk scan
+    - snyk test --all-projects --detection-depth=4 --color=always
