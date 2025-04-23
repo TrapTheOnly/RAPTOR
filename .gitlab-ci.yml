@@ -47,7 +47,8 @@ SCA_Check:
     - echo -e "[global]\nproxy = $HTTP_PROXY\nindex-url = https://pypi.org/simple" > ~/.pip/pip.conf
     - python3 -m venv .venv
     - source .venv/bin/activate
-    - pip install --upgrade pip setuptools wheel
+    - pip install --upgrade pip setuptools wheel 
+    - pip install -r backend/requirements.txt
 
     # Configure npm proxy
     - npm config set proxy $HTTP_PROXY
