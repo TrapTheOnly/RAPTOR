@@ -34,36 +34,61 @@ snyk_scan:
     set -euo pipefail
     export http_proxy=$HTTP_PROXY https_proxy=$HTTPS_PROXY
 
-    # ─────────────── Python (requirements.txt) ─────────────────────────────
-    python3 -m venv .venv
-    source .venv/bin/activate
+    REQ_LIST=$(find . -type f -name 'requirements.txt')
     
-    # 2) Tell pip to use the corporate proxy and PyPI mirror
-    mkdir -p ~/.pip
-    printf "[global]\nproxy = %s\nindex-url = https://pypi.org/simple\n" "$HTTP_PROXY" \
-      > ~/.pip/pip.conf
+    if [[ -n "$REQ_LIST" ]]; then
+      echo "➤ Python requirements detected"
     
-    # 3) Up-to-date tooling
-    pip install -q --upgrade pip setuptools wheel
+      # 1) virtual-env
+      python3 -m venv .venv
+      source .venv/bin/activate
     
-    # 4) Install every requirements.txt we can find
-    found_reqs=$(find . -type f -name 'requirements.txt')
-    if [[ -z "$found_reqs" ]]; then
-      echo "requirements.txt not found"
-      exit 1
+      # 2) pip proxy + mirror
+      mkdir -p ~/.pip
+      printf "[global]\nproxy = %s\nindex-url = https://pypi.org/simple\n" "$HTTP_PROXY" \
+        > ~/.pip/pip.conf
+    
+      # 3) up-to-date tooling
+      pip install -q --upgrade pip setuptools wheel
+    
+      # 4) install every requirements.txt we found
+      echo "$REQ_LIST" | while read -r REQ; do
+        echo "• pip install -r $REQ"
+        pip install -q -r "$REQ" || true
+      done
+    else
+      echo "No requirements.txt found — skipping Python dependency install"
+    fi
+
+    # ─────────────── Java / Maven (pom.xml) ──────────────────────────────
+    # 0) Ensure JDK & Maven are in PATH (already set in image, but repeat for safety)
+    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+    export PATH=$JAVA_HOME/bin:$PATH
+    
+    # 1) Corporate Maven settings.xml (if provided at repo root)
+    if [[ -f settings.xml ]]; then
+      echo "• copying settings.xml → ~/.m2/"
+      mkdir -p ~/.m2
+      cp settings.xml ~/.m2/settings.xml
     fi
     
-    echo "$found_reqs" | while read -r REQ; do
-      echo "• pip install -r $REQ"
-      pip install -q -r "$REQ" || true        # never fail the whole job on pip error
-    done
-
-
-    # ─────────────── Maven (pom.xml) ───────────────────────────────────────
-    find . -type f -name 'pom.xml' | while read -r POM; do
-        echo "• mvn dependency:tree in $(dirname "$POM")"
-        mvn -B -f "$POM" dependency:tree -DoutputType=dot || true
-    done
+    # 2) Resolve deps for every pom.xml we can find
+    find . -type f -name 'pom.xml' -print0 |
+      while IFS= read -r -d '' POM; do
+        DIR=$(dirname "$POM")
+        echo "• mvn dependency:tree in $DIR"
+    
+        # make wrapper executable just in case
+        [[ -f "$DIR/mvnw" ]] && chmod +x "$DIR/mvnw"
+    
+        if [[ -x "$DIR/mvnw" ]]; then
+          "$DIR/mvnw"  -f "$POM" dependency:tree \
+                       -DoutputType=dot --batch-mode --non-recursive || true
+        else
+          mvn -B       -f "$POM" dependency:tree \
+                       -DoutputType=dot --non-recursive || true
+        fi
+      done
 
     # ─── Gradle (build.gradle / .kts) ─────────────────────────────────
     find . -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print0 \
