@@ -1,71 +1,81 @@
+# ───────────────────────────────────────────────────────────────
+#  Snyk scan for a poly-glot mono-repo
+# ───────────────────────────────────────────────────────────────
+
+image:
+  name: gitlab01.azercell.com:5555/security/sca-integrations/image:latest
+  entrypoint: [""]                     # keep container's /bin/bash
+
 stages:
-- security_check
+  - security
 
-SCA_Check:
-  stage: security_check
-  image: ubuntu:20.04
+# CI/CD ▸ Variables  (masked ✔ / protected if needed)
+variables:
+  REGISTRY_USERNAME: "$REGISTRY_USERNAME"   # your GitLab username
+  REGISTRY_TOKEN:    "$REGISTRY_TOKEN"      # PAT with write_registry
+  SNYK_TOKEN:        "$SNYK_TOKEN"          # Snyk org/user token
 
-  variables:
-    SNYK_TOKEN: $SNYK_TOKEN
-    HTTP_PROXY: "http://proxy.azercell.com:8080"
-    HTTPS_PROXY: "http://proxy.azercell.com:8080"
-    http_proxy: "http://proxy.azercell.com:8080"
-    https_proxy: "http://proxy.azercell.com:8080"
-    NODE_VERSION: "18"
+  # corporate proxy (already baked into the image, duplicated for clarity)
+  HTTP_PROXY:  "http://proxy.azercell.com:8080"
+  HTTPS_PROXY: "http://proxy.azercell.com:8080"
+  NO_PROXY:    "localhost,127.0.0.1"
+
+snyk_scan:
+  stage: security
 
   before_script:
-    # Proxy settings
-    - export http_proxy=$HTTP_PROXY
-    - export https_proxy=$HTTPS_PROXY
+    # #── Registry login (only needed if the image lives in a private project) ──
+    # - docker login gitlab01.azercell.com:5555 -u "$REGISTRY_USERNAME" -p "$REGISTRY_TOKEN"
 
-    # Timezone setup
-    - echo "Etc/UTC" > /etc/timezone
-    - ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime
-    - export DEBIAN_FRONTEND=noninteractive
-    - apt-get update && apt-get install -y tzdata curl 
-    - dpkg-reconfigure --frontend noninteractive tzdata
-
-    # Install Node.js (NodeSource)
-    - curl -fsSL https://deb.nodesource.com/setup_$NODE_VERSION.x | bash -
-    - apt-get install -y nodejs git
-
-    # Verify
-    - node -v
-    - npm -v
-
-    # Install Python 3.11 from deadsnakes PPA
-    - apt-get install -y software-properties-common
-    - add-apt-repository ppa:deadsnakes/ppa -y
-    - apt-get update && apt-get install -y python3.11 python3.11-venv python3.11-distutils curl git gcc g++ libffi-dev libssl-dev
-
-    # Set Python 3.11 as default
-    - update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
-    - curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
-
-    # Configure pip proxy + virtualenv
-    - mkdir -p ~/.pip
-    - echo -e "[global]\nproxy = $HTTP_PROXY\nindex-url = https://pypi.org/simple" > ~/.pip/pip.conf
-    - python3 -m venv .venv
-    - source .venv/bin/activate
-    - pip install --upgrade pip setuptools wheel 
-    - |
-        REQ_FILE=$(find . -type f -name 'requirements.txt' | head -n 1)
-        if [ -n "$REQ_FILE" ]; then
-          pip install -r "$REQ_FILE"
-        else
-          echo "requirements.txt not found"
-          exit 1
-        fi
-    # Configure npm proxy
-    - npm config set proxy $HTTP_PROXY
-    - npm config set https-proxy $HTTPS_PROXY
-
-    # Install Snyk CLI
-    - curl -sL https://static.snyk.io/cli/latest/snyk-linux -o /usr/local/bin/snyk
-    - chmod +x /usr/local/bin/snyk
-    - snyk config set proxy=$HTTP_PROXY
+    #── Snyk auth ────────────────────────────────────────────────────────────
     - snyk auth "$SNYK_TOKEN"
 
-  script:
-    # Run Snyk scan
-    - snyk test --all-projects --detection-depth=4 --color=always
+  script: |
+    set -euo pipefail
+    export http_proxy=$HTTP_PROXY https_proxy=$HTTPS_PROXY
+
+    # ─────────────── Python (requirements.txt) ─────────────────────────────
+    find . -type f -name 'requirements.txt' | while read -r REQ; do
+        echo "• pip install -r $REQ"
+        pip install -r "$REQ" --quiet || true
+    done
+
+    # ─────────────── Maven (pom.xml) ───────────────────────────────────────
+    find . -type f -name 'pom.xml' | while read -r POM; do
+        echo "• mvn dependency:tree in $(dirname "$POM")"
+        mvn -B -f "$POM" dependency:tree -DoutputType=dot || true
+    done
+
+    # ─── Gradle (build.gradle / .kts) ─────────────────────────────────
+    find . -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print0 \
+      | while IFS= read -r -d '' GRFILE; do
+      DIR=$(dirname "$GRFILE")
+      echo "• gradle dependencies in $DIR"
+      chmod +x ./gradlew
+      # 1) Proxy just for this Gradle run
+      export GRADLE_OPTS="-Dhttp.proxyHost=proxy.azercell.com \
+                          -Dhttp.proxyPort=8080 \
+                          -Dhttps.proxyHost=proxy.azercell.com \
+                          -Dhttps.proxyPort=8080"
+
+      # 2) Prefer the project’s wrapper; fall back to system gradle
+      if [[ -x "$DIR/gradlew" ]]; then
+        "$DIR/gradlew" -p "$DIR" dependencies --no-daemon || true
+      else
+        gradle        -p "$DIR" dependencies --no-daemon || true
+      fi
+      
+    done
+
+    # ─────────────── Go (go.mod) ───────────────────────────────────────────
+    find . -type f -name 'go.mod' | while read -r GOMOD; do
+        DIR=$(dirname "$GOMOD")
+        echo "• go mod tidy in $DIR"
+        (cd "$DIR" && go mod tidy)
+    done
+
+    # ─────────────── Snyk scan (covers every manifest) ─────────────────────
+    snyk test \
+        --all-projects\
+        --detection-depth=8 \
+        --color=always
