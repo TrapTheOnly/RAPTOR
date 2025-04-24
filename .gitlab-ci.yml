@@ -35,10 +35,29 @@ snyk_scan:
     export http_proxy=$HTTP_PROXY https_proxy=$HTTPS_PROXY
 
     # ─────────────── Python (requirements.txt) ─────────────────────────────
-    find . -type f -name 'requirements.txt' | while read -r REQ; do
-        echo "• pip install -r $REQ"
-        pip install -r "$REQ" --quiet || true
+    python3 -m venv .venv
+    source .venv/bin/activate
+    
+    # 2) Tell pip to use the corporate proxy and PyPI mirror
+    mkdir -p ~/.pip
+    printf "[global]\nproxy = %s\nindex-url = https://pypi.org/simple\n" "$HTTP_PROXY" \
+      > ~/.pip/pip.conf
+    
+    # 3) Up-to-date tooling
+    pip install -q --upgrade pip setuptools wheel
+    
+    # 4) Install every requirements.txt we can find
+    found_reqs=$(find . -type f -name 'requirements.txt')
+    if [[ -z "$found_reqs" ]]; then
+      echo "requirements.txt not found"
+      exit 1
+    fi
+    
+    echo "$found_reqs" | while read -r REQ; do
+      echo "• pip install -r $REQ"
+      pip install -q -r "$REQ" || true        # never fail the whole job on pip error
     done
+
 
     # ─────────────── Maven (pom.xml) ───────────────────────────────────────
     find . -type f -name 'pom.xml' | while read -r POM; do
