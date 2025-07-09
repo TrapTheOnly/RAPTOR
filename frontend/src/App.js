@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import axios from 'axios';
-import Header from './components/Header';
-import Login from './pages/Login';
+import ModernHeader from './components/ModernHeader';
+import ModernLogin from './pages/ModernLogin';
+import Dashboard from './pages/Dashboard';
 import RecordsTable from './pages/RecordsTable';
 import AdminSettings from './pages/AdminSettings';
 import PentestDashboard from './pages/PentestDashboard';
@@ -17,6 +19,42 @@ const App = () => {
   const [userRole, setUserRole] = useState(null);
   const storedTheme = localStorage.getItem('theme') || 'light';
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
+
+  // Global theme for the entire application
+  const globalTheme = createTheme({
+    palette: {
+      mode: darkMode ? 'dark' : 'light',
+      primary: {
+        main: darkMode ? '#ffffff' : '#1976d2',
+      },
+      secondary: {
+        main: darkMode ? '#666666' : '#9c27b0',
+      },
+      background: {
+        default: darkMode ? '#0a0a0a' : '#f5f5f5',
+        paper: darkMode ? '#141414' : '#ffffff',
+      },
+      text: {
+        primary: darkMode ? '#ffffff' : '#333333',
+        secondary: darkMode ? '#999999' : '#666666',
+      },
+      divider: darkMode ? '#333333' : '#e0e0e0',
+    },
+    typography: {
+      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+      h4: {
+        fontWeight: 300,
+        letterSpacing: '-0.025em',
+      },
+      h6: {
+        fontWeight: 500,
+        letterSpacing: '-0.01em',
+      },
+    },
+    shape: {
+      borderRadius: 8,
+    },
+  });
 
   useEffect(() => {
     const checkLoginStatus = async () => {
@@ -45,25 +83,38 @@ const App = () => {
   }, [darkMode]);
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <ThemeProvider theme={globalTheme}>
+        <CssBaseline />
+        <div>Loading...</div>
+      </ThemeProvider>
+    );
   }
 
   return (
+    <ThemeProvider theme={globalTheme}>
+      <CssBaseline />
     <Router>
         {loggedIn && (
-          <Header
+          <ModernHeader
             username={username}
             userRole={userRole}
             setUserRole={setUserRole}
             setLoggedIn={setLoggedIn}
             setUsername={setUsername}
-            darkMode={darkMode}
-            setDarkMode={setDarkMode}
+              darkMode={darkMode}
+              setDarkMode={setDarkMode}
           />
         )}
       <Routes>
         <Route
           path="/"
+            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ? 
+            <Dashboard userRole={userRole} darkMode={darkMode}/> : 
+              loggedIn ? <Navigate to="/records" /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/records"
           element={loggedIn && userRole ? 
             <RecordsTable userRole={userRole} darkMode={darkMode}/> : 
               <Navigate to="/login" />}
@@ -71,12 +122,11 @@ const App = () => {
         <Route
           path="/login"
           element={ !loggedIn ?
-            <Login
+            <ModernLogin
               setLoggedIn={setLoggedIn}
               setGlobalUsername={setUsername}
               setGlobalUserRole={setUserRole}
-              darkMode={darkMode}
-              setDarkMode={setDarkMode}
+                darkMode={darkMode}
             /> : <Navigate to="/" />
           }
         />
@@ -106,6 +156,7 @@ const App = () => {
         <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />
       </Routes>
     </Router>
+    </ThemeProvider>
   );
 };
 

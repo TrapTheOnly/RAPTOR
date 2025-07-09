@@ -536,27 +536,31 @@ CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(","
 # ---------------------------------------------------------
 #! Record API Endpoints
 # ---------------------------------------------------------
-@app.route('/records', methods=['GET'])
+@app.route('/api/records', methods=['GET'])
 @login_required_json
 def get_records():
     """
-    Returns all records from the database.
+    Returns all records from the database with pentest data (including open_ports).
     """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM records")
+    c.execute("""
+        SELECT r.*, p.open_ports
+        FROM records r
+        LEFT JOIN pentest_data p ON r.id = p.record_id
+    """)
     rows = c.fetchall()
     conn.close()
 
     records = [dict(ix) for ix in rows]
     return jsonify(records)
 
-@app.route('/records/<int:record_id>', methods=['POST'])
+@app.route('/api/records/<int:record_id>', methods=['POST'])
 @login_required_json
 def update_record(record_id):
     """
-    Update a record by ID.
+    Update a record by ID (including open_ports in pentest_data).
     """
     data = request.get_json(force=True)
 
@@ -566,6 +570,7 @@ def update_record(record_id):
     try:
         application_owner = sanitize_string(data.get('application_owner', ''))
         maintainer = sanitize_string(data.get('maintainer', ''))
+        open_ports = data.get('open_ports', '')
         description = data.get('description', '')
 
         conn = sqlite3.connect(DB_PATH)
@@ -579,6 +584,7 @@ def update_record(record_id):
 
         old_maintainer = old_record[0]
 
+        # Update records table
         c.execute("""
             UPDATE records
             SET application_owner = ?,
@@ -588,6 +594,25 @@ def update_record(record_id):
             WHERE id = ?
         """, (application_owner, maintainer, description, record_id))
 
+        # Update or insert open_ports in pentest_data
+        c.execute("SELECT record_id FROM pentest_data WHERE record_id = ?", (record_id,))
+        pentest_exists = c.fetchone()
+        
+        if pentest_exists:
+            c.execute("""
+                UPDATE pentest_data
+                SET open_ports = ?
+                WHERE record_id = ?
+            """, (open_ports, record_id))
+        else:
+            # Get record details for initial pentest_data entry
+            c.execute("SELECT name, ip_address, source FROM records WHERE id = ?", (record_id,))
+            record_info = c.fetchone()
+            if record_info:
+                c.execute("""
+                    INSERT INTO pentest_data (record_id, dns_name, ip_address, source, open_ports)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (record_id, record_info[0], record_info[1], record_info[2], open_ports))
 
         if old_maintainer != maintainer:
             c.execute("""
@@ -609,7 +634,7 @@ def update_record(record_id):
         logger.error(f"Error updating record {record_id}: {e}")
         return jsonify({"error": str(e)}), 400
 
-@app.route('/records/<int:record_id>', methods=['DELETE'])
+@app.route('/api/records/<int:record_id>', methods=['DELETE'])
 @admin_required
 def delete_record(record_id):
     """
@@ -652,7 +677,7 @@ def delete_record(record_id):
         logger.error(f"Error deleting record {record_id}: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
-@app.route('/records/<int:record_id>/history', methods=['GET'])
+@app.route('/api/records/<int:record_id>/history', methods=['GET'])
 @login_required_json
 def get_record_history(record_id):
     conn = sqlite3.connect(DB_PATH)
@@ -665,13 +690,18 @@ def get_record_history(record_id):
     history = [dict(ix) for ix in rows]
     return jsonify(history)
 
-@app.route('/records/<string:domain>', methods=['GET'])
+@app.route('/api/records/<string:domain>', methods=['GET'])
 @login_required_json
 def get_record_by_domain(domain):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM records WHERE name = ?", (domain,))
+    c.execute("""
+        SELECT r.*, p.open_ports
+        FROM records r
+        LEFT JOIN pentest_data p ON r.id = p.record_id
+        WHERE r.name = ?
+    """, (domain,))
     row = c.fetchone()
     conn.close()
 
