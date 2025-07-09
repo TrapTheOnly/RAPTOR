@@ -5,7 +5,7 @@ WORKDIR /app
 COPY frontend/package*.json ./
 ARG http_proxy
 ARG https_proxy
-RUN npm install
+RUN npm --proxy $http_proxy install
 COPY frontend/ .
 RUN npm run build
 

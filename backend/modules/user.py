@@ -15,6 +15,7 @@ LDAP_PASS = os.getenv("LDAP_PASS")
 
 def ldap_authenticate(username, password):
     """Authenticates a user via LDAP or as the static admin user."""
+    print(username)
     if username == ADMIN_USERNAME:
         return admin_login(username, password)
     try:
@@ -24,6 +25,7 @@ def ldap_authenticate(username, password):
         conn.unbind()
         return True
     except Exception as e:
+        print("ldap auth failed", e)
         logger.error(f"LDAP authentication failed for user {username}: {e}")
         return False
 
