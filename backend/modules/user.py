@@ -15,18 +15,32 @@ LDAP_PASS = os.getenv("LDAP_PASS")
 
 def ldap_authenticate(username, password):
     """Authenticates a user via LDAP or as the static admin user."""
-    print(username)
+    logger.info(f"🔐 ldap_authenticate called for username: {username}")
+    print(f"🔐 ldap_authenticate called for username: {username}")
+    
     if username == ADMIN_USERNAME:
-        return admin_login(username, password)
+        logger.info(f"🔑 Admin username detected ({ADMIN_USERNAME}), calling admin_login")
+        print(f"🔑 Admin username detected ({ADMIN_USERNAME}), calling admin_login")
+        result = admin_login(username, password)
+        logger.info(f"🔑 Admin login result: {result}")
+        print(f"🔑 Admin login result: {result}")
+        return result
+    
     try:
         user_dn = f"{LDAP_DOMAIN}\\{username}"
+        logger.info(f"🌐 Attempting LDAP auth for: {user_dn} on server: {LDAP_SERVER}")
+        print(f"🌐 Attempting LDAP auth for: {user_dn} on server: {LDAP_SERVER}")
+        
         server = Server(LDAP_SERVER, get_info=ALL, use_ssl=True)
         conn = Connection(server, user=user_dn, password=password, authentication=NTLM, auto_bind=True)
         conn.unbind()
+        
+        logger.info(f"✅ LDAP authentication successful for user {username}")
+        print(f"✅ LDAP authentication successful for user {username}")
         return True
     except Exception as e:
-        print("ldap auth failed", e)
-        logger.error(f"LDAP authentication failed for user {username}: {e}")
+        logger.error(f"❌ LDAP authentication failed for user {username}: {e}")
+        print(f"❌ LDAP authentication failed for user {username}: {e}")
         return False
 
 def search_ldap_users(query, page_size=500):
