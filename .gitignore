@@ -17,3 +17,5 @@ __pycache__
 test.*
 .copyignore
 sqleditor.py
+runner.py
+tree_db.py

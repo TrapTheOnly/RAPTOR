@@ -15,16 +15,19 @@ LDAP_PASS = os.getenv("LDAP_PASS")
 
 def ldap_authenticate(username, password):
     """Authenticates a user via LDAP or as the static admin user."""
+    
     if username == ADMIN_USERNAME:
-        return admin_login(username, password)
+        result = admin_login(username, password)
+        return result
+    
     try:
         user_dn = f"{LDAP_DOMAIN}\\{username}"
+        
         server = Server(LDAP_SERVER, get_info=ALL, use_ssl=True)
         conn = Connection(server, user=user_dn, password=password, authentication=NTLM, auto_bind=True)
         conn.unbind()
         return True
     except Exception as e:
-        logger.error(f"LDAP authentication failed for user {username}: {e}")
         return False
 
 def search_ldap_users(query, page_size=500):

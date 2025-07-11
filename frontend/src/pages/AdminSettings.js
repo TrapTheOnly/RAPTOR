@@ -1,7 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { TextField, Button, Box, Typography, Paper, List, ListItem, ListItemText, ThemeProvider, createTheme, CssBaseline, IconButton } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
+import { 
+  TextField, 
+  Button, 
+  Box, 
+  Typography, 
+  Paper, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  IconButton,
+  Card,
+  CardContent,
+  Grid,
+  useTheme,
+  alpha,
+  Divider,
+  Chip,
+  Avatar,
+  Alert,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Stack,
+  Tooltip,
+  LinearProgress,
+  InputAdornment
+} from '@mui/material';
+import {
+  Delete as DeleteIcon,
+  Settings as SettingsIcon,
+  Storage as StorageIcon,
+  Security as SecurityIcon,
+  People as PeopleIcon,
+  Search as SearchIcon,
+  Add as AddIcon,
+  Save as SaveIcon,
+  VpnKey as VpnKeyIcon,
+  Computer as ComputerIcon,
+  Refresh as RefreshIcon,
+  AdminPanelSettings as AdminIcon,
+  PersonAdd as PersonAddIcon,
+  Edit as EditIcon,
+  Password as PasswordIcon
+} from '@mui/icons-material';
 
 const AdminSettings = ({ darkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,20 +65,39 @@ const AdminSettings = ({ darkMode }) => {
   const [ipsToDelete, setIpsToDelete] = useState([]);
   const [selectedUserRoles, setSelectedUserRoles] = useState({});
   const [editedUserRoles, setEditedUserRoles] = useState({});
-  const theme = createTheme({ palette: { mode: darkMode ? 'dark' : 'light', primary: { main: darkMode ? '#90caf9' : '#1976d2' }, secondary: { main: darkMode ? '#f48fb1' : '#d81b60' } } });
+  const [loading, setLoading] = useState(false);
+  
+  const theme = useTheme();
 
-  useEffect(() => { fetchIpSources(); fetchExistingUsers(); }, []);
+  useEffect(() => { 
+    fetchIpSources(); 
+    fetchExistingUsers(); 
+  }, []);
+
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
   const fetchIpSources = async () => {
     try {
       const response = await axios.get('/ip-sources');
       if (response.status === 200 && response.data.ip_sources) {
         const map = {};
-        response.data.ip_sources.forEach(item => { map[item.source_name] = map[item.source_name] || []; map[item.source_name].push(item.ip_address); });
+        response.data.ip_sources.forEach(item => { 
+          map[item.source_name] = map[item.source_name] || []; 
+          map[item.source_name].push(item.ip_address); 
+        });
         setSourceTypes(Array.from(new Set(response.data.ip_sources.map(item => item.source_name))));
         setIpsBySource(map);
       }
-    } catch (error) { setMessageType('error'); setMessage('Failed to fetch IP sources.'); console.error(error); }
+    } catch (error) { 
+      setMessageType('error'); 
+      setMessage('Failed to fetch IP sources.'); 
+      console.error(error); 
+    }
   };
 
   const handleAddSourceType = () => {
@@ -43,7 +105,6 @@ const AdminSettings = ({ darkMode }) => {
     if (!trimmedName || sourceTypes.includes(trimmedName)) {
       setMessageType('error');
       setMessage(sourceTypes.includes(trimmedName) ? 'This source type already exists.' : 'Invalid source name.');
-      setTimeout(() => setMessage(''), 2000);
       return;
     }
     setSourceTypes([...sourceTypes, trimmedName]);
@@ -52,14 +113,21 @@ const AdminSettings = ({ darkMode }) => {
     setNewSourceName('');
   };
 
-  const handleSelectSourceType = (srcName) => { setSelectedSource(srcName); setIpsToAdd([]); setIpsToDelete([]); setNewIpAddress(''); };
+  const handleSelectSourceType = (srcName) => { 
+    setSelectedSource(srcName); 
+    setIpsToAdd([]); 
+    setIpsToDelete([]); 
+    setNewIpAddress(''); 
+  };
 
   const handleAddIp = () => {
     const trimmedIp = newIpAddress.trim();
     if (!trimmedIp || !selectedSource) return;
     const currentIps = ipsBySource[selectedSource] || [];
     if (currentIps.includes(trimmedIp)) {
-      setMessageType('error'); setMessage('IP already exists in this source.'); setTimeout(() => setMessage(''), 2000); return;
+      setMessageType('error'); 
+      setMessage('IP already exists in this source.'); 
+      return;
     }
     setIpsBySource({ ...ipsBySource, [selectedSource]: [...currentIps, trimmedIp] });
     setIpsToAdd([...ipsToAdd, trimmedIp]);
@@ -73,14 +141,23 @@ const AdminSettings = ({ darkMode }) => {
 
   const handleSubmitChanges = async () => {
     if (!selectedSource) return;
+    setLoading(true);
     try {
-      await Promise.all([...ipsToAdd.map(ip => axios.post('/ip-sources', { source_name: selectedSource, ip_address: ip })), ...ipsToDelete.map(ip => axios.delete('/ip-sources', { data: { ip_address: ip } }))]);
-      setMessageType('success'); setMessage('Changes submitted successfully.'); setTimeout(() => setMessage(''), 2000);
-      setIpsToAdd([]); setIpsToDelete([]); fetchIpSources(); // Refresh
+      await Promise.all([
+        ...ipsToAdd.map(ip => axios.post('/ip-sources', { source_name: selectedSource, ip_address: ip })), 
+        ...ipsToDelete.map(ip => axios.delete('/ip-sources', { data: { ip_address: ip } }))
+      ]);
+      setMessageType('success'); 
+      setMessage('Changes submitted successfully.');
+      setIpsToAdd([]); 
+      setIpsToDelete([]); 
+      fetchIpSources();
     } catch (error) {
       console.error('Failed to submit changes', error);
       setMessageType('error');
       setMessage('Failed to submit changes.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -100,245 +177,779 @@ const AdminSettings = ({ darkMode }) => {
   };
 
   const handleSubmit = async () => {
+    setLoading(true);
     try {
-      const usersWithRoles = selectedUsers.map(user => ({ username: user.username, email: user.email, role: selectedUserRoles[user.username] || 'user' }));
+      const usersWithRoles = selectedUsers.map(user => ({ 
+        username: user.username, 
+        email: user.email, 
+        role: selectedUserRoles[user.username] || 'user' 
+      }));
       const responses = await Promise.all(usersWithRoles.map(user => axios.post('/add-user', user)));
       if (responses.every(response => response.status === 200)) {
-        setMessageType('success'); setMessage('Users added successfully.'); setSelectedUsers([]); setSelectedUserRoles({});
+        setMessageType('success'); 
+        setMessage('Users added successfully.'); 
+        setSelectedUsers([]); 
+        setSelectedUserRoles({});
         setTimeout(() => { window.location.reload(); }, 1000);
       }
     } catch (error) {
-      setMessageType('error'); setMessage('Failed to add users. Please try again.');
-    } finally { setTimeout(() => setMessage(''), 2000); }
+      setMessageType('error'); 
+      setMessage('Failed to add users. Please try again.');
+    } finally { 
+      setLoading(false);
+    }
   };
 
-    const handleSaveRole = async (username, newRole) => {
-        try {
-            const response = await axios.post('/update-user-role', { username, role: newRole });
-            if (response.status === 200) {
-                setExistingUsers(prevUsers => prevUsers.map(user => user.username === username ? { ...user, role: newRole } : user));
-                setMessageType('success');
-                setMessage(response.data.message);
-            } else {
-                setMessageType('error');
-                setMessage('Failed to update role. Please try again.');
-            }
-        } catch (error) {
-            setMessageType('error');
-            setMessage(error.response?.data?.error || 'Failed to update user role.  Please try again.');
-        } finally {
-            setTimeout(() => setMessage(''), 2000);
-        }
-    };
+  const handleSaveRole = async (username, newRole) => {
+    try {
+      const response = await axios.post('/update-user-role', { username, role: newRole });
+      if (response.status === 200) {
+        setExistingUsers(prevUsers => prevUsers.map(user => 
+          user.username === username ? { ...user, role: newRole } : user
+        ));
+        setMessageType('success');
+        setMessage(response.data.message);
+      } else {
+        setMessageType('error');
+        setMessage('Failed to update role. Please try again.');
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error.response?.data?.error || 'Failed to update user role. Please try again.');
+    }
+  };
 
   const handleDeleteUser = async (username) => {
+    if (!window.confirm(`Are you sure you want to delete user ${username}?`)) return;
     try {
       const response = await axios.delete('/delete-user', { data: { username } });
       if (response.status === 200) {
-        setMessageType('success'); setMessage(`User ${username} deleted successfully.`); setExistingUsers(existingUsers.filter((user) => user.username !== username));
+        setMessageType('success'); 
+        setMessage(`User ${username} deleted successfully.`); 
+        setExistingUsers(existingUsers.filter((user) => user.username !== username));
       }
     } catch (error) {
-      setMessageType('error'); setMessage(`Failed to delete user ${username}.`);
-    } finally { setTimeout(() => setMessage(''), 2000); }
+      setMessageType('error'); 
+      setMessage(`Failed to delete user ${username}.`);
+    }
   };
 
   const handleManualParse = async () => {
+    setLoading(true);
     try {
       const response = await axios.post('/manual-update');
-      if (response.status === 200) { setMessageType('success'); setMessage('Records updated successfully.'); }
+      if (response.status === 200) { 
+        setMessageType('success'); 
+        setMessage('Records updated successfully.'); 
+      }
     } catch (error) {
-      setMessageType('error'); setMessage('Failed to parse records. Please try again.');
-    } finally { setTimeout(() => setMessage(''), 2000); }
+      setMessageType('error'); 
+      setMessage('Failed to parse records. Please try again.');
+    } finally { 
+      setLoading(false);
+    }
   };
 
   const handleSearch = async () => {
+    setLoading(true);
     try {
       setSearchResults([]);
       const response = await axios.get(`/ldap-search?query=${searchQuery}`);
       if (response.status === 200) {
-        setSearchResults(response.data.results.filter(user => user.username !== "None" && user.email !== "None" && user.full_name !== "None"));
-      } else { setMessageType('error'); setMessage('No results found.'); }
+        setSearchResults(response.data.results.filter(user => 
+          user.username !== "None" && user.email !== "None" && user.full_name !== "None"
+        ));
+      } else { 
+        setMessageType('error'); 
+        setMessage('No results found.'); 
+      }
     } catch (error) {
-      setMessageType('error'); setMessage('Error searching LDAP. Please try again.');
-    } finally { setTimeout(() => setMessage(''), 2000); }
+      setMessageType('error'); 
+      setMessage('Error searching LDAP. Please try again.');
+    } finally { 
+      setLoading(false);
+    }
   };
-
-  const handleSearchKeyDown = (e) => { if (e.key === 'Enter') { handleSearch(); e.preventDefault(); } };
-  const handlePasswordKeyDown = (e) => { if (e.key === 'Enter') { handleChangePassword(); e.preventDefault(); } };
 
   const fetchExistingUsers = async () => {
     try {
       const response = await axios.get('/existing-users');
       if (response.status === 200) setExistingUsers(response.data.users);
     } catch (error) {
-      setMessageType('error'); setMessage('Failed to fetch existing users.');
-    } finally { setTimeout(() => setMessage(''), 2000); }
+      setMessageType('error'); 
+      setMessage('Failed to fetch existing users.');
+    }
   };
 
   const handleChangePassword = async () => {
     if (newPassword !== retypePassword) {
-      setMessageType('error'); setMessage('New password and retyped password do not match.'); setTimeout(() => setMessage(''), 2000); return;
+      setMessageType('error'); 
+      setMessage('New password and retyped password do not match.'); 
+      return;
     }
+    setLoading(true);
     try {
-      const response = await axios.post('/change-password', { current_password: currentPassword, new_password: newPassword });
+      const response = await axios.post('/change-password', { 
+        current_password: currentPassword, 
+        new_password: newPassword 
+      });
       if (response.status === 200) {
-        setMessageType('success'); setMessage('Password changed successfully.'); setCurrentPassword(''); setNewPassword(''); setRetypePassword('');
+        setMessageType('success'); 
+        setMessage('Password changed successfully.'); 
+        setCurrentPassword(''); 
+        setNewPassword(''); 
+        setRetypePassword('');
       }
     } catch (error) {
-      setMessageType('error'); setMessage('Failed to change password. Please check your current password.');
-    } finally { setTimeout(() => setMessage(''), 2000); }
+      setMessageType('error'); 
+      setMessage('Failed to change password. Please check your current password.');
+    } finally { 
+      setLoading(false);
+    }
+  };
+
+  const getRoleChip = (role) => {
+    const configs = {
+      'admin': { label: 'Admin', color: theme.palette.error.main },
+      'pentester': { label: 'Pentester', color: theme.palette.warning.main },
+      'user': { label: 'User', color: theme.palette.primary.main }
+    };
+    const config = configs[role] || configs['user'];
+    
+    return (
+      <Chip
+        label={config.label}
+        size="small"
+        sx={{
+          backgroundColor: alpha(config.color, 0.1),
+          color: config.color,
+          fontWeight: 500
+        }}
+      />
+    );
+  };
+
+  const getSourceAvatar = (source) => {
+    const colors = {
+      'Production': '#f44336',
+      'External': '#ff9800', 
+      'Development': '#4caf50',
+      'Testing': '#9c27b0',
+      'Other': '#666666'
+    };
+    
+    return (
+      <Avatar
+        sx={{
+          width: 32,
+          height: 32,
+          fontSize: '0.875rem',
+          backgroundColor: colors[source] || colors['Other'],
+          mr: 1
+        }}
+      >
+        {source?.charAt(0) || '?'}
+      </Avatar>
+    );
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" padding="2rem" bgcolor={theme.palette.background.default}>
-        <Paper elevation={3} style={{ padding: '2rem', width: '900px', maxWidth: '95%' }}>
-          <Typography variant="h4" align="center" gutterBottom>Admin Settings</Typography>
-          {message && <Typography variant="body1" align="center" style={{ color: messageType === 'success' ? 'green' : 'red', marginBottom: '1rem' }}>{message}</Typography>}
+    <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
+      {/* Alert */}
+      <Box sx={{ position: 'fixed', top: 20, right: 20, zIndex: 9999 }}>
+        {message && (
+          <Alert 
+            severity={messageType} 
+            sx={{ minWidth: '400px', maxWidth: '400px' }}
+            onClose={() => setMessage('')}
+          >
+            {message}
+          </Alert>
+        )}
+      </Box>
 
-          <Box mb={3}><Button variant="contained" color="secondary" fullWidth onClick={handleManualParse}>Parse Records</Button></Box>
+      {/* Header */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            System Administration
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Manage system settings, users, and infrastructure configuration
+          </Typography>
+        </Box>
+        <Chip
+          icon={<AdminIcon />}
+          label="Admin Panel"
+          sx={{
+            backgroundColor: alpha(theme.palette.error.main, 0.1),
+            color: theme.palette.error.main,
+            fontWeight: 600
+          }}
+        />
+      </Box>
 
-          {/* IP Source Management */}
-          <Typography variant="h6" gutterBottom>IP Source Management</Typography>
-          <Box display="flex" gap="2rem" mb={4}>
-            <Box flex={1} border="1px solid" borderColor={theme.palette.divider} p={2}>
-              <Typography variant="h6" gutterBottom>Source Types</Typography>
-              <TextField label="New Source Type" variant="outlined" fullWidth value={newSourceName} onChange={(e) => setNewSourceName(e.target.value)} style={{ marginBottom: '1rem' }} />
-              <Button variant="contained" color="primary" fullWidth onClick={handleAddSourceType} style={{ marginBottom: '1rem' }}>Add Type</Button>
-              {sourceTypes.length === 0 ? (
-                <Typography variant="body2" color="textSecondary">No source types found.</Typography>
-              ) : (
-                <List>{sourceTypes.map((srcName) => (<ListItem key={srcName} button selected={selectedSource === srcName} onClick={() => handleSelectSourceType(srcName)}><ListItemText primary={srcName} /></ListItem>))}</List>
-              )}
-            </Box>
-            <Box flex={2} border="1px solid" borderColor={theme.palette.divider} p={2}>
-              {selectedSource === '' ? (
-                <Typography variant="body1">Select a source type on the left to view and manage its IP addresses.</Typography>
-              ) : (
-                <>
-                  <Typography variant="h6" gutterBottom>IPs for: {selectedSource}</Typography>
-                  <Box display="flex" mb={2}>
-                    <TextField label="New IP Address" variant="outlined" fullWidth value={newIpAddress} onChange={(e) => setNewIpAddress(e.target.value)} style={{ marginRight: '1rem' }} />
-                    <Button variant="contained" color="primary" onClick={handleAddIp}>Add IP</Button>
-                  </Box>
-                  <List>
-                    {(ipsBySource[selectedSource] || []).map((ip) => (
-                      <ListItem key={ip} sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'action.hover' } }} secondaryAction={<IconButton edge="end" color="error" onClick={() => handleDeleteIpClick(ip)}><DeleteIcon /></IconButton>}>
-                        <ListItemText primary={ip} />
-                      </ListItem>
-                    ))}
-                  </List>
-                  {(ipsToAdd.length > 0 || ipsToDelete.length > 0) && (<Box mt={2}><Button variant="contained" color="secondary" fullWidth onClick={handleSubmitChanges}>Submit Changes</Button></Box>)}
-                </>
-              )}
-            </Box>
-          </Box>
+      {/* Loading Indicator */}
+      {loading && (
+        <Box sx={{ mb: 3 }}>
+          <LinearProgress />
+        </Box>
+      )}
 
-          {/* Change Password */}
-          <Box mb={3}>
-            <Typography variant="h6" gutterBottom>Change Admin Password</Typography>
-            <TextField label="Current Password" type="password" variant="outlined" fullWidth value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} onKeyDown={handlePasswordKeyDown} style={{ marginBottom: '1rem' }} />
-            <TextField label="New Password" type="password" variant="outlined" fullWidth value={newPassword} onChange={(e) => setNewPassword(e.target.value)} onKeyDown={handlePasswordKeyDown} style={{ marginBottom: '1rem' }} />
-            <TextField label="Retype New Password" type="password" variant="outlined" fullWidth value={retypePassword} onChange={(e) => setRetypePassword(e.target.value)} onKeyDown={handlePasswordKeyDown} style={{ marginBottom: '1rem' }} />
-            <Button variant="contained" color="primary" fullWidth onClick={handleChangePassword}>Change Password</Button>
-          </Box>
-
-          {/* Add Domain Users */}
-          <Typography variant="h6" gutterBottom>Add Domain Users</Typography>
-          <Box display="flex" justifyContent="space-between" mb={2}>
-            <TextField label="Search Domain User" variant="outlined" fullWidth value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={handleSearchKeyDown} style={{ flex: 1, marginRight: '1rem' }} />
-            <Button variant="contained" color="primary" onClick={handleSearch}>Search</Button>
-          </Box>
-
-          <Box display="flex" flexDirection="row" justifyContent="space-between" height="400px">
-            <Box flex={1} padding="1rem" overflow="auto" border="1px solid" borderColor={theme.palette.divider}>
-              <Typography variant="h6" gutterBottom>Available Users</Typography>
-                {searchResults.length === 0 ? (
-                    <Typography variant="body2" color="textSecondary">
-                        No users found.
-                    </Typography>
-                    ) : (
-                    <List>
-                        {searchResults
-                        .filter((user) => !existingUsers.some((u) => u.username === user.username))
-                        .map((user) => (
-                            <ListItem key={user.username} button onClick={() => handleSelectUser(user)} style={{ cursor: 'pointer' }}>
-                                <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
-                            </ListItem>
-                        ))}
-                    </List>
-                )}
-            </Box>
-            <Box flex={1} padding="1rem" marginLeft="1rem" overflow="auto" border="1px solid" borderColor={theme.palette.divider}>
-                <Typography variant="h6" gutterBottom>Selected Users</Typography>
-                {selectedUsers.length === 0 ? (
-                    <Typography variant="body2" color="textSecondary">No users selected. Click a user to add them here.</Typography>
-                    ) : (
-                    <List>
-                    {selectedUsers.map((user) => (
-                        <ListItem key={user.username}>
-                        <ListItemText primary={`${user.full_name}`} secondary={`Email: ${user.email}`} />
-                        <select value={selectedUserRoles[user.username] || 'user'} onChange={(e) => { setSelectedUserRoles({ ...selectedUserRoles, [user.username]: e.target.value }); }} style={{ marginRight: '10px' }}>
-                            <option value="user">User</option>
-                            <option value="pentester">Pentester</option>
-                        </select>
-                        <IconButton edge="end" color="error" onClick={() => handleRemoveUser(user)}>
-                            <DeleteIcon />
-                          </IconButton>
-                        </ListItem>
-                      ))}
-                    </List>
-                  )}
-                  {selectedUsers.length > 0 && (
-                    <Button variant="contained" color="secondary" fullWidth onClick={handleSubmit}>
-                      Submit Users
-                    </Button>
-                  )}
-                </Box>
-              </Box>
-
-              {/* Existing Users Panel */}
-              <Box mt={3}>
-                <Typography variant="h6" gutterBottom>
-                  Existing Users in the System
+      <Grid container spacing={3}>
+        {/* System Actions */}
+        <Grid item xs={12}>
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={2}>
+                <RefreshIcon sx={{ color: theme.palette.primary.main, mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  System Actions
                 </Typography>
-                {existingUsers.length === 0 ? (
-                  <Typography variant="body2" color="textSecondary">
-                    No users found in the system.
-                  </Typography>
-                ) : (
-                  <List>
-                    {existingUsers.map((user) => (
-                      <ListItem key={user.username}>
-                        <ListItemText
-                          primary={user.username}
-                          secondary={`Email: ${user.email}`}
-                        />
-                        <select
-                          value={editedUserRoles[user.username] || user.role}
-                          onChange={(e) => {
-                              const newRole = e.target.value;
-                              setEditedUserRoles({...editedUserRoles, [user.username]: newRole});
-                              handleSaveRole(user.username, newRole);
-                          }}
-                          style={{marginRight: '10px'}}
-                        >
-                          <option value="user">User</option>
-                          <option value="pentester">Pentester</option>
-                        </select>
-                        <IconButton edge="end" color="error" onClick={() => handleDeleteUser(user.username)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </ListItem>
-                    ))}
-                  </List>
-                )}
               </Box>
-            </Paper>
-          </Box>
-        </ThemeProvider>
-      );
-    };
-    
-    export default AdminSettings;
+              <Button 
+                variant="contained" 
+                size="large"
+                startIcon={<RefreshIcon />}
+                onClick={handleManualParse}
+                disabled={loading}
+                sx={{
+                  backgroundColor: theme.palette.secondary.main,
+                  '&:hover': { backgroundColor: theme.palette.secondary.dark },
+                  py: 1.5,
+                  px: 3
+                }}
+              >
+                Parse & Update Records
+              </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Manually trigger record parsing and database updates
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* IP Source Management */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={3}>
+                <StorageIcon sx={{ color: theme.palette.primary.main, mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  IP Source Management
+                </Typography>
+              </Box>
+              
+              <Grid container spacing={3}>
+                {/* Source Types */}
+                <Grid item xs={12} md={4}>
+                  <Paper sx={{ p: 2, backgroundColor: 'background.default', border: `1px solid ${theme.palette.divider}` }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                      Source Types
+                    </Typography>
+                    
+                    <Box display="flex" gap={1} mb={2}>
+                      <TextField 
+                        placeholder="New Source Type" 
+                        variant="outlined" 
+                        size="small"
+                        fullWidth 
+                        value={newSourceName} 
+                        onChange={(e) => setNewSourceName(e.target.value)}
+                      />
+                      <Button 
+                        variant="contained" 
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={handleAddSourceType}
+                        disabled={loading}
+                      >
+                        Add
+                      </Button>
+                    </Box>
+                    
+                    {sourceTypes.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                        No source types found
+                      </Typography>
+                    ) : (
+                      <List sx={{ p: 0 }}>
+                        {sourceTypes.map((srcName) => (
+                          <ListItem 
+                            key={srcName} 
+                            button 
+                            selected={selectedSource === srcName} 
+                            onClick={() => handleSelectSourceType(srcName)}
+                            sx={{
+                              borderRadius: 1,
+                              mb: 0.5,
+                              '&.Mui-selected': {
+                                backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                                '&:hover': {
+                                  backgroundColor: alpha(theme.palette.primary.main, 0.15),
+                                }
+                              }
+                            }}
+                          >
+                            {getSourceAvatar(srcName)}
+                            <ListItemText 
+                              primary={srcName}
+                              secondary={`${(ipsBySource[srcName] || []).length} IPs`}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                  </Paper>
+                </Grid>
+
+                {/* IP Management */}
+                <Grid item xs={12} md={8}>
+                  <Paper sx={{ p: 2, backgroundColor: 'background.default', border: `1px solid ${theme.palette.divider}` }}>
+                    {selectedSource === '' ? (
+                      <Box sx={{ textAlign: 'center', py: 4 }}>
+                        <ComputerIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          Select a source type
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Choose a source type from the left to view and manage its IP addresses
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <>
+                        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                            IP Addresses for: {selectedSource}
+                          </Typography>
+                          <Chip 
+                            label={`${(ipsBySource[selectedSource] || []).length} IPs`}
+                            size="small"
+                            sx={{
+                              backgroundColor: alpha(theme.palette.info.main, 0.1),
+                              color: theme.palette.info.main
+                            }}
+                          />
+                        </Box>
+                        
+                        <Box display="flex" gap={1} mb={2}>
+                          <TextField 
+                            placeholder="New IP Address (e.g., 192.168.1.1)" 
+                            variant="outlined" 
+                            size="small"
+                            fullWidth 
+                            value={newIpAddress} 
+                            onChange={(e) => setNewIpAddress(e.target.value)}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <ComputerIcon sx={{ fontSize: 20 }} />
+                                </InputAdornment>
+                              )
+                            }}
+                          />
+                          <Button 
+                            variant="contained" 
+                            size="small"
+                            startIcon={<AddIcon />}
+                            onClick={handleAddIp}
+                            disabled={loading}
+                          >
+                            Add IP
+                          </Button>
+                        </Box>
+                        
+                        <List sx={{ p: 0, maxHeight: 300, overflow: 'auto' }}>
+                          {(ipsBySource[selectedSource] || []).map((ip) => (
+                            <ListItem 
+                              key={ip} 
+                              sx={{ 
+                                border: `1px solid ${theme.palette.divider}`,
+                                borderRadius: 1,
+                                mb: 1,
+                                backgroundColor: 'background.paper',
+                                '&:hover': { 
+                                  backgroundColor: alpha(theme.palette.error.main, 0.05),
+                                  borderColor: theme.palette.error.main
+                                } 
+                              }}
+                            >
+                              <ComputerIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                              <ListItemText 
+                                primary={ip}
+                                primaryTypographyProps={{ fontFamily: 'monospace', fontWeight: 500 }}
+                              />
+                              <Tooltip title="Delete IP">
+                                <IconButton 
+                                  edge="end" 
+                                  color="error" 
+                                  onClick={() => handleDeleteIpClick(ip)}
+                                  size="small"
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </ListItem>
+                          ))}
+                        </List>
+                        
+                        {(ipsToAdd.length > 0 || ipsToDelete.length > 0) && (
+                          <Box mt={2}>
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                              {ipsToAdd.length > 0 && `${ipsToAdd.length} IP(s) to add. `}
+                              {ipsToDelete.length > 0 && `${ipsToDelete.length} IP(s) to delete.`}
+                            </Alert>
+                            <Button 
+                              variant="contained" 
+                              color="secondary" 
+                              startIcon={<SaveIcon />}
+                              onClick={handleSubmitChanges}
+                              disabled={loading}
+                              fullWidth
+                            >
+                              Submit Changes
+                            </Button>
+                          </Box>
+                        )}
+                      </>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Security Settings */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={3}>
+                <SecurityIcon sx={{ color: theme.palette.primary.main, mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Security Settings
+                </Typography>
+              </Box>
+              
+              <Stack spacing={2}>
+                <TextField 
+                  label="Current Password" 
+                  type="password" 
+                  variant="outlined" 
+                  fullWidth 
+                  value={currentPassword} 
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <VpnKeyIcon />
+                      </InputAdornment>
+                    )
+                  }}
+                />
+                <TextField 
+                  label="New Password" 
+                  type="password" 
+                  variant="outlined" 
+                  fullWidth 
+                  value={newPassword} 
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <PasswordIcon />
+                      </InputAdornment>
+                    )
+                  }}
+                />
+                <TextField 
+                  label="Confirm New Password" 
+                  type="password" 
+                  variant="outlined" 
+                  fullWidth 
+                  value={retypePassword} 
+                  onChange={(e) => setRetypePassword(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <PasswordIcon />
+                      </InputAdornment>
+                    )
+                  }}
+                />
+                <Button 
+                  variant="contained" 
+                  size="large"
+                  startIcon={<SecurityIcon />}
+                  onClick={handleChangePassword}
+                  disabled={loading}
+                  sx={{ mt: 2 }}
+                >
+                  Update Password
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* User Search & Add */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={3}>
+                <PersonAddIcon sx={{ color: theme.palette.primary.main, mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Add Domain Users
+                </Typography>
+              </Box>
+              
+              <Box display="flex" gap={1} mb={2}>
+                <TextField 
+                  placeholder="Search domain user..." 
+                  variant="outlined" 
+                  size="small"
+                  fullWidth 
+                  value={searchQuery} 
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    )
+                  }}
+                />
+                <Button 
+                  variant="contained" 
+                  size="small"
+                  startIcon={<SearchIcon />}
+                  onClick={handleSearch}
+                  disabled={loading}
+                >
+                  Search
+                </Button>
+              </Box>
+
+              <Grid container spacing={2}>
+                {/* Available Users */}
+                <Grid item xs={6}>
+                  <Paper sx={{ p: 1, backgroundColor: 'background.default', height: 300, overflow: 'auto' }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, px: 1 }}>
+                      Available Users
+                    </Typography>
+                    {searchResults.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                        No users found
+                      </Typography>
+                    ) : (
+                      <List sx={{ p: 0 }}>
+                        {searchResults
+                          .filter((user) => !existingUsers.some((u) => u.username === user.username))
+                          .map((user) => (
+                            <ListItem 
+                              key={user.username} 
+                              button 
+                              onClick={() => handleSelectUser(user)}
+                              sx={{
+                                borderRadius: 1,
+                                mb: 0.5,
+                                '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) }
+                              }}
+                            >
+                              <Avatar sx={{ mr: 1, width: 24, height: 24, fontSize: '0.75rem' }}>
+                                {user.full_name?.charAt(0) || user.username?.charAt(0)}
+                              </Avatar>
+                              <ListItemText 
+                                primary={user.full_name}
+                                secondary={user.email}
+                                primaryTypographyProps={{ fontSize: '0.875rem' }}
+                                secondaryTypographyProps={{ fontSize: '0.75rem' }}
+                              />
+                            </ListItem>
+                          ))}
+                      </List>
+                    )}
+                  </Paper>
+                </Grid>
+
+                {/* Selected Users */}
+                <Grid item xs={6}>
+                  <Paper sx={{ p: 1, backgroundColor: 'background.default', height: 300, overflow: 'auto' }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, px: 1 }}>
+                      Selected Users ({selectedUsers.length})
+                    </Typography>
+                    {selectedUsers.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                        No users selected
+                      </Typography>
+                    ) : (
+                      <List sx={{ p: 0 }}>
+                        {selectedUsers.map((user) => (
+                          <ListItem 
+                            key={user.username}
+                            sx={{
+                              border: `1px solid ${theme.palette.divider}`,
+                              borderRadius: 1,
+                              mb: 1,
+                              backgroundColor: 'background.paper'
+                            }}
+                          >
+                            <Avatar sx={{ mr: 1, width: 24, height: 24, fontSize: '0.75rem' }}>
+                              {user.full_name?.charAt(0) || user.username?.charAt(0)}
+                            </Avatar>
+                            <ListItemText 
+                              primary={user.full_name}
+                              secondary={
+                                <FormControl size="small" sx={{ mt: 0.5, minWidth: 80 }}>
+                                  <Select
+                                    value={selectedUserRoles[user.username] || 'user'}
+                                    onChange={(e) => setSelectedUserRoles({ 
+                                      ...selectedUserRoles, 
+                                      [user.username]: e.target.value 
+                                    })}
+                                    size="small"
+                                  >
+                                    <MenuItem value="user">User</MenuItem>
+                                    <MenuItem value="pentester">Pentester</MenuItem>
+                                  </Select>
+                                </FormControl>
+                              }
+                              primaryTypographyProps={{ fontSize: '0.875rem' }}
+                            />
+                            <IconButton 
+                              edge="end" 
+                              color="error" 
+                              onClick={() => handleRemoveUser(user)}
+                              size="small"
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                    {selectedUsers.length > 0 && (
+                      <Button 
+                        variant="contained" 
+                        color="secondary" 
+                        startIcon={<PersonAddIcon />}
+                        onClick={handleSubmit}
+                        disabled={loading}
+                        fullWidth
+                        sx={{ mt: 1 }}
+                      >
+                        Add Selected Users
+                      </Button>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Existing Users Management */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={3}>
+                <PeopleIcon sx={{ color: theme.palette.primary.main, mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  User Management
+                </Typography>
+                <Chip 
+                  label={`${existingUsers.length} users`}
+                  size="small"
+                  sx={{ 
+                    ml: 2,
+                    backgroundColor: alpha(theme.palette.info.main, 0.1),
+                    color: theme.palette.info.main
+                  }}
+                />
+              </Box>
+              
+              {existingUsers.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <PeopleIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    No users found
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Add some users to get started
+                  </Typography>
+                </Box>
+              ) : (
+                <Grid container spacing={2}>
+                  {existingUsers.map((user) => (
+                    <Grid item xs={12} sm={6} md={4} key={user.username}>
+                      <Paper 
+                        sx={{ 
+                          p: 2, 
+                          backgroundColor: 'background.default',
+                          border: `1px solid ${theme.palette.divider}`,
+                          '&:hover': {
+                            borderColor: theme.palette.primary.main,
+                            backgroundColor: alpha(theme.palette.primary.main, 0.02)
+                          },
+                          transition: 'all 0.2s ease-in-out'
+                        }}
+                      >
+                        <Box display="flex" alignItems="center" mb={2}>
+                          <Avatar sx={{ mr: 1 }}>
+                            {user.username?.charAt(0)?.toUpperCase()}
+                          </Avatar>
+                          <Box flex={1}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                              {user.username}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {user.email}
+                            </Typography>
+                          </Box>
+                        </Box>
+                        
+                        <Box display="flex" alignItems="center" justifyContent="space-between">
+                          <FormControl size="small" sx={{ minWidth: 100 }}>
+                            <Select
+                              value={editedUserRoles[user.username] || user.role}
+                              onChange={(e) => {
+                                const newRole = e.target.value;
+                                setEditedUserRoles({...editedUserRoles, [user.username]: newRole});
+                                handleSaveRole(user.username, newRole);
+                              }}
+                              size="small"
+                            >
+                              <MenuItem value="user">User</MenuItem>
+                              <MenuItem value="pentester">Pentester</MenuItem>
+                            </Select>
+                          </FormControl>
+                          
+                          <Tooltip title="Delete User">
+                            <IconButton 
+                              color="error" 
+                              onClick={() => handleDeleteUser(user.username)}
+                              size="small"
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                        
+                        <Box mt={1}>
+                          {getRoleChip(editedUserRoles[user.username] || user.role)}
+                        </Box>
+                      </Paper>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
+export default AdminSettings;
