@@ -37,46 +37,20 @@ def init_admin_db():
 
 def admin_login(username, password):
     """Handles admin login by verifying credentials."""
-    logger.info(f"🔐 admin_login called for username: {username}")
-    print(f"🔐 admin_login called for username: {username}")
-    
     try:
-        logger.info(f"🗄️ Connecting to database at: {DB_PATH}")
-        print(f"🗄️ Connecting to database at: {DB_PATH}")
-        
-        if not os.path.exists(DB_PATH):
-            logger.error(f"❌ Database file does not exist: {DB_PATH}")
-            print(f"❌ Database file does not exist: {DB_PATH}")
-            return False
-            
         with sqlite3.connect(DB_PATH) as conn:
-            logger.info('✅ Connected to database successfully')
-            print('✅ Connected to database successfully')
-            
+            print('connected to db')
             c = conn.cursor()
             c.execute("SELECT password FROM admin_users WHERE username = ?", (username,))
             result = c.fetchone()
-            
-            if result:
-                logger.info(f"🔍 Found admin user in database")
-                print(f"🔍 Found admin user in database")
-                
-                if bcrypt.checkpw(password.encode(), result[0]):
-                    logger.info('✅ Password verification successful')
-                    print('✅ Password verification successful')
-                    return True
-                else:
-                    logger.info('❌ Password verification failed')
-                    print('❌ Password verification failed')
-                    return False
-            else:
-                logger.warning(f"⚠️ Admin user '{username}' not found in database")
-                print(f"⚠️ Admin user '{username}' not found in database")
-                return False
-                
+            if result and bcrypt.checkpw(password.encode(), result[0]):
+                print('pass correct')
+                return True
+            print('pass wrong')
+            return False
     except Exception as e:
-        logger.error(f"💥 Exception in admin_login: {e}")
-        print(f"💥 Exception in admin_login: {e}")
+        print(e)
+        logger.error(f"Error authenticating admin user: {e}")
         return False
 
 def check_current_admin_password(current_password):
