@@ -38,14 +38,11 @@ def admin_login(username, password):
     """Handles admin login by verifying credentials."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            print('connected to db')
             c = conn.cursor()
             c.execute("SELECT password FROM admin_users WHERE username = ?", (username,))
             result = c.fetchone()
             if result and bcrypt.checkpw(password.encode(), result[0]):
-                print('pass correct')
                 return True
-            print('pass wrong')
             return False
     except Exception as e:
         print(e)

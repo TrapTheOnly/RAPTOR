@@ -87,7 +87,9 @@ const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMo
                 fontWeight: 700,
                 fontSize: '2.5rem',
                 letterSpacing: '0.15em',
-                background: 'linear-gradient(45deg, #00d4ff 30%, #1976d2 90%)',
+                background: theme.palette.mode === 'dark'
+                  ? 'linear-gradient(45deg, #00d4ff 30%, #1976d2 90%)'
+                  : 'linear-gradient(45deg, #1976d2 30%, #0d47a1 90%)',
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 color: 'transparent',
@@ -95,9 +97,9 @@ const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMo
                 textAlign: 'center',
                 position: 'relative',
                 display: 'inline-block',
-                transform: 'perspective(1000px)',
-                transformStyle: 'preserve-3d',
-                animation: 'raptorMainGlow 3s ease-in-out infinite alternate, raptorFloat 6s ease-in-out infinite',
+                transform: 'translateZ(0)',
+                animation: 'raptorLoginGlow 8s ease-in-out infinite alternate, raptorLoginFloat 12s ease-in-out infinite',
+                transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                 '&::before': {
                   content: '"RAPTOR"',
                   position: 'absolute',
@@ -105,15 +107,17 @@ const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMo
                   left: 0,
                   width: '100%',
                   height: '100%',
-                  background: 'linear-gradient(45deg, #ff4081 30%, #e91e63 90%)',
+                  background: theme.palette.mode === 'dark'
+                    ? 'linear-gradient(45deg, rgba(255, 64, 129, 0.2) 30%, rgba(233, 30, 99, 0.2) 90%)'
+                    : 'linear-gradient(45deg, rgba(25, 118, 210, 0.15) 30%, rgba(13, 71, 161, 0.15) 90%)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   color: 'transparent',
                   opacity: 0,
-                  transform: 'translate(3px, 3px) rotateX(5deg)',
-                  animation: 'raptorMainGlitch1 4s infinite, raptorMainShift1 8s ease-in-out infinite',
+                  transform: 'translate(2px, 2px)',
+                  animation: 'raptorLoginShimmer1 10s ease-in-out infinite',
                   zIndex: -1,
-                  filter: 'blur(0.5px)',
+                  filter: 'blur(0.3px)',
                 },
                 '&::after': {
                   content: '"RAPTOR"',
@@ -122,254 +126,113 @@ const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMo
                   left: 0,
                   width: '100%',
                   height: '100%',
-                  background: 'linear-gradient(45deg, #00ff88 30%, #4caf50 90%)',
+                  background: theme.palette.mode === 'dark'
+                    ? 'linear-gradient(45deg, rgba(0, 255, 136, 0.15) 30%, rgba(76, 175, 80, 0.15) 90%)'
+                    : 'linear-gradient(45deg, rgba(25, 118, 210, 0.1) 30%, rgba(13, 71, 161, 0.1) 90%)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   color: 'transparent',
                   opacity: 0,
-                  transform: 'translate(-3px, -3px) rotateX(-5deg)',
-                  animation: 'raptorMainGlitch2 4s infinite 1s, raptorMainShift2 8s ease-in-out infinite 1s',
+                  transform: 'translate(-2px, -2px)',
+                  animation: 'raptorLoginShimmer2 10s ease-in-out infinite 2s',
                   zIndex: -2,
-                  filter: 'blur(0.5px)',
+                  filter: 'blur(0.3px)',
                 },
                 '&:hover': {
-                  animation: 'raptorMainHover 0.8s ease-out, raptorMainGlow 1s ease-in-out infinite alternate',
-                  transform: 'perspective(1000px) rotateX(10deg) rotateY(-10deg) scale(1.1)',
-                  filter: 'drop-shadow(0 15px 30px rgba(0, 212, 255, 0.4))',
+                  transform: 'translateY(-2px) scale(1.05) translateZ(0)',
+                  filter: theme.palette.mode === 'dark'
+                    ? 'drop-shadow(0 8px 25px rgba(0, 212, 255, 0.2))'
+                    : 'drop-shadow(0 8px 25px rgba(25, 118, 210, 0.2))',
+                  animation: 'raptorLoginGlow 4s ease-in-out infinite alternate, raptorLoginFloat 6s ease-in-out infinite',
                   '&::before': {
-                    animation: 'raptorMainGlitchHover1 0.2s infinite, raptorMainShift1 4s ease-in-out infinite',
+                    opacity: 0.4,
+                    animation: 'raptorLoginHoverShimmer1 3s ease-in-out infinite',
                   },
                   '&::after': {
-                    animation: 'raptorMainGlitchHover2 0.2s infinite 0.1s, raptorMainShift2 4s ease-in-out infinite 0.5s',
+                    opacity: 0.3,
+                    animation: 'raptorLoginHoverShimmer2 3s ease-in-out infinite 0.5s',
                   }
                 },
-                '@keyframes raptorMainGlow': {
+                '@keyframes raptorLoginGlow': {
                   '0%': {
-                    textShadow: `
-                      0 0 10px rgba(0, 212, 255, 0.6),
-                      0 0 20px rgba(0, 212, 255, 0.4),
-                      0 0 30px rgba(25, 118, 210, 0.3),
-                      0 0 40px rgba(25, 118, 210, 0.1)
-                    `,
+                    textShadow: theme.palette.mode === 'dark'
+                      ? '0 0 10px rgba(0, 212, 255, 0.4), 0 0 20px rgba(25, 118, 210, 0.2)'
+                      : '0 0 10px rgba(25, 118, 210, 0.3), 0 0 20px rgba(13, 71, 161, 0.15)',
                     filter: 'brightness(1) saturate(1)',
                   },
                   '50%': {
-                    textShadow: `
-                      0 0 15px rgba(0, 212, 255, 0.8),
-                      0 0 30px rgba(0, 212, 255, 0.6),
-                      0 0 45px rgba(25, 118, 210, 0.5),
-                      0 0 60px rgba(25, 118, 210, 0.3)
-                    `,
-                    filter: 'brightness(1.3) saturate(1.2)',
+                    textShadow: theme.palette.mode === 'dark'
+                      ? '0 0 15px rgba(0, 212, 255, 0.6), 0 0 30px rgba(25, 118, 210, 0.3), 0 0 45px rgba(25, 118, 210, 0.1)'
+                      : '0 0 15px rgba(25, 118, 210, 0.5), 0 0 30px rgba(13, 71, 161, 0.25), 0 0 45px rgba(13, 71, 161, 0.1)',
+                    filter: 'brightness(1.15) saturate(1.1)',
                   },
                   '100%': {
-                    textShadow: `
-                      0 0 10px rgba(0, 212, 255, 0.6),
-                      0 0 20px rgba(0, 212, 255, 0.4),
-                      0 0 30px rgba(25, 118, 210, 0.3),
-                      0 0 40px rgba(25, 118, 210, 0.1)
-                    `,
+                    textShadow: theme.palette.mode === 'dark'
+                      ? '0 0 10px rgba(0, 212, 255, 0.4), 0 0 20px rgba(25, 118, 210, 0.2)'
+                      : '0 0 10px rgba(25, 118, 210, 0.3), 0 0 20px rgba(13, 71, 161, 0.15)',
                     filter: 'brightness(1) saturate(1)',
                   }
                 },
-                '@keyframes raptorFloat': {
+                '@keyframes raptorLoginFloat': {
                   '0%, 100%': {
-                    transform: 'perspective(1000px) translateY(0px) rotateX(0deg)',
+                    transform: 'translateY(0px) translateZ(0)',
                   },
                   '25%': {
-                    transform: 'perspective(1000px) translateY(-3px) rotateX(2deg)',
+                    transform: 'translateY(-2px) translateZ(0)',
                   },
                   '50%': {
-                    transform: 'perspective(1000px) translateY(-5px) rotateX(0deg)',
+                    transform: 'translateY(-4px) translateZ(0)',
                   },
                   '75%': {
-                    transform: 'perspective(1000px) translateY(-3px) rotateX(-2deg)',
+                    transform: 'translateY(-2px) translateZ(0)',
                   }
                 },
-                '@keyframes raptorMainGlitch1': {
+                '@keyframes raptorLoginShimmer1': {
                   '0%, 85%, 100%': {
                     opacity: 0,
-                    transform: 'translate(3px, 3px) rotateX(5deg)',
-                    clipPath: 'inset(0 0 0 0)',
+                    transform: 'translate(2px, 2px)',
                   },
-                  '2%, 4%': {
-                    opacity: 0.9,
-                    transform: 'translate(-5px, 2px) rotateX(8deg) skew(2deg)',
-                    clipPath: 'inset(20% 0 30% 0)',
+                  '5%, 8%': {
+                    opacity: 0.2,
+                    transform: 'translate(-1px, 1px)',
                   },
-                  '6%, 8%': {
-                    opacity: 0.7,
-                    transform: 'translate(2px, -4px) rotateX(-3deg) skew(-1deg)',
-                    clipPath: 'inset(60% 0 10% 0)',
-                  },
-                  '10%, 12%': {
-                    opacity: 0.8,
-                    transform: 'translate(-3px, 3px) rotateX(6deg) skew(1deg)',
-                    clipPath: 'inset(40% 0 50% 0)',
-                  },
-                  '15%, 17%': {
-                    opacity: 0.6,
-                    transform: 'translate(4px, -2px) rotateX(-4deg) skew(-2deg)',
-                    clipPath: 'inset(10% 0 70% 0)',
+                  '40%, 43%': {
+                    opacity: 0.15,
+                    transform: 'translate(1px, -1px)',
                   }
                 },
-                '@keyframes raptorMainGlitch2': {
+                '@keyframes raptorLoginShimmer2': {
                   '0%, 90%, 100%': {
                     opacity: 0,
-                    transform: 'translate(-3px, -3px) rotateX(-5deg)',
-                    clipPath: 'inset(0 0 0 0)',
+                    transform: 'translate(-2px, -2px)',
                   },
-                  '3%, 6%': {
-                    opacity: 0.8,
-                    transform: 'translate(4px, -3px) rotateX(-8deg) skew(-2deg)',
-                    clipPath: 'inset(30% 0 20% 0)',
+                  '7%, 10%': {
+                    opacity: 0.15,
+                    transform: 'translate(1px, -1px)',
                   },
-                  '8%, 11%': {
-                    opacity: 0.6,
-                    transform: 'translate(-2px, 4px) rotateX(4deg) skew(1deg)',
-                    clipPath: 'inset(50% 0 40% 0)',
-                  },
-                  '13%, 16%': {
-                    opacity: 0.9,
-                    transform: 'translate(3px, -3px) rotateX(-6deg) skew(-1deg)',
-                    clipPath: 'inset(70% 0 15% 0)',
-                  },
-                  '18%, 21%': {
-                    opacity: 0.5,
-                    transform: 'translate(-4px, 2px) rotateX(3deg) skew(2deg)',
-                    clipPath: 'inset(15% 0 60% 0)',
+                  '45%, 48%': {
+                    opacity: 0.1,
+                    transform: 'translate(-1px, 1px)',
                   }
                 },
-                '@keyframes raptorMainShift1': {
+                '@keyframes raptorLoginHoverShimmer1': {
                   '0%, 100%': {
-                    background: 'linear-gradient(45deg, #ff4081 30%, #e91e63 90%)',
-                  },
-                  '25%': {
-                    background: 'linear-gradient(45deg, #ff6b9d 30%, #f06292 90%)',
+                    opacity: 0.4,
+                    transform: 'translate(2px, 2px)',
                   },
                   '50%': {
-                    background: 'linear-gradient(45deg, #ff8a80 30%, #ff5722 90%)',
-                  },
-                  '75%': {
-                    background: 'linear-gradient(45deg, #ff7043 30%, #e64a19 90%)',
+                    opacity: 0.2,
+                    transform: 'translate(-1px, 1px)',
                   }
                 },
-                '@keyframes raptorMainShift2': {
+                '@keyframes raptorLoginHoverShimmer2': {
                   '0%, 100%': {
-                    background: 'linear-gradient(45deg, #00ff88 30%, #4caf50 90%)',
-                  },
-                  '25%': {
-                    background: 'linear-gradient(45deg, #69f0ae 30%, #00e676 90%)',
+                    opacity: 0.3,
+                    transform: 'translate(-2px, -2px)',
                   },
                   '50%': {
-                    background: 'linear-gradient(45deg, #81c784 30%, #66bb6a 90%)',
-                  },
-                  '75%': {
-                    background: 'linear-gradient(45deg, #a5d6a7 30%, #8bc34a 90%)',
-                  }
-                },
-                '@keyframes raptorMainHover': {
-                  '0%': {
-                    transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1)',
-                  },
-                  '20%': {
-                    transform: 'perspective(1000px) rotateX(20deg) rotateY(-20deg) scale(1.15)',
-                  },
-                  '40%': {
-                    transform: 'perspective(1000px) rotateX(-10deg) rotateY(10deg) scale(1.12)',
-                  },
-                  '60%': {
-                    transform: 'perspective(1000px) rotateX(15deg) rotateY(-15deg) scale(1.08)',
-                  },
-                  '80%': {
-                    transform: 'perspective(1000px) rotateX(5deg) rotateY(-5deg) scale(1.05)',
-                  },
-                  '100%': {
-                    transform: 'perspective(1000px) rotateX(10deg) rotateY(-10deg) scale(1.1)',
-                  }
-                },
-                '@keyframes raptorMainGlitchHover1': {
-                  '0%, 100%': {
-                    opacity: 0,
-                    transform: 'translate(3px, 3px) rotateX(5deg) skew(0deg)',
-                  },
-                  '10%': {
-                    opacity: 1,
-                    transform: 'translate(-8px, 5px) rotateX(12deg) skew(3deg)',
-                  },
-                  '20%': {
-                    opacity: 0.8,
-                    transform: 'translate(6px, -7px) rotateX(-8deg) skew(-2deg)',
-                  },
-                  '30%': {
-                    opacity: 0.9,
-                    transform: 'translate(-4px, 4px) rotateX(10deg) skew(1deg)',
-                  },
-                  '40%': {
-                    opacity: 0.7,
-                    transform: 'translate(7px, -3px) rotateX(-6deg) skew(-3deg)',
-                  },
-                  '50%': {
-                    opacity: 0.85,
-                    transform: 'translate(-5px, 6px) rotateX(8deg) skew(2deg)',
-                  },
-                  '60%': {
-                    opacity: 0.6,
-                    transform: 'translate(8px, -5px) rotateX(-10deg) skew(-1deg)',
-                  },
-                  '70%': {
-                    opacity: 0.9,
-                    transform: 'translate(-6px, 3px) rotateX(7deg) skew(3deg)',
-                  },
-                  '80%': {
-                    opacity: 0.75,
-                    transform: 'translate(5px, -6px) rotateX(-9deg) skew(-2deg)',
-                  },
-                  '90%': {
-                    opacity: 0.8,
-                    transform: 'translate(-7px, 4px) rotateX(11deg) skew(1deg)',
-                  }
-                },
-                '@keyframes raptorMainGlitchHover2': {
-                  '0%, 100%': {
-                    opacity: 0,
-                    transform: 'translate(-3px, -3px) rotateX(-5deg) skew(0deg)',
-                  },
-                  '15%': {
-                    opacity: 0.9,
-                    transform: 'translate(7px, -6px) rotateX(-12deg) skew(-3deg)',
-                  },
-                  '25%': {
-                    opacity: 0.7,
-                    transform: 'translate(-5px, 8px) rotateX(9deg) skew(2deg)',
-                  },
-                  '35%': {
-                    opacity: 0.85,
-                    transform: 'translate(4px, -4px) rotateX(-10deg) skew(-1deg)',
-                  },
-                  '45%': {
-                    opacity: 0.6,
-                    transform: 'translate(-8px, 5px) rotateX(7deg) skew(3deg)',
-                  },
-                  '55%': {
-                    opacity: 0.8,
-                    transform: 'translate(6px, -7px) rotateX(-8deg) skew(-2deg)',
-                  },
-                  '65%': {
-                    opacity: 0.75,
-                    transform: 'translate(-5px, 6px) rotateX(9deg) skew(1deg)',
-                  },
-                  '75%': {
-                    opacity: 0.9,
-                    transform: 'translate(7px, -4px) rotateX(-11deg) skew(-3deg)',
-                  },
-                  '85%': {
-                    opacity: 0.65,
-                    transform: 'translate(-6px, 7px) rotateX(8deg) skew(2deg)',
-                  },
-                  '95%': {
-                    opacity: 0.8,
-                    transform: 'translate(5px, -5px) rotateX(-7deg) skew(-1deg)',
+                    opacity: 0.15,
+                    transform: 'translate(1px, -1px)',
                   }
                 }
               }}

@@ -988,8 +988,6 @@ def login():
     user = c.fetchone()
     conn.close()
     
-    logger.info(f"🗄️ Admin username from env: {os.getenv('ADMIN_USERNAME')}")
-    print(f"🗄️ Admin username from env: {os.getenv('ADMIN_USERNAME')}")
 
     if username == os.getenv("ADMIN_USERNAME"):
         
@@ -1003,8 +1001,6 @@ def login():
             return jsonify({"error": "Invalid credentials"}), 401
 
     if user:
-        logger.info(f"🔍 User found in allowed_users: {user[0]} with role: {user[1]}")
-        print(f"🔍 User found in allowed_users: {user[0]} with role: {user[1]}")
         
         if ldap_authenticate(username, password):
             session.permanent = True

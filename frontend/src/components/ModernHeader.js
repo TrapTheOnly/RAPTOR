@@ -108,14 +108,16 @@ const ModernHeader = ({
               fontWeight: 700,
               fontSize: '1.5rem',
               letterSpacing: '0.1em',
-              background: 'linear-gradient(45deg, #00d4ff 30%, #1976d2 90%)',
+              background: theme.palette.mode === 'dark' 
+                ? 'linear-gradient(45deg, #00d4ff 30%, #1976d2 90%)'
+                : 'linear-gradient(45deg, #1976d2 30%, #0d47a1 90%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
               color: 'transparent',
               position: 'relative',
               display: 'inline-block',
-              transition: 'all 0.3s ease',
-              animation: 'raptorGlow 4s ease-in-out infinite alternate',
+              transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+              animation: 'raptorGentleGlow 6s ease-in-out infinite alternate',
               '&::before': {
                 content: '"RAPTOR"',
                 position: 'absolute',
@@ -123,151 +125,85 @@ const ModernHeader = ({
                 left: 0,
                 width: '100%',
                 height: '100%',
-                background: 'linear-gradient(45deg, #ff1976 30%, #ff4081 90%)',
+                background: theme.palette.mode === 'dark'
+                  ? 'linear-gradient(45deg, rgba(255, 64, 129, 0.3) 30%, rgba(233, 30, 99, 0.3) 90%)'
+                  : 'linear-gradient(45deg, rgba(25, 118, 210, 0.2) 30%, rgba(13, 71, 161, 0.2) 90%)',
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 color: 'transparent',
                 opacity: 0,
-                transform: 'translate(2px, 2px)',
-                animation: 'raptorGlitch 3s infinite',
+                transform: 'translate(1px, 1px)',
+                animation: 'raptorSubtleShimmer 8s ease-in-out infinite',
                 zIndex: -1,
               },
               '&::after': {
-                content: '"RAPTOR"',
+                content: '""',
                 position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                background: 'linear-gradient(45deg, #00ff88 30%, #00e676 90%)',
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                color: 'transparent',
-                opacity: 0,
-                transform: 'translate(-2px, -2px)',
-                animation: 'raptorGlitch2 3s infinite 0.5s',
-                zIndex: -2,
+                bottom: '-2px',
+                left: '0',
+                width: '0%',
+                height: '2px',
+                background: theme.palette.mode === 'dark'
+                  ? 'linear-gradient(90deg, transparent, #00d4ff, transparent)'
+                  : 'linear-gradient(90deg, transparent, #1976d2, transparent)',
+                transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                zIndex: -1,
               },
               '&:hover': {
-                transform: 'perspective(1000px) rotateX(10deg) rotateY(-10deg) scale(1.05)',
-                filter: 'drop-shadow(0 10px 20px rgba(0, 212, 255, 0.3))',
-                animation: 'raptorIntense 0.6s ease-out',
+                transform: 'translateY(-1px) scale(1.02)',
+                filter: theme.palette.mode === 'dark'
+                  ? 'drop-shadow(0 4px 12px rgba(0, 212, 255, 0.15))'
+                  : 'drop-shadow(0 4px 12px rgba(25, 118, 210, 0.15))',
                 '&::before': {
-                  animation: 'raptorGlitchIntense 0.3s infinite',
+                  opacity: 0.6,
+                  animation: 'raptorHoverShimmer 2s ease-in-out infinite',
                 },
                 '&::after': {
-                  animation: 'raptorGlitchIntense2 0.3s infinite 0.1s',
+                  width: '100%',
                 }
               },
-              '@keyframes raptorGlow': {
+              '@keyframes raptorGentleGlow': {
                 '0%': {
-                  textShadow: '0 0 5px rgba(0, 212, 255, 0.5), 0 0 10px rgba(0, 212, 255, 0.3)',
+                  textShadow: theme.palette.mode === 'dark'
+                    ? '0 0 8px rgba(0, 212, 255, 0.3)'
+                    : '0 0 8px rgba(25, 118, 210, 0.2)',
                   filter: 'brightness(1)',
                 },
                 '50%': {
-                  textShadow: '0 0 10px rgba(0, 212, 255, 0.8), 0 0 20px rgba(0, 212, 255, 0.6), 0 0 30px rgba(25, 118, 210, 0.4)',
-                  filter: 'brightness(1.2)',
+                  textShadow: theme.palette.mode === 'dark'
+                    ? '0 0 12px rgba(0, 212, 255, 0.5), 0 0 24px rgba(25, 118, 210, 0.2)'
+                    : '0 0 12px rgba(25, 118, 210, 0.4), 0 0 24px rgba(13, 71, 161, 0.1)',
+                  filter: 'brightness(1.1)',
                 },
                 '100%': {
-                  textShadow: '0 0 5px rgba(0, 212, 255, 0.5), 0 0 10px rgba(0, 212, 255, 0.3)',
+                  textShadow: theme.palette.mode === 'dark'
+                    ? '0 0 8px rgba(0, 212, 255, 0.3)'
+                    : '0 0 8px rgba(25, 118, 210, 0.2)',
                   filter: 'brightness(1)',
                 }
               },
-              '@keyframes raptorGlitch': {
+              '@keyframes raptorSubtleShimmer': {
                 '0%, 90%, 100%': {
                   opacity: 0,
-                  transform: 'translate(2px, 2px)',
+                  transform: 'translate(1px, 1px)',
                 },
-                '2%, 5%': {
-                  opacity: 0.8,
-                  transform: 'translate(-3px, 1px)',
+                '5%, 8%': {
+                  opacity: 0.3,
+                  transform: 'translate(-1px, 0.5px)',
                 },
-                '10%, 15%': {
-                  opacity: 0.6,
-                  transform: 'translate(1px, -2px)',
-                },
-                '20%, 25%': {
-                  opacity: 0.9,
-                  transform: 'translate(2px, 3px)',
+                '45%, 48%': {
+                  opacity: 0.2,
+                  transform: 'translate(0.5px, -1px)',
                 }
               },
-              '@keyframes raptorGlitch2': {
-                '0%, 85%, 100%': {
-                  opacity: 0,
-                  transform: 'translate(-2px, -2px)',
-                },
-                '3%, 8%': {
-                  opacity: 0.7,
-                  transform: 'translate(3px, -1px)',
-                },
-                '12%, 18%': {
-                  opacity: 0.5,
-                  transform: 'translate(-1px, 2px)',
-                },
-                '22%, 28%': {
-                  opacity: 0.8,
-                  transform: 'translate(-2px, -3px)',
-                }
-              },
-              '@keyframes raptorIntense': {
-                '0%': {
-                  transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1)',
-                },
-                '20%': {
-                  transform: 'perspective(1000px) rotateX(15deg) rotateY(-15deg) scale(1.1)',
-                },
-                '40%': {
-                  transform: 'perspective(1000px) rotateX(-5deg) rotateY(5deg) scale(1.08)',
-                },
-                '60%': {
-                  transform: 'perspective(1000px) rotateX(8deg) rotateY(-8deg) scale(1.06)',
-                },
-                '100%': {
-                  transform: 'perspective(1000px) rotateX(10deg) rotateY(-10deg) scale(1.05)',
-                }
-              },
-              '@keyframes raptorGlitchIntense': {
+              '@keyframes raptorHoverShimmer': {
                 '0%, 100%': {
-                  opacity: 0,
-                  transform: 'translate(2px, 2px) skew(0deg)',
-                },
-                '20%': {
-                  opacity: 1,
-                  transform: 'translate(-5px, 3px) skew(2deg)',
-                },
-                '40%': {
-                  opacity: 0.8,
-                  transform: 'translate(3px, -4px) skew(-1deg)',
-                },
-                '60%': {
-                  opacity: 0.9,
-                  transform: 'translate(-2px, 2px) skew(1deg)',
-                },
-                '80%': {
-                  opacity: 0.7,
-                  transform: 'translate(4px, -1px) skew(-2deg)',
-                }
-              },
-              '@keyframes raptorGlitchIntense2': {
-                '0%, 100%': {
-                  opacity: 0,
-                  transform: 'translate(-2px, -2px) skew(0deg)',
-                },
-                '25%': {
-                  opacity: 0.9,
-                  transform: 'translate(4px, -3px) skew(-2deg)',
-                },
-                '45%': {
                   opacity: 0.6,
-                  transform: 'translate(-3px, 4px) skew(1deg)',
+                  transform: 'translate(1px, 1px)',
                 },
-                '65%': {
-                  opacity: 0.8,
-                  transform: 'translate(2px, -2px) skew(2deg)',
-                },
-                '85%': {
-                  opacity: 0.7,
-                  transform: 'translate(-4px, 1px) skew(-1deg)',
+                '50%': {
+                  opacity: 0.4,
+                  transform: 'translate(-0.5px, 0.5px)',
                 }
               }
             }}
