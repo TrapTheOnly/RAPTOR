@@ -1,70 +1,204 @@
-# Getting Started with Create React App
+# RAPTOR Security Platform
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+**R**econnaissance, **A**ssessment, **P**enetration **T**esting, **O**perations & **R**eporting
 
-## Available Scripts
+## Overview
 
-In the project directory, you can run:
+RAPTOR is a comprehensive cybersecurity operations platform designed for security professionals, penetration testers, and IT administrators. It provides integrated asset discovery, vulnerability assessment, and penetration testing management capabilities.
 
-### `npm start`
+## Key Features
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### 🎯 **Asset Discovery & Management**
+- Automated DNS zone file monitoring
+- Real-time asset inventory tracking
+- IP-to-source mapping and classification
+- Change detection and alerting
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### 🔒 **Security Testing Operations**
+- Integrated penetration testing workflow
+- Vulnerability tracking and management
+- OWASP testing methodology support
+- Security test reporting and documentation
 
-### `npm test`
+### 📊 **Operations Dashboard**
+- Real-time security metrics and KPIs
+- Asset status monitoring
+- Test progress tracking
+- Activity timeline and alerts
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### 👥 **Multi-Role Access Control**
+- Admin: Full system control and user management
+- Pentester: Security testing and vulnerability management
+- User: Asset viewing and basic operations
+- LDAP/Active Directory integration
 
-### `npm run build`
+### 🛡️ **Vulnerability Management**
+- Automated vulnerability status tracking
+- Remediation workflow management
+- Service desk integration
+- Fix verification and reporting
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Architecture
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+- **Frontend**: React.js with Material-UI
+- **Backend**: Python Flask REST API
+- **Database**: SQLite with comprehensive audit trails
+- **Authentication**: LDAP/AD integration + local admin
+- **Deployment**: Docker containerization
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Quick Start
 
-### `npm run eject`
+### Prerequisites
+- Docker and Docker Compose
+- LDAP/Active Directory server (for user authentication)
+- SSL certificates (for production)
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Environment Setup
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd raptor-security-platform
+   ```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+2. **Configure environment variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your specific configuration
+   ```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+3. **Start the platform**
+   ```bash
+   # Development
+   docker-compose -f docker-compose.dev.yml up -d
 
-## Learn More
+   # Production
+   docker-compose -f docker-compose.prod.yml up -d
+   ```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+4. **Access the platform**
+   - Navigate to `https://localhost:5000` (or your configured port)
+   - Use the generated admin credentials from `/tmp/writehere.txt`
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Configuration
 
-### Code Splitting
+### Required Environment Variables
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```bash
+# Application Settings
+APP_PORT=5000
+SECRET_KEY=your-secret-key
+DATA_PATH=./data/
+BACKUP_FOLDER=./backups/
 
-### Analyzing the Bundle Size
+# Admin User
+ADMIN_USERNAME=admin
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+# LDAP Configuration
+LDAP_SERVER=ldap.yourdomain.com
+LDAP_DOMAIN=yourdomain.com
+LDAP_USER=service-account@yourdomain.com
+LDAP_PASS=service-account-password
 
-### Making a Progressive Web App
+# File Transfer
+SHARED_PATH=./shared/
+FTP_USER=raptor-ftp
+FTP_PASS=secure-ftp-password
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+# SSL (Production)
+CERT_FILE=./certs/cert.pem
+KEY_FILE=./certs/key.pem
+```
 
-### Advanced Configuration
+## User Roles & Permissions
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+| Feature | Admin | Pentester | User |
+|---------|-------|-----------|------|
+| View Assets | ✅ | ✅ | ✅ |
+| Edit Asset Details | ✅ | ✅ | ✅ |
+| Delete Assets | ✅ | ❌ | ❌ |
+| Security Testing | ✅ | ✅ | ❌ |
+| User Management | ✅ | ❌ | ❌ |
+| System Configuration | ✅ | ❌ | ❌ |
+| Reports & Analytics | ✅ | ✅ | ✅ |
 
-### Deployment
+## Security Features
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+- **Secure Authentication**: LDAP/AD integration with session management
+- **Role-Based Access Control**: Granular permission system
+- **Audit Logging**: Comprehensive activity tracking
+- **Data Encryption**: Secure data storage and transmission
+- **Input Sanitization**: Protection against injection attacks
 
-### `npm run build` fails to minify
+## API Documentation
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### Authentication Endpoints
+- `POST /login` - User authentication
+- `GET /session-status` - Check login status
+- `POST /logout` - End user session
+
+### Asset Management
+- `GET /api/records` - Retrieve all assets
+- `POST /api/records/{id}` - Update asset details
+- `DELETE /api/records/{id}` - Delete asset (admin only)
+
+### Security Testing
+- `GET /pentest/records` - Get penetration test data
+- `POST /pentest/{id}` - Update test results
+- `DELETE /pentest/{id}` - Remove test data
+
+### Administration
+- `GET /ldap-search` - Search LDAP users
+- `POST /add-user` - Add new user
+- `GET /existing-users` - List current users
+
+## Development
+
+### Local Development Setup
+
+1. **Backend Development**
+   ```bash
+   cd backend
+   python -m venv env
+   source env/bin/activate  # On Windows: env\Scripts\activate
+   pip install -r requirements.txt
+   python main.py
+   ```
+
+2. **Frontend Development**
+   ```bash
+   cd frontend
+   npm install
+   npm start
+   ```
+
+### Debug Mode
+
+For authentication debugging, run:
+```bash
+cd backend
+python debug_admin.py
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Support
+
+For support and documentation:
+- Check the application logs at `{DATA_PATH}/application.log`
+- Review the debug output from `debug_admin.py`
+- Ensure all environment variables are properly configured
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+**RAPTOR** - *Precision in Cybersecurity Operations*

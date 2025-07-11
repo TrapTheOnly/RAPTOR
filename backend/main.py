@@ -968,26 +968,18 @@ def login():
     """
     Authenticate the user and set session variables.
     """
-    logger.info("🚪 Login route called")
-    print("🚪 Login route called")
     
     data = request.get_json()
     if not data:
-        logger.error("❌ No JSON data received in login request")
-        print("❌ No JSON data received in login request")
         return jsonify({"error": "No data provided"}), 400
     
     username = data.get('username')
     password = data.get('password')
     
     if not username or not password:
-        logger.error("❌ Missing username or password in request")
-        print("❌ Missing username or password in request")
         return jsonify({"error": "Username and password required"}), 400
     
     username = username.lower()
-    logger.info(f"🔐 Login attempt for username: {username}")
-    print(f"🔐 Login attempt for username: {username}")
     
     # Check allowed users first
     conn = sqlite3.connect(DB_PATH)
@@ -1000,20 +992,14 @@ def login():
     print(f"🗄️ Admin username from env: {os.getenv('ADMIN_USERNAME')}")
 
     if username == os.getenv("ADMIN_USERNAME"):
-        logger.info("🔑 Admin login detected, calling admin authentication")
-        print("🔑 Admin login detected, calling admin authentication")
         
         if admin_login(username, password):
             session.permanent = True
             session['logged_in'] = True
             session['username'] = username
             session['user_type'] = 'admin'
-            logger.info(f"✅ Admin user {username} logged in successfully.")
-            print(f"✅ Admin user {username} logged in successfully.")
             return jsonify({"status": "logged_in", "username": username, "user_type": 'admin'}), 200
         else:
-            logger.error(f"❌ Admin authentication failed for {username}")
-            print(f"❌ Admin authentication failed for {username}")
             return jsonify({"error": "Invalid credentials"}), 401
 
     if user:
@@ -1025,16 +1011,10 @@ def login():
             session['logged_in'] = True
             session['username'] = user[0]
             session['user_type'] = user[1] if user[1] else 'user'
-            logger.info(f"✅ User {username} logged in successfully.")
-            print(f"✅ User {username} logged in successfully.")
             return jsonify({"status": "logged_in", "username": username, "user_type": session['user_type']}), 200
         else:
-            logger.error(f"❌ LDAP authentication failed for {username}")
-            print(f"❌ LDAP authentication failed for {username}")
             return jsonify({"error": "Invalid credentials"}), 401
     else:
-        logger.warning(f"⚠️ User {username} not found in allowed_users table")
-        print(f"⚠️ User {username} not found in allowed_users table")
         return jsonify({"error": "Invalid credentials"}), 401
     
 @app.route('/session-status', methods=['GET'])

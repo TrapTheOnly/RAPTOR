@@ -732,8 +732,8 @@ const RecordsTable = ({ userRole, darkMode }) => {
     <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, color: 'text.primary', mb: 0.5 }}>
-            🌐 Records
+          <Typography variant="h4" gutterBottom>
+            Records
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Existing internet-facing DNS records

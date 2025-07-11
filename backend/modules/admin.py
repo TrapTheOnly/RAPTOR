@@ -27,10 +27,9 @@ def init_admin_db():
             hashed_password = bcrypt.hashpw(static_password.encode(), bcrypt.gensalt())
             c.execute("SELECT * FROM admin_users WHERE username = ?", (static_username,))
             if c.fetchone() is None:
+                logger.info("no admin")
                 c.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", (static_username, hashed_password))
-                with open("/tmp/writehere.txt", "a") as file:
-                    file.write(f"Admin user created! Username: {static_username}, Password: {static_password}")
-                logger.info(f"Admin user created! Username: {static_username}, Password: {static_password}")
+                logger.info("Created admin user with username: %s and password: %s", static_username, static_password)
             else:
                 logger.info("Admin user already exists. Skipping creation.")
             conn.commit()
@@ -116,3 +115,5 @@ def admin_required(f):
             return jsonify({"error": "Unauthorized access"}), 403
         return f(*args, **kwargs)
     return decorated_function
+
+# 

@@ -261,8 +261,8 @@ const Record = ({ darkMode }) => {
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, color: 'text.primary', mb: 0.5 }}>
-            📋 Record Details
+          <Typography variant="h4" gutterBottom>
+            Record Details
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Detailed information and history for {record.name}

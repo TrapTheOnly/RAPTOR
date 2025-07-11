@@ -126,7 +126,7 @@ const Dashboard = ({ userRole, darkMode = false }) => {
         if (record.status === 'updated') {
           activity.push({
             type: 'record_updated',
-            title: `DNS Record Updated`,
+            title: `Asset Record Updated`,
             subtitle: record.name,
             time: record.last_modification_date,
             icon: TrendingUp,
@@ -135,7 +135,7 @@ const Dashboard = ({ userRole, darkMode = false }) => {
         } else if (record.status === 'missing') {
           activity.push({
             type: 'record_missing',
-            title: `DNS Record Missing`,
+            title: `Asset Missing from Scope`,
             subtitle: record.name,
             time: record.last_modification_date,
             icon: Warning,
@@ -226,7 +226,7 @@ const Dashboard = ({ userRole, darkMode = false }) => {
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
           <Box>
             <Typography variant="h4" gutterBottom>
-            Security Overview
+              Security Overview
             </Typography>
             <Typography variant="body2" color="text.secondary">
               DNS monitoring and security assessment dashboard

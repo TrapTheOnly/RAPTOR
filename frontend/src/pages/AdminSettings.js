@@ -371,8 +371,8 @@ const AdminSettings = ({ darkMode }) => {
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, color: 'text.primary', mb: 0.5 }}>
-            ⚙️ System Administration
+          <Typography variant="h4" gutterBottom>
+            System Administration
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Manage system settings, users, and infrastructure configuration
