@@ -17,7 +17,25 @@ services:
       - certs_volume:/certs
       - db_and_backups_volume:/appdata
       - ftp_volume:/ftp/reports
-    
+    environment:
+      - ENVIRONMENT=development
+      - CORS_ORIGINS
+      - UPDATE_TIME
+      - DATA_PATH
+      - SHARED_PATH
+      - BACKUP_FOLDER
+      - LDAP_DOMAIN
+      - LDAP_SERVER
+      - LDAP_USER
+      - LDAP_PASS
+      - SECRET_KEY
+      - ADMIN_USERNAME
+      - APP_PORT
+      - CERT_FILE
+      - KEY_FILE
+      - FTP_USER
+      - FTP_PASS
+      - FTP_HOST=ftp 
     restart: unless-stopped
 
   ftp:
