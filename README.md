@@ -2,6 +2,8 @@
 
 **R**econnaissance, **A**ssessment, **P**enetration **T**esting, **O**perations & **R**eporting
 
+> **New:** See [DNS Zone File Monitoring Feature](backend/DNS_MONITORING_README.md) for details on automated DNS zone file health checks and dashboard integration.
+
 ## Overview
 
 RAPTOR is a comprehensive cybersecurity operations platform designed for security professionals, penetration testers, and IT administrators. It provides integrated asset discovery, vulnerability assessment, and penetration testing management capabilities.
@@ -78,7 +80,7 @@ RAPTOR is a comprehensive cybersecurity operations platform designed for securit
 
 4. **Access the platform**
    - Navigate to `https://localhost:5000` (or your configured port)
-   - Use the generated admin credentials from `/tmp/writehere.txt`
+   - Retrieve the generated admin credentials from the file defined by `ADMIN_CREDENTIALS_FILE` (defaults to `/tmp/writehere.txt`)
 
 ## Configuration
 
@@ -93,6 +95,7 @@ BACKUP_FOLDER=./backups/
 
 # Admin User
 ADMIN_USERNAME=admin
+ADMIN_CREDENTIALS_FILE=/tmp/writehere.txt
 
 # LDAP Configuration
 LDAP_SERVER=ldap.yourdomain.com
@@ -171,14 +174,6 @@ KEY_FILE=./certs/key.pem
    npm install
    npm start
    ```
-
-### Debug Mode
-
-For authentication debugging, run:
-```bash
-cd backend
-python debug_admin.py
-```
 
 ## Contributing
 

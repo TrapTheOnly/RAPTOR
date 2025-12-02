@@ -1,0 +1,339 @@
+/* Global CSS Custom Properties for Theme Transitions */
+:root {
+  /* Theme transition timing - synchronized across all elements */
+  --theme-transition-duration: 0.6s;
+  --theme-transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Light theme colors */
+  --color-primary: #1976d2;
+  --color-primary-dark: #0d47a1;
+  --color-secondary: #9c27b0;
+  --color-background-default: #f5f5f5;
+  --color-background-paper: #ffffff;
+  --color-text-primary: #333333;
+  --color-text-secondary: #666666;
+  --color-divider: #e0e0e0;
+  --color-gradient-start: #1976d2;
+  --color-gradient-end: #0d47a1;
+  --color-glow: rgba(25, 118, 210, 0.2);
+  --color-glow-hover: rgba(25, 118, 210, 0.4);
+  --color-shadow: rgba(25, 118, 210, 0.15);
+}
+
+/* Dark theme colors */
+[data-theme="dark"] {
+  --color-primary: #ffffff;
+  --color-primary-dark: #00d4ff;
+  --color-secondary: #666666;
+  --color-background-default: #0a0a0a;
+  --color-background-paper: #141414;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #999999;
+  --color-divider: #333333;
+  --color-gradient-start: #00d4ff;
+  --color-gradient-end: #1976d2;
+  --color-glow: rgba(0, 212, 255, 0.3);
+  --color-glow-hover: rgba(0, 212, 255, 0.5);
+  --color-shadow: rgba(0, 212, 255, 0.15);
+}
+
+/* Synchronized global transitions - all elements transition together */
+*, *::before, *::after {
+  transition: 
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing),
+    text-shadow var(--theme-transition-duration) var(--theme-transition-timing),
+    filter var(--theme-transition-duration) var(--theme-transition-timing),
+    fill var(--theme-transition-duration) var(--theme-transition-timing),
+    stroke var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+/* Enhanced body and html for synchronized transitions */
+html, body {
+  background-color: var(--color-background-default);
+  color: var(--color-text-primary);
+}
+
+/* Custom scrollbar that adapts to theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-text-secondary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-primary);
+}
+
+/* Theme toggle button with morphing SVG */
+.theme-toggle-button {
+  position: relative;
+  overflow: visible;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+}
+
+.theme-toggle-button:hover {
+  background-color: var(--color-glow) !important;
+  transform: scale(1.1);
+}
+
+.theme-toggle-button:active {
+  transform: scale(0.95);
+}
+
+/* Morphing SVG Animation */
+.morphing-theme-icon {
+  width: 24px;
+  height: 24px;
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.morphing-theme-icon.morphing {
+  animation: svgMorph 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes svgMorph {
+  0% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  25% {
+    transform: rotate(90deg) scale(0.8);
+    opacity: 0.7;
+  }
+  50% {
+    transform: rotate(180deg) scale(0.6);
+    opacity: 0.5;
+  }
+  75% {
+    transform: rotate(270deg) scale(0.8);
+    opacity: 0.7;
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* SVG path morphing animations */
+.sun-to-moon {
+  animation: sunToMoon 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.moon-to-sun {
+  animation: moonToSun 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes sunToMoon {
+  0% {
+    d: path('M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M2 12h2m16 0h2M6.34 6.34l1.41-1.41m8.5 8.5l1.41-1.41M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10z');
+  }
+  50% {
+    d: path('M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z');
+  }
+  100% {
+    d: path('M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z');
+  }
+}
+
+@keyframes moonToSun {
+  0% {
+    d: path('M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z');
+  }
+  50% {
+    d: path('M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10z');
+  }
+  100% {
+    d: path('M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M2 12h2m16 0h2M6.34 6.34l1.41-1.41m8.5 8.5l1.41-1.41M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10z');
+  }
+}
+
+/* Glow effect for theme transition */
+.theme-toggle-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: radial-gradient(circle, var(--color-glow-hover) 0%, transparent 70%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: all 0.4s ease-out;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.theme-toggle-button.active::before {
+  width: 50px;
+  height: 50px;
+  opacity: 0.4;
+}
+
+/* Ripple effect during theme change */
+.theme-toggle-button.rippling {
+  animation: themeRipple 1.2s ease-out;
+}
+
+@keyframes themeRipple {
+  0% {
+    box-shadow: 0 0 0 0 var(--color-glow-hover);
+  }
+  50% {
+    box-shadow: 0 0 0 15px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* Enhanced RAPTOR logo transitions using custom properties */
+.raptor-logo {
+  background: linear-gradient(45deg, var(--color-gradient-start) 30%, var(--color-gradient-end) 90%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  text-shadow: 0 0 8px var(--color-glow) !important;
+}
+
+.raptor-logo:hover {
+  text-shadow: 
+    0 0 12px var(--color-glow-hover), 
+    0 0 24px var(--color-glow) !important;
+  filter: drop-shadow(0 4px 12px var(--color-shadow)) !important;
+}
+
+/* Add Filter Button with smooth transitions */
+.add-filter-button {
+  background-color: var(--color-background-paper) !important;
+  color: var(--color-text-primary) !important;
+  border: 1px solid var(--color-divider) !important;
+  transition: 
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.add-filter-button:hover {
+  background-color: var(--color-glow) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 4px 8px var(--color-shadow) !important;
+}
+
+.add-filter-button:active {
+  background-color: var(--color-glow-hover) !important;
+}
+
+/* METRIC CARDS - Final working solution */
+/* Use higher specificity to override Material-UI completely */
+.metric-card-container .MuiCard-root {
+  background-color: var(--color-background-paper) !important;
+  border: 1px solid var(--color-divider) !important;
+}
+
+.metric-card-container .MuiTypography-root {
+  color: var(--color-text-secondary) !important;
+}
+
+.metric-card-container .MuiTypography-h4 {
+  color: var(--color-text-primary) !important;
+}
+
+.metric-card-container .MuiLinearProgress-root {
+  background-color: var(--color-divider) !important;
+}
+
+/* Synchronized page transition */
+.page-transition {
+  animation: pageTransition 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes pageTransition {
+  from {
+    opacity: 0.8;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dashboard cards with enhanced transitions */
+.dashboard-card {
+  background-color: var(--color-background-paper) !important;
+  border: 1px solid var(--color-divider) !important;
+  transition: 
+    all var(--theme-transition-duration) var(--theme-transition-timing),
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 
+    0 8px 25px var(--color-shadow),
+    0 4px 12px var(--color-glow) !important;
+}
+
+/* Dashboard card title and content classes */
+.card-title {
+  color: var(--color-text-primary) !important;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.activity-title {
+  color: var(--color-text-primary) !important;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.activity-subtitle {
+  color: var(--color-text-secondary) !important;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.activity-time {
+  color: var(--color-text-secondary) !important;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.no-activity-text {
+  color: var(--color-text-secondary) !important;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.status-text {
+  color: var(--color-text-primary) !important;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.stats-label {
+  color: var(--color-text-secondary) !important;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.stats-value {
+  color: var(--color-text-primary) !important;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+.quick-stats-box {
+  background-color: var(--color-background-default) !important;
+  border: 1px solid var(--color-divider) !important;
+  transition: 
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing) !important;
+} 

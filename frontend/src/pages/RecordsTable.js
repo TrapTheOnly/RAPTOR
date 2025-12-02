@@ -947,21 +947,12 @@ const RecordsTable = ({ userRole, darkMode }) => {
             startIcon={<Add />}
             endIcon={<ArrowDropDown />}
             onClick={(e) => setSearchMenuAnchor(e.currentTarget)}
+            className="add-filter-button"
             sx={{ 
               minWidth: 'auto',
               whiteSpace: 'nowrap',
-              backgroundColor: 'background.paper',
-              color: 'text.primary',
-              border: `1px solid ${theme.palette.divider}`,
+              // Remove hardcoded styles, let CSS handle transitions and colors
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              '&:hover': {
-                backgroundColor: alpha(theme.palette.primary.main, 0.04),
-                borderColor: theme.palette.primary.main,
-                boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
-              },
-              '&:active': {
-                backgroundColor: alpha(theme.palette.primary.main, 0.08),
-              },
               px: 2,
               py: 1,
               fontWeight: 500,

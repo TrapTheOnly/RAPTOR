@@ -19,3 +19,4 @@ test.*
 sqleditor.py
 runner.py
 tree_db.py
+backend/main_snapshot.py

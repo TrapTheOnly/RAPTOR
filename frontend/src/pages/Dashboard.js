@@ -45,6 +45,7 @@ const Dashboard = ({ userRole, darkMode = false }) => {
   const [records, setRecords] = useState([]);
   const [pentestData, setPentestData] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [systemStatus, setSystemStatus] = useState({});
   const [loading, setLoading] = useState(true);
   const theme = useTheme();
 
@@ -58,20 +59,23 @@ const Dashboard = ({ userRole, darkMode = false }) => {
     setLoading(true);
     try {
       // Fetch all data sources
-      const [recordsResponse, pentestResponse, usersResponse, sourcesResponse] = await Promise.all([
+      const [recordsResponse, pentestResponse, usersResponse, sourcesResponse, statusResponse] = await Promise.all([
         axios.get('/api/records'),
         userRole === 'admin' || userRole === 'pentester' ? axios.get('/pentest/records') : Promise.resolve({ data: [] }),
         userRole === 'admin' ? axios.get('/existing-users') : Promise.resolve({ data: { users: [] } }),
-        userRole === 'admin' ? axios.get('/ip-sources') : Promise.resolve({ data: { ip_sources: [] } })
+        userRole === 'admin' ? axios.get('/ip-sources') : Promise.resolve({ data: { ip_sources: [] } }),
+        axios.get('/api/system-status')
       ]);
 
       const recordsData = recordsResponse.data;
       const pentestDataRes = pentestResponse.data || [];
       const usersData = usersResponse.data?.users || [];
       const sourcesData = sourcesResponse.data?.ip_sources || [];
+      const statusData = statusResponse.data || {};
 
       setRecords(recordsData);
       setPentestData(pentestDataRes);
+      setSystemStatus(statusData);
 
       // Calculate statistics
       const totalRecords = recordsData.length;
@@ -167,40 +171,94 @@ const Dashboard = ({ userRole, darkMode = false }) => {
   };
 
   const MetricCard = ({ title, value, subtitle, icon: Icon, progress, color = '#ffffff' }) => (
-    <Card sx={{ height: '100%' }}>
-      <CardContent sx={{ p: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-          <Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              {title}
-            </Typography>
-            <Typography variant="h4" component="div" sx={{ fontWeight: 300, mb: 1 }}>
-              {value}
-            </Typography>
-            {subtitle && (
-              <Typography variant="body2" color="text.secondary">
-                {subtitle}
+    <div className="metric-card-container">
+      <Card 
+        sx={{ 
+          height: '100%',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: '0 8px 25px var(--color-shadow), 0 4px 12px var(--color-glow)',
+          },
+          transition: 'all var(--theme-transition-duration) var(--theme-transition-timing), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+      >
+        <CardContent sx={{ p: 3 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+            <Box>
+              <Typography 
+                variant="body2" 
+                gutterBottom
+              >
+                {title}
               </Typography>
-            )}
-          </Box>
-          <Icon sx={{ color, opacity: 0.7 }} />
-        </Box>
-        {progress !== undefined && (
-          <Box mt={2}>
-            <LinearProgress 
-              variant="determinate" 
-              value={progress} 
-              sx={{
-                '& .MuiLinearProgress-bar': {
-                  backgroundColor: color,
-                },
-              }}
+              <Typography 
+                variant="h4" 
+                component="div" 
+                sx={{ 
+                  fontWeight: 300, 
+                  mb: 1,
+                }}
+              >
+                {value}
+              </Typography>
+              {subtitle && (
+                <Typography 
+                  variant="body2" 
+                >
+                  {subtitle}
+                </Typography>
+              )}
+            </Box>
+            <Icon 
+              sx={{ 
+                color: color,
+                opacity: 0.7,
+              }} 
             />
           </Box>
-        )}
-      </CardContent>
-    </Card>
+          {progress !== undefined && (
+            <Box mt={2}>
+              <LinearProgress 
+                variant="determinate" 
+                value={progress} 
+                sx={{
+                  '& .MuiLinearProgress-bar': {
+                    backgroundColor: color,
+                  },
+                }}
+              />
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'healthy':
+        return '#4CAF50';
+      case 'warning':
+        return '#FF9800';
+      case 'error':
+        return '#F44336';
+      default:
+        return '#666666';
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'healthy':
+        return 'Active';
+      case 'warning':
+        return 'Warning';
+      case 'error':
+        return 'Error';
+      default:
+        return 'Unknown';
+    }
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -283,9 +341,26 @@ const Dashboard = ({ userRole, darkMode = false }) => {
         <Grid container spacing={3}>
           {/* Recent Activity */}
           <Grid item xs={12} md={6}>
-            <Card sx={{ height: 400 }}>
+            <Card 
+              className="dashboard-card"
+              sx={{ 
+                height: 400,
+                backgroundColor: 'var(--color-background-paper)',
+                borderColor: 'var(--color-divider)',
+                border: '1px solid var(--color-divider)',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: `0 8px 25px var(--color-shadow)`,
+                },
+                transition: 'all var(--theme-transition-duration) var(--theme-transition-timing)',
+              }}
+            >
               <CardContent sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
+                <Typography 
+                  variant="h6" 
+                  gutterBottom
+                  sx={{ color: 'var(--color-text-primary)' }}
+                >
                   Recent Activity
                 </Typography>
                 <Box sx={{ mt: 2 }}>
@@ -307,20 +382,37 @@ const Dashboard = ({ userRole, darkMode = false }) => {
                           <activity.icon sx={{ fontSize: 16, color: activity.color }} />
                         </Box>
                         <Box flex={1}>
-                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              fontWeight: 500,
+                              color: 'var(--color-text-primary)',
+                            }}
+                          >
                             {activity.title}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography 
+                            variant="caption" 
+                            sx={{ color: 'var(--color-text-secondary)' }}
+                          >
                             {activity.subtitle}
                           </Typography>
                         </Box>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography 
+                          variant="caption" 
+                          sx={{ color: 'var(--color-text-secondary)' }}
+                        >
                           {formatDate(activity.time)}
                         </Typography>
                       </Box>
                     ))
                   ) : (
-                    <Typography variant="body2" color="text.secondary" textAlign="center" py={4}>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ color: 'var(--color-text-secondary)' }}
+                      textAlign="center" 
+                      py={4}
+                    >
                       No recent activity
                     </Typography>
                   )}
@@ -331,59 +423,159 @@ const Dashboard = ({ userRole, darkMode = false }) => {
 
           {/* System Status */}
           <Grid item xs={12} md={6}>
-            <Card sx={{ height: 400 }}>
+            <Card 
+              className="dashboard-card"
+              sx={{ 
+                height: 400,
+                backgroundColor: 'var(--color-background-paper)',
+                borderColor: 'var(--color-divider)',
+                border: '1px solid var(--color-divider)',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: `0 8px 25px var(--color-shadow)`,
+                },
+                transition: 'all var(--theme-transition-duration) var(--theme-transition-timing)',
+              }}
+            >
               <CardContent sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
+                <Typography 
+                  variant="h6" 
+                  gutterBottom
+                  sx={{ color: 'var(--color-text-primary)' }}
+                >
                   System Status
                 </Typography>
                 <Box sx={{ mt: 3 }}>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" py={2}>
-                    <Box display="flex" alignItems="center">
-                      <CheckCircle sx={{ color: '#4CAF50', mr: 2 }} />
-                      <Typography variant="body2">DNS Monitoring</Typography>
-                    </Box>
-                    <Chip label="Active" size="small" sx={{ backgroundColor: '#4CAF50', color: 'white' }} />
-                  </Box>
-                  
-                  <Box display="flex" justifyContent="space-between" alignItems="center" py={2}>
+                  {Object.keys(systemStatus).length > 0 ? (
+                    Object.entries(systemStatus).map(([serviceName, status]) => {
+                      const iconColor = getStatusColor(status.status);
+                      const IconComponent = {
+                        data_collection: Assessment,
+                        dns_monitoring: CheckCircle,
+                      }[serviceName] || Timeline;
+                      const label = {
+                        data_collection: 'DNS Monitoring',
+                        dns_monitoring: 'DNS Monitoring',
+                      }[serviceName] || serviceName.replace(/_/g, ' ');
+
+                      return (
+                        <Box
+                          key={serviceName}
+                          display="flex"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          py={2}
+                        >
+                          <Box display="flex" alignItems="center">
+                            <IconComponent sx={{ color: iconColor, mr: 2 }} />
+                            <Box>
+                              <Typography 
+                                variant="body2"
+                                sx={{ color: 'var(--color-text-primary)', textTransform: 'capitalize' }}
+                              >
+                                {label}
+                              </Typography>
+                              {status.message && (
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    color: 'var(--color-text-secondary)',
+                                    display: 'block',
+                                    fontSize: '0.7rem'
+                                  }}
+                                >
+                                  {status.message}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                          <Box display="flex" flexDirection="column" alignItems="flex-end">
+                            <Chip 
+                              label={getStatusLabel(status.status)} 
+                              size="small" 
+                              sx={{ 
+                                backgroundColor: iconColor, 
+                                color: 'white',
+                                mb: 0.5
+                              }} 
+                            />
+                            {status.last_updated && (
+                              <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                  color: 'var(--color-text-secondary)',
+                                  fontSize: '0.7rem'
+                                }}
+                              >
+                                {formatDate(status.last_updated)}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                      );
+                    })
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No system status information available yet.
+                    </Typography>
+                  )}
+
+                  <Box display="flex" justifyContent="space-between" alignItems="center" py={2} mt={1}>
                     <Box display="flex" alignItems="center">
                       <Security sx={{ color: '#2196F3', mr: 2 }} />
-                    <Typography variant="body2">Live Security Testing</Typography>
+                      <Typography 
+                        variant="body2"
+                        sx={{ color: 'var(--color-text-primary)' }}
+                      >
+                        Live Security Testing
+                      </Typography>
                     </Box>
                     <Chip 
-                    label={stats.testsInProgress > 0 ? "Active" : "Idle"} 
+                      label={stats.testsInProgress > 0 ? "Active" : "Idle"} 
                       size="small" 
                       sx={{ 
-                      backgroundColor: stats.testsInProgress > 0 ? '#4CAF50' : '#666666', 
+                        backgroundColor: stats.testsInProgress > 0 ? '#4CAF50' : '#666666', 
                         color: 'white' 
                       }} 
                     />
                   </Box>
-                  
-                  <Box display="flex" justifyContent="space-between" alignItems="center" py={2}>
-                    <Box display="flex" alignItems="center">
-                      <Assessment sx={{ color: '#9C27B0', mr: 2 }} />
-                      <Typography variant="body2">Data Collection</Typography>
-                    </Box>
-                    <Chip label="Active" size="small" sx={{ backgroundColor: '#4CAF50', color: 'white' }} />
-                  </Box>
 
                   {/* Quick Stats */}
-                  <Box mt={4} p={2} sx={{ backgroundColor: 'background.default', borderRadius: 1 }}>
+                  <Box 
+                    mt={4} 
+                    p={2} 
+                    sx={{ 
+                      backgroundColor: 'var(--color-background-default)', 
+                      borderRadius: 1,
+                      border: '1px solid var(--color-divider)',
+                    }}
+                  >
                     <Grid container spacing={2}>
                       <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography 
+                          variant="caption" 
+                          sx={{ color: 'var(--color-text-secondary)' }}
+                        >
                           Last Update
                         </Typography>
-                        <Typography variant="body2">
+                        <Typography 
+                          variant="body2"
+                          sx={{ color: 'var(--color-text-primary)' }}
+                        >
                           {formatDate(new Date().toISOString())}
                         </Typography>
                       </Grid>
                       <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary">
-                        Security Test Coverage
+                        <Typography 
+                          variant="caption" 
+                          sx={{ color: 'var(--color-text-secondary)' }}
+                        >
+                          Security Test Coverage
                         </Typography>
-                        <Typography variant="body2">
+                        <Typography 
+                          variant="body2"
+                          sx={{ color: 'var(--color-text-primary)' }}
+                        >
                           {stats.totalRecords > 0 ? Math.round((stats.testedRecords / stats.totalRecords) * 100) : 0}%
                         </Typography>
                       </Grid>

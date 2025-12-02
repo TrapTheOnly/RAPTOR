@@ -12,19 +12,18 @@ import {
   MenuItem,
   Divider,
   Chip,
-  Button,
   useTheme,
-  alpha
+  alpha,
+  Button
 } from '@mui/material';
+import MorphingThemeIcon from './MorphingThemeIcon';
+
 import {
   Dashboard,
   TableView,
   Security,
   Settings,
   Logout,
-  Person,
-  Brightness4,
-  Brightness7
 } from '@mui/icons-material';
 
 const ModernHeader = ({ 
@@ -34,12 +33,16 @@ const ModernHeader = ({
   setLoggedIn, 
   setUsername,
   darkMode,
-  setDarkMode
+  setDarkMode,
+  pageTitle,
+  offsetLeft
 }) => {
   const [anchorEl, setAnchorEl] = useState(null);
-  const navigate = useNavigate();
-  const location = useLocation();
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isRippling, setIsRippling] = useState(false);
   const theme = useTheme();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const handleProfileMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -79,6 +82,24 @@ const ModernHeader = ({
     return false;
   };
 
+  const handleThemeToggle = () => {
+    // Start animation effects immediately
+    setIsAnimating(true);
+    setIsRippling(true);
+    
+    // Change theme immediately for synchronized transitions
+    setDarkMode(!darkMode);
+    
+    // Reset animation states after animation completes
+    setTimeout(() => {
+      setIsRippling(false);
+    }, 1200);
+  };
+
+  const handleAnimationComplete = () => {
+    setIsAnimating(false);
+  };
+
   const getRoleColor = (role) => {
     switch (role) {
       case 'admin': return '#F44336';
@@ -90,11 +111,14 @@ const ModernHeader = ({
 
   return (
     <AppBar 
-      position="static" 
+      position="fixed" 
       elevation={0}
       sx={{ 
         backgroundColor: theme.palette.background.paper,
         borderBottom: `1px solid ${theme.palette.divider}`,
+        width: `calc(100% - ${offsetLeft}px)`,
+        ml: `${offsetLeft}px`,
+        zIndex: theme.zIndex.appBar + 1
       }}
     >
       <Toolbar sx={{ justifyContent: 'space-between', py: 1 }}>
@@ -242,11 +266,22 @@ const ModernHeader = ({
         {/* User Profile & Theme Switcher */}
         <Box display="flex" alignItems="center" gap={2}>
           <IconButton 
-            sx={{ color: theme.palette.text.secondary }} 
-            onClick={() => setDarkMode(!darkMode)}
+            className={`theme-toggle-button ${isRippling ? 'rippling' : ''} ${isAnimating ? 'active' : ''}`}
+            sx={{ 
+              color: theme.palette.text.secondary,
+              transition: 'color 0.3s ease-in-out',
+              '&:hover': {
+                color: theme.palette.text.primary,
+              }
+            }} 
+            onClick={handleThemeToggle}
             title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
-            {darkMode ? <Brightness7 /> : <Brightness4 />}
+            <MorphingThemeIcon
+              isDark={darkMode}
+              isAnimating={isAnimating}
+              onAnimationComplete={handleAnimationComplete}
+            />
           </IconButton>
           <Box display="flex" alignItems="center" gap={1}>
             <Chip

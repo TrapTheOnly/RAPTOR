@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { ThemeProvider, createTheme, CssBaseline, Box } from '@mui/material';
 import axios from 'axios';
 import ModernHeader from './components/ModernHeader';
 import ModernLogin from './pages/ModernLogin';
@@ -12,6 +12,9 @@ import Record from './pages/Record';
 import PentestRecord from './pages/PentestRecord';
 import Error from './pages/Error';
 
+// Import global theme transition styles
+import './styles/theme-transitions.css';
+
 const App = () => {
   const [loggedIn, setLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
@@ -19,6 +22,7 @@ const App = () => {
   const [userRole, setUserRole] = useState(null);
   const storedTheme = localStorage.getItem('theme') || 'light';
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Global theme for the entire application
   const globalTheme = createTheme({
@@ -78,7 +82,10 @@ const App = () => {
     checkLoginStatus();
   }, []);
 
+  // Update data-theme attribute on document element for CSS custom properties
   useEffect(() => {
+    // Immediate theme change for synchronized transitions
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
     localStorage.setItem('theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
@@ -91,10 +98,23 @@ const App = () => {
     );
   }
 
+  const routeTitleMap = {
+    '/': 'Dashboard',
+    '/records': 'Records',
+    '/pentest': 'Security',
+    '/settings': 'Settings',
+  };
+
+  const resolveTitle = (pathname) => {
+    if (pathname.startsWith('/records/')) return 'Record Details';
+    if (pathname.startsWith('/pentest/record')) return 'Security Test';
+    return routeTitleMap[Object.keys(routeTitleMap).find((key) => pathname === key || pathname.startsWith(key))] || 'RAPTOR';
+  };
+
   return (
     <ThemeProvider theme={globalTheme}>
       <CssBaseline />
-    <Router>
+      <Router>
         {loggedIn && (
           <ModernHeader
             username={username}
@@ -102,60 +122,65 @@ const App = () => {
             setUserRole={setUserRole}
             setLoggedIn={setLoggedIn}
             setUsername={setUsername}
-              darkMode={darkMode}
-              setDarkMode={setDarkMode}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            pageTitle={resolveTitle(window.location.pathname)}
           />
         )}
-      <Routes>
-        <Route
-          path="/"
-            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ? 
-            <Dashboard userRole={userRole} darkMode={darkMode}/> : 
-              loggedIn ? <Navigate to="/records" /> : <Navigate to="/login" />}
-        />
-        <Route
-          path="/records"
-          element={loggedIn && userRole ? 
-            <RecordsTable userRole={userRole} darkMode={darkMode}/> : 
-              <Navigate to="/login" />}
-        />
-        <Route
-          path="/login"
-          element={ !loggedIn ?
-            <ModernLogin
-              setLoggedIn={setLoggedIn}
-              setGlobalUsername={setUsername}
-              setGlobalUserRole={setUserRole}
-                darkMode={darkMode}
-            /> : <Navigate to="/" />
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            loggedIn && userRole === "admin" ? 
-              <AdminSettings darkMode={darkMode}/> : 
-                <Navigate to="/" />
-          }
-        />
-        <Route
-            path="/pentest"
-            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
-                <PentestDashboard darkMode={darkMode} isAdmin={userRole === 'admin'} username={username}/> : <Navigate to="/login" />
-            }
-        />
-        <Route
-          path="/pentest/record/:recordId"
-          element={loggedIn ? <PentestRecord darkMode={darkMode} /> : <Navigate to="/login" />}
-        />
-        <Route
-          path="/records/:domain"
-          element={loggedIn ? <Record darkMode={darkMode} /> : <Navigate to="/login" />}
-        />
-        <Route path="/records/*" element={<Navigate to="/" />} />
-        <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />
-      </Routes>
-    </Router>
+        <Box sx={{ display: 'flex', pt: loggedIn ? 8 : 0 }}>
+          <Box sx={{ flex: 1, px: loggedIn ? 4 : 0, py: loggedIn ? 3 : 0 }}>
+            <Routes>
+              <Route
+                path="/"
+                element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
+                  <Dashboard userRole={userRole} darkMode={darkMode}/> :
+                  loggedIn ? <Navigate to="/records" /> : <Navigate to="/login" />}
+              />
+              <Route
+                path="/records"
+                element={loggedIn && userRole ?
+                  <RecordsTable userRole={userRole} darkMode={darkMode}/> :
+                  <Navigate to="/login" />}
+              />
+              <Route
+                path="/login"
+                element={ !loggedIn ?
+                  <ModernLogin
+                    setLoggedIn={setLoggedIn}
+                    setGlobalUsername={setUsername}
+                    setGlobalUserRole={setUserRole}
+                    darkMode={darkMode}
+                  /> : <Navigate to="/" />
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  loggedIn && userRole === "admin" ?
+                    <AdminSettings darkMode={darkMode}/> :
+                    <Navigate to="/" />
+                }
+              />
+              <Route
+                path="/pentest"
+                element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
+                  <PentestDashboard darkMode={darkMode} isAdmin={userRole === 'admin'} username={username}/> : <Navigate to="/login" />
+                }
+              />
+              <Route
+                path="/pentest/record/:recordId"
+                element={loggedIn ? <PentestRecord darkMode={darkMode} /> : <Navigate to="/login" />}
+              />
+              <Route
+                path="/records/:domain"
+                element={loggedIn ? <Record darkMode={darkMode} /> : <Navigate to="/login" />}
+              />
+              <Route path="/records/*" element={<Navigate to="/" />} />
+              <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />
+            </Routes>
+          </Box>
+        </Box>
+      </Router>
     </ThemeProvider>
   );
 };
