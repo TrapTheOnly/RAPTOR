@@ -778,6 +778,34 @@ def api_change_password():
     response, status_code = change_admin_password(current_password, new_password)
     return jsonify(response), status_code
 
+@app.route('/admin-reset-password', methods=['POST'])
+def api_admin_reset_password():
+    """
+    Endpoint to reset admin password after first login.
+    """
+    if not session.get('reset_required') or session.get('username') != os.getenv("ADMIN_USERNAME"):
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    new_password = data.get('new_password')
+
+    if not new_password:
+        return jsonify({"error": "New password is required."}), 400
+
+    response, status_code = reset_admin_password(new_password)
+    if status_code == 200:
+        session['logged_in'] = True
+        session['reset_required'] = False
+        session['user_type'] = 'admin'
+        return jsonify({
+            "status": "logged_in",
+            "username": session.get("username"),
+            "user_type": "admin"
+        }), 200
+    return jsonify(response), status_code
+
 @app.route('/existing-users', methods=['GET'])
 @admin_required
 def api_get_existing_users():
@@ -993,12 +1021,23 @@ def login():
     
 
     if username == os.getenv("ADMIN_USERNAME"):
-        
+
         if admin_login(username, password):
             session.permanent = True
-            session['logged_in'] = True
             session['username'] = username
             session['user_type'] = 'admin'
+
+            if admin_requires_password_reset(username):
+                session['reset_required'] = True
+                session['logged_in'] = False
+                return jsonify({
+                    "status": "password_reset_required",
+                    "username": username,
+                    "user_type": "admin"
+                }), 200
+
+            session['logged_in'] = True
+            session.pop('reset_required', None)
             return jsonify({"status": "logged_in", "username": username, "user_type": 'admin'}), 200
         else:
             return jsonify({"error": "Invalid credentials"}), 401
@@ -1021,6 +1060,12 @@ def session_status():
     """
     Check if the user is logged in.
     """
+    if session.get('reset_required'):
+        return jsonify({
+            "status": "password_reset_required",
+            "username": session.get("username"),
+            "user_type": session.get("user_type")
+        }), 200
     if 'logged_in' in session and session['logged_in']:
         user_type = session.get('user_type')
         return jsonify({"status": "logged_in", "username": session.get("username"), "user_type": user_type}), 200

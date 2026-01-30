@@ -46,6 +46,16 @@ import {
   Password as PasswordIcon
 } from '@mui/icons-material';
 
+const MIN_PASSWORD_LENGTH = 12;
+const MAX_PASSWORD_LENGTH = 64;
+const COMMON_PASSWORDS = new Set([
+  'password', 'password1', '123456', '12345678', '123456789',
+  'qwerty', 'qwerty123', 'letmein', 'welcome', 'admin',
+  'admin123', 'iloveyou', 'monkey', 'dragon', 'football',
+  'abc123', '111111', 'trustno1', 'sunshine', 'princess',
+  'login', 'qwertyuiop', 'passw0rd', 'master', 'shadow'
+]);
+
 const AdminSettings = ({ darkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -68,6 +78,20 @@ const AdminSettings = ({ darkMode }) => {
   const [loading, setLoading] = useState(false);
   
   const theme = useTheme();
+
+  const validatePassword = (value) => {
+    if (!value) return 'New password is required.';
+    if (value.length < MIN_PASSWORD_LENGTH) {
+      return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+    }
+    if (value.length > MAX_PASSWORD_LENGTH) {
+      return `Password must be at most ${MAX_PASSWORD_LENGTH} characters.`;
+    }
+    if (COMMON_PASSWORDS.has(value.trim().toLowerCase())) {
+      return 'Password is too common.';
+    }
+    return '';
+  };
 
   useEffect(() => { 
     fetchIpSources(); 
@@ -282,6 +306,12 @@ const AdminSettings = ({ darkMode }) => {
   };
 
   const handleChangePassword = async () => {
+    const validationError = validatePassword(newPassword);
+    if (validationError) {
+      setMessageType('error');
+      setMessage(validationError);
+      return;
+    }
     if (newPassword !== retypePassword) {
       setMessageType('error'); 
       setMessage('New password and retyped password do not match.'); 
@@ -677,6 +707,17 @@ const AdminSettings = ({ darkMode }) => {
                     )
                   }}
                 />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                    NIST password requirements:
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    - At least {MIN_PASSWORD_LENGTH} characters (max {MAX_PASSWORD_LENGTH})
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    - Not a common password
+                  </Typography>
+                </Box>
                 <Button 
                   variant="contained" 
                   size="large"

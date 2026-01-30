@@ -17,6 +17,7 @@ const App = () => {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
+  const [passwordResetRequired, setPasswordResetRequired] = useState(false);
   const storedTheme = localStorage.getItem('theme') || 'light';
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
 
@@ -61,13 +62,22 @@ const App = () => {
       try {
         const response = await axios.get('/session-status');
         if (response.status === 200) {
-          setLoggedIn(true);
-          setUsername(response.data.username);
-          setUserRole(response.data.user_type);
+          if (response.data.status === 'password_reset_required') {
+            setLoggedIn(false);
+            setPasswordResetRequired(true);
+            setUsername(response.data.username || '');
+            setUserRole(null);
+          } else if (response.data.status === 'logged_in') {
+            setLoggedIn(true);
+            setPasswordResetRequired(false);
+            setUsername(response.data.username);
+            setUserRole(response.data.user_type);
+          }
         }
       } catch (error) {
         console.error("User is not logged in:", error);
         setLoggedIn(false);
+        setPasswordResetRequired(false);
         setUsername('');
         setUserRole(null);
       } finally {
@@ -126,7 +136,10 @@ const App = () => {
               setLoggedIn={setLoggedIn}
               setGlobalUsername={setUsername}
               setGlobalUserRole={setUserRole}
-                darkMode={darkMode}
+              setPasswordResetRequired={setPasswordResetRequired}
+              passwordResetRequired={passwordResetRequired}
+              resetUsername={username}
+              darkMode={darkMode}
             /> : <Navigate to="/" />
           }
         />
