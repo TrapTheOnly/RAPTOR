@@ -94,6 +94,8 @@ const AdminSettings = ({ darkMode }) => {
   const [resetStats, setResetStats] = useState(null);
   const [resetSummary, setResetSummary] = useState(null);
   const [resetCsv, setResetCsv] = useState('');
+  const [vulnCategories, setVulnCategories] = useState([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
   
   const theme = useTheme();
 
@@ -114,6 +116,7 @@ const AdminSettings = ({ darkMode }) => {
   useEffect(() => { 
     fetchIpSources(); 
     fetchExistingUsers(); 
+    fetchVulnCategories();
   }, []);
 
   useEffect(() => {
@@ -320,6 +323,60 @@ const AdminSettings = ({ darkMode }) => {
     } catch (error) {
       setMessageType('error'); 
       setMessage('Failed to fetch existing users.');
+    }
+  };
+
+  const fetchVulnCategories = async () => {
+    try {
+      const response = await axios.get('/vuln-categories');
+      if (response.status === 200) {
+        setVulnCategories(response.data.categories || []);
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage('Failed to fetch vulnerability categories.');
+    }
+  };
+
+  const handleAddVulnCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) {
+      setMessageType('error');
+      setMessage('Category name is required.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.post('/vuln-categories', { name });
+      if (response.status === 200) {
+        setMessageType('success');
+        setMessage('Category added successfully.');
+        setNewCategoryName('');
+        fetchVulnCategories();
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error.response?.data?.error || 'Failed to add category.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteVulnCategory = async (categoryId) => {
+    if (!window.confirm('Delete this category?')) return;
+    setLoading(true);
+    try {
+      const response = await axios.delete(`/vuln-categories/${categoryId}`);
+      if (response.status === 200) {
+        setMessageType('success');
+        setMessage('Category deleted successfully.');
+        fetchVulnCategories();
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error.response?.data?.error || 'Failed to delete category.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1182,6 +1239,68 @@ const AdminSettings = ({ darkMode }) => {
                 <Alert severity="info" sx={{ mt: 3 }}>
                   Temporary password: <strong>{localTempPassword}</strong>
                 </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Vulnerability Categories */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={3}>
+                <SecurityIcon sx={{ color: theme.palette.primary.main, mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Vulnerability Categories
+                </Typography>
+              </Box>
+
+              <Box display="flex" gap={1} mb={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Add new category"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                />
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={handleAddVulnCategory}
+                  disabled={loading}
+                >
+                  Add
+                </Button>
+              </Box>
+
+              {vulnCategories.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No categories found.
+                </Typography>
+              ) : (
+                <List sx={{ maxHeight: 260, overflow: 'auto' }}>
+                  {vulnCategories.map((category) => (
+                    <ListItem
+                      key={category.id}
+                      secondaryAction={
+                        <IconButton
+                          edge="end"
+                          color="error"
+                          onClick={() => handleDeleteVulnCategory(category.id)}
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemText
+                        primary={category.name}
+                        secondary={category.is_custom ? 'Custom' : 'Default'}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
               )}
             </CardContent>
           </Card>

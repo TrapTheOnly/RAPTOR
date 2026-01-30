@@ -305,9 +305,89 @@ def init_db(db_path=DB_PATH):
             open_ports TEXT,
             notes TEXT,
             owasp_checklist TEXT,
+            vulnerabilities TEXT,
             FOREIGN KEY (record_id) REFERENCES records(id)
         )
     """)
+    # Ensure vulnerabilities column exists for legacy DBs
+    c.execute("PRAGMA table_info(pentest_data)")
+    pentest_columns = {row[1] for row in c.fetchall()}
+    if "vulnerabilities" not in pentest_columns:
+        c.execute("ALTER TABLE pentest_data ADD COLUMN vulnerabilities TEXT")
+
+    # Vulnerability categories table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS vuln_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            is_custom INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    # Seed vulnerability categories if empty
+    c.execute("SELECT COUNT(*) FROM vuln_categories")
+    if c.fetchone()[0] == 0:
+        default_categories = [
+            "SQL Injection",
+            "Blind SQL Injection",
+            "Stored XSS",
+            "Reflected XSS",
+            "DOM-based XSS",
+            "Cross-Site Request Forgery (CSRF)",
+            "Server-Side Request Forgery (SSRF)",
+            "Remote Code Execution (RCE)",
+            "Command Injection",
+            "OS Command Injection",
+            "Local File Inclusion (LFI)",
+            "Remote File Inclusion (RFI)",
+            "Path Traversal",
+            "Directory Listing",
+            "Insecure File Upload",
+            "XML External Entity (XXE)",
+            "XPath Injection",
+            "LDAP Injection",
+            "Server-Side Template Injection (SSTI)",
+            "Insecure Deserialization",
+            "Broken Authentication",
+            "Weak Password Policy",
+            "Credential Stuffing",
+            "Session Fixation",
+            "Session Hijacking",
+            "Broken Access Control",
+            "IDOR",
+            "Privilege Escalation",
+            "Open Redirect",
+            "Clickjacking",
+            "CORS Misconfiguration",
+            "HTTP Request Smuggling",
+            "HTTP Response Splitting",
+            "Host Header Injection",
+            "Prototype Pollution",
+            "Business Logic Flaw",
+            "Information Disclosure",
+            "Sensitive Data Exposure",
+            "Insufficient Logging & Monitoring",
+            "Security Misconfiguration",
+            "Insecure Defaults",
+            "Rate Limiting Missing",
+            "Brute Force",
+            "JWT Weakness",
+            "OAuth Misconfiguration",
+            "SAML Misconfiguration",
+            "API Mass Assignment",
+            "API Rate Limit Bypass",
+            "Insecure Direct Object Reference (IDOR)",
+            "Cache Poisoning",
+            "CRLF Injection",
+            "HTTP Verb Tampering"
+        ]
+        for name in default_categories:
+            c.execute("""
+                INSERT INTO vuln_categories (name, created_by, created_at, is_custom)
+                VALUES (?, ?, datetime('now', '+4 hours'), 0)
+            """, (name, 'system'))
 
     conn.commit()
     conn.close()
@@ -735,6 +815,8 @@ app.add_url_rule('/pentest/<int:record_id>', methods=['DELETE'], view_func=delet
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['GET'], view_func=get_report)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['DELETE'], view_func=delete_report_route)
 app.add_url_rule('/pentest_users', methods=['GET'], view_func=get_pentest_users)
+app.add_url_rule('/pentest/<int:record_id>/images', methods=['POST'], view_func=upload_pentest_image)
+app.add_url_rule('/pentest/images/<string:filename>', methods=['GET'], view_func=get_pentest_image)
 
 # ---------------------------------------------------------
 #! Admin API Endpoints
@@ -1169,6 +1251,66 @@ def delete_ip_source():
     except Exception as e:
         logger.error(f"Error deleting IP source for {ip_address}: {e}")
         return jsonify({"error": str(e)}), 500
+
+# ---------------------------------------------------------
+#! Vulnerability Categories API Endpoints
+# ---------------------------------------------------------
+@app.route('/vuln-categories', methods=['GET'])
+@login_required_json
+def get_vuln_categories():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, name, created_by, created_at, is_custom FROM vuln_categories ORDER BY name ASC")
+        rows = c.fetchall()
+        conn.close()
+        return jsonify({"categories": [dict(row) for row in rows]}), 200
+    except Exception as e:
+        logger.error(f"Error fetching vulnerability categories: {e}")
+        return jsonify({"error": "Failed to fetch categories."}), 500
+
+@app.route('/vuln-categories', methods=['POST'])
+@login_required_json
+def add_vuln_category():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Category name is required."}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO vuln_categories (name, created_by, created_at, is_custom)
+            VALUES (?, ?, datetime('now', '+4 hours'), 1)
+        """, (name, session.get('username', 'unknown')))
+        category_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Category added successfully.", "id": category_id, "name": name}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Category already exists."}), 400
+    except Exception as e:
+        logger.error(f"Error adding vulnerability category: {e}")
+        return jsonify({"error": "Failed to add category."}), 500
+
+@app.route('/vuln-categories/<int:category_id>', methods=['DELETE'])
+@admin_required
+def delete_vuln_category(category_id):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM vuln_categories WHERE id = ?", (category_id,))
+        if c.rowcount == 0:
+            conn.close()
+            return jsonify({"error": "Category not found."}), 404
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Category deleted successfully."}), 200
+    except Exception as e:
+        logger.error(f"Error deleting vulnerability category: {e}")
+        return jsonify({"error": "Failed to delete category."}), 500
 
 # ---------------------------------------------------------
 #! User Authentication Endpoints

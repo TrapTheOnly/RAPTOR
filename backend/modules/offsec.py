@@ -1,5 +1,6 @@
 import os
 import uuid
+import re
 import ftplib
 import sqlite3
 import logging
@@ -16,6 +17,17 @@ DB_PATH = os.getenv("DATA_PATH") + "database.db"
 FTP_HOST = os.getenv("FTP_HOST")
 FTP_USER = os.getenv("FTP_USER")
 FTP_PASS = os.getenv("FTP_PASS")
+IMAGE_DIR = "images"
+ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+def _guess_image_mimetype(extension):
+    return {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "webp": "image/webp"
+    }.get(extension, "application/octet-stream")
 
 def ftp_connect():
     """Connects to the FTP server and returns the FTP object."""
@@ -26,6 +38,36 @@ def ftp_connect():
     except Exception as e:
         logger.error(f"FTP connection error: {e}")
         raise
+
+def ensure_ftp_dir(ftp, dirname):
+    try:
+        ftp.cwd(dirname)
+        ftp.cwd("..")
+    except Exception:
+        try:
+            ftp.mkd(dirname)
+        except Exception:
+            pass
+
+def save_image(file_data, extension):
+    """Saves an image to the FTP server and returns its filename."""
+    ftp = ftp_connect()
+    ensure_ftp_dir(ftp, IMAGE_DIR)
+    unique_filename = f"{uuid.uuid4().hex}.{extension}"
+    file_stream = BytesIO(file_data)
+    file_stream.seek(0)
+    ftp.storbinary(f"STOR {IMAGE_DIR}/{unique_filename}", file_stream)
+    ftp.quit()
+    return unique_filename
+
+def fetch_image(filename):
+    """Fetches an image from the FTP server."""
+    ftp = ftp_connect()
+    file_data = BytesIO()
+    ftp.retrbinary(f"RETR {IMAGE_DIR}/{filename}", file_data.write)
+    ftp.quit()
+    file_data.seek(0)
+    return file_data
 
 def save_report(record_id, file_data):
     """Saves a report file to the FTP server."""
@@ -75,7 +117,8 @@ def get_pentest_data_internal(record_id=None):
         'status': 'Not Started',
         'open_ports': "",
         'notes': "",
-        'owasp_checklist': ""
+        'owasp_checklist': "",
+        'vulnerabilities': ""
     }
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -99,6 +142,7 @@ def get_pentest_data_internal(record_id=None):
                     'name': record['name'],
                     'ip_address': record['ip_address'],
                     'source': record['source'],
+                    'description': record.get('description', '')
                 }
 
             c.execute("SELECT * FROM records")
@@ -115,6 +159,7 @@ def get_pentest_data_internal(record_id=None):
                     'name': record['name'],
                     'ip_address': record['ip_address'],
                     'source': record['source'],
+                    'description': record.get('description', '')
                 } for record in dns_records
             ]
 
@@ -159,6 +204,17 @@ def get_pentest_users():
         current_app.logger.error(f"Error fetching pentest users: {e}")
         return jsonify({"message": "Error fetching pentest users"}), 500
 
+def get_pentest_row(record_id):
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT * FROM pentest_data WHERE record_id = ?", (record_id,))
+            return c.fetchone()
+    except Exception as e:
+        logger.error(f"Error fetching pentest data for ID {record_id}: {e}")
+        return None
+
 @login_required_json
 @pentest_required
 def create_or_update_pentest_data(record_id):
@@ -182,7 +238,7 @@ def create_or_update_pentest_data(record_id):
         admin = session['user_type'] == 'admin'
 
         data = {}
-        for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status', 'open_ports', 'notes', 'owasp_checklist']:
+        for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status', 'open_ports', 'notes', 'owasp_checklist', 'vulnerabilities', 'description']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
@@ -231,7 +287,8 @@ def create_or_update_pentest_data(record_id):
             'status': data.get('status', existing_data.get('status', 'Not Started')),
             'open_ports': data.get('open_ports', existing_data.get('open_ports', "")),
             'notes': data.get('notes', existing_data.get('notes', "")),
-            'owasp_checklist': data.get('owasp_checklist', existing_data.get('owasp_checklist', ""))
+            'owasp_checklist': data.get('owasp_checklist', existing_data.get('owasp_checklist', "")),
+            'vulnerabilities': data.get('vulnerabilities', existing_data.get('vulnerabilities', ""))
         }
 
         with sqlite3.connect(DB_PATH) as conn:
@@ -244,10 +301,21 @@ def create_or_update_pentest_data(record_id):
             else:
                 c.execute("""
                     INSERT INTO pentest_data (record_id, dns_name, ip_address, source, report_file, vulnerable,
-                                             tested_by, test_start_date, test_end_date, vulnerability_fixed, service_desk_link, status)
+                                             tested_by, test_start_date, test_end_date, vulnerability_fixed, service_desk_link, status,
+                                             open_ports, notes, owasp_checklist, vulnerabilities)
                     VALUES (:record_id, :dns_name, :ip_address, :source, :report_file, :vulnerable,
-                                             :tested_by, :test_start_date, :test_end_date, :vulnerability_fixed, :service_desk_link, :status)
+                                             :tested_by, :test_start_date, :test_end_date, :vulnerability_fixed, :service_desk_link, :status,
+                                             :open_ports, :notes, :owasp_checklist, :vulnerabilities)
                 """, pentest_data)
+
+            # Sync description back to records table if provided
+            if 'description' in data:
+                c.execute("""
+                    UPDATE records
+                    SET description = ?,
+                        last_modification_date = datetime('now', '+4 hours')
+                    WHERE id = ?
+                """, (data.get('description', ''), record_id))
 
             conn.commit()
 
@@ -256,6 +324,52 @@ def create_or_update_pentest_data(record_id):
     except Exception as e:
         logger.error(f"Error creating/updating pentest data for record {record_id}: {e}")
         return jsonify({"error": str(e)}), 500
+
+@login_required_json
+@pentest_required
+def upload_pentest_image(record_id):
+    """POST /pentest/<record_id>/images: Upload image for pentest notes/vulns."""
+    record = get_record_details_internal(record_id)
+    if not record:
+        return jsonify({"error": "Record not found"}), 404
+
+    pentest_row = get_pentest_row(record_id)
+    admin = session.get('user_type') == 'admin'
+    if not admin:
+        if not pentest_row or pentest_row['tested_by'] != session.get('username'):
+            return jsonify({"error": "Unauthorized to upload images for this record."}), 403
+
+    if 'image' not in request.files:
+        return jsonify({"error": "Image file is required."}), 400
+    image = request.files['image']
+    if image.filename == '':
+        return jsonify({"error": "Image file is required."}), 400
+
+    extension = image.filename.rsplit('.', 1)[-1].lower()
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        return jsonify({"error": "Unsupported image type."}), 400
+
+    try:
+        filename = save_image(image.read(), extension)
+        return jsonify({"url": f"/pentest/images/{filename}"}), 200
+    except Exception as e:
+        logger.error(f"Error uploading image for record {record_id}: {e}")
+        return jsonify({"error": "Failed to upload image."}), 500
+
+@login_required_json
+@pentest_required
+def get_pentest_image(filename):
+    """GET /pentest/images/<filename>: Serve image by filename."""
+    if not re.match(r'^[a-f0-9]{32}\.(png|jpg|jpeg|gif|webp)$', filename):
+        return jsonify({"error": "Invalid filename."}), 400
+
+    extension = filename.rsplit('.', 1)[-1].lower()
+    try:
+        file_data = fetch_image(filename)
+        return send_file(file_data, mimetype=_guess_image_mimetype(extension))
+    except Exception as e:
+        logger.error(f"Error fetching image {filename}: {e}")
+        return jsonify({"error": "Image not found."}), 404
 
 @login_required_json
 @pentest_required
