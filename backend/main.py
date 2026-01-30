@@ -980,87 +980,36 @@ def manual_update():
         logger.error(f"Manual update error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/pentest/reset-open-vulnerabilities', methods=['POST'])
+@app.route('/pentest/reset-keep-open', methods=['POST'])
 @admin_required
-def reset_open_vulnerabilities():
+def reset_keep_open_vulnerabilities():
     """
-    Export and reset pentest progress for open vulnerabilities (vulnerable=1 and vulnerability_fixed=0).
-    Requires explicit confirmation.
+    Reset pentest progress for all records except open vulnerabilities
+    (vulnerable=1 and vulnerability_fixed=0). Requires explicit confirmation.
     """
     data = request.get_json() or {}
     confirm = data.get('confirm') is True
     phrase = data.get('phrase')
-    required_phrase = "RESET OPEN VULNERABILITIES"
+    required_phrase = "RESET ALL BUT OPEN VULNERABILITIES"
     if not confirm or phrase != required_phrase:
         return jsonify({"error": "Confirmation phrase required."}), 400
-
-    def csv_escape(value):
-        if value is None:
-            return ""
-        text = str(value)
-        if any(ch in text for ch in [',', '"', '\n']):
-            return '"' + text.replace('"', '""') + '"'
-        return text
 
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
+
+        # Select rows to delete (everything except open vulnerabilities)
         c.execute("""
-            SELECT p.*, r.name AS record_name, r.ip_address AS record_ip, r.source AS record_source
+            SELECT p.*
             FROM pentest_data p
-            JOIN records r ON r.id = p.record_id
-            WHERE p.vulnerable = 1 AND p.vulnerability_fixed = 0
+            WHERE NOT (p.vulnerable = 1 AND p.vulnerability_fixed = 0)
         """)
         rows = c.fetchall()
 
-        # Prepare export data before deletion
-        header = [
-            "Target Name",
-            "IP Address",
-            "Source",
-            "Status",
-            "Vulnerable",
-            "Tested By",
-            "Start Date",
-            "End Date",
-            "Fixed",
-            "Service Desk",
-            "Report"
-        ]
-        csv_lines = [",".join(header)]
-
-        completed_count = 0
-        in_progress_count = 0
-        not_started_count = 0
         report_deleted = 0
         report_delete_errors = 0
 
-        for row in rows:
-            status = row["status"] or "Not Started"
-            if status == "Completed":
-                completed_count += 1
-            elif status == "In Progress":
-                in_progress_count += 1
-            else:
-                not_started_count += 1
-
-            report_present = "Yes" if row["report_file"] else "No"
-            csv_lines.append(",".join([
-                csv_escape(row["record_name"] or row["dns_name"]),
-                csv_escape(row["record_ip"] or row["ip_address"]),
-                csv_escape(row["record_source"] or row["source"]),
-                csv_escape(status),
-                "Yes",
-                csv_escape(row["tested_by"]),
-                csv_escape(row["test_start_date"]),
-                csv_escape(row["test_end_date"]),
-                "No",
-                csv_escape(row["service_desk_link"]),
-                csv_escape(report_present)
-            ]))
-
-        # Delete report files before removing rows
         for row in rows:
             if row["report_file"]:
                 try:
@@ -1069,32 +1018,37 @@ def reset_open_vulnerabilities():
                 except Exception:
                     report_delete_errors += 1
 
-        # Delete pentest rows for open vulnerabilities
         c.execute("""
             DELETE FROM pentest_data
-            WHERE vulnerable = 1 AND vulnerability_fixed = 0
+            WHERE NOT (vulnerable = 1 AND vulnerability_fixed = 0)
         """)
         deleted_count = c.rowcount
+
+        # Count remaining open vulnerabilities
+        c.execute("""
+            SELECT COUNT(*)
+            FROM pentest_data
+            WHERE vulnerable = 1 AND vulnerability_fixed = 0
+        """)
+        remaining_open = c.fetchone()[0]
+
         conn.commit()
         conn.close()
 
         stats = {
             "total_reset": deleted_count,
-            "completed": completed_count,
-            "in_progress": in_progress_count,
-            "not_started": not_started_count,
+            "remaining_open": remaining_open,
             "reports_deleted": report_deleted,
             "report_delete_errors": report_delete_errors
         }
 
         return jsonify({
-            "message": "Open vulnerability pentest progress reset.",
-            "stats": stats,
-            "csv": "\n".join(csv_lines)
+            "message": "Pentest progress reset (open vulnerabilities preserved).",
+            "stats": stats
         }), 200
     except Exception as e:
-        logger.error(f"Error resetting open vulnerability progress: {e}")
-        return jsonify({"error": "Failed to reset open vulnerabilities."}), 500
+        logger.error(f"Error resetting pentest progress: {e}")
+        return jsonify({"error": "Failed to reset pentest progress."}), 500
     
 @app.route('/ip-sources', methods=['GET'])
 @admin_required

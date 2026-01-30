@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import Papa from 'papaparse';
 import { 
   TextField, 
   Button, 
@@ -50,7 +51,8 @@ import {
   PersonAdd as PersonAddIcon,
   Edit as EditIcon,
   Password as PasswordIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
+  Download as DownloadIcon
 } from '@mui/icons-material';
 
 const MIN_PASSWORD_LENGTH = 12;
@@ -90,6 +92,8 @@ const AdminSettings = ({ darkMode }) => {
   const [resetPhrase, setResetPhrase] = useState('');
   const [resetConfirmChecked, setResetConfirmChecked] = useState(false);
   const [resetStats, setResetStats] = useState(null);
+  const [resetSummary, setResetSummary] = useState(null);
+  const [resetCsv, setResetCsv] = useState('');
   
   const theme = useTheme();
 
@@ -386,16 +390,72 @@ const AdminSettings = ({ darkMode }) => {
     }
   };
 
-  const requiredResetPhrase = "RESET OPEN VULNERABILITIES";
+  const requiredResetPhrase = "RESET ALL BUT OPEN VULNERABILITIES";
 
   const handleOpenResetDialog = () => {
     setResetDialogOpen(true);
     setResetPhrase('');
     setResetConfirmChecked(false);
+    fetchResetSummary();
   };
 
   const handleCloseResetDialog = () => {
     setResetDialogOpen(false);
+  };
+
+  const buildResetSummary = (data) => {
+    const summary = {
+      total: data.length,
+      completed: data.filter((r) => r.status === 'Completed').length,
+      inProgress: data.filter((r) => r.status === 'In Progress').length,
+      notStarted: data.filter((r) => !r.status || r.status === 'Not Started').length,
+      vulnerable: data.filter((r) => r.vulnerable === 1).length,
+      fixed: data.filter((r) => r.vulnerability_fixed === 1).length,
+      open: data.filter((r) => r.vulnerable === 1 && r.vulnerability_fixed === 0).length,
+      reports: data.filter((r) => r.report_file).length
+    };
+    return summary;
+  };
+
+  const buildResetCsv = (data) => Papa.unparse(data.map(item => ({
+    'Target Name': item.name,
+    'IP Address': item.ip_address,
+    'Source': item.source,
+    'Status': item.status,
+    'Vulnerable': item.vulnerable === 1 ? 'Yes' : 'No',
+    'Tested By': item.tested_by,
+    'Start Date': item.test_start_date,
+    'End Date': item.test_end_date,
+    'Fixed': item.vulnerability_fixed === 1 ? 'Yes' : 'No',
+    'Service Desk': item.service_desk_link,
+    'Report': item.report_file ? 'Yes' : 'No'
+  })));
+
+  const fetchResetSummary = async () => {
+    try {
+      const response = await axios.get('/pentest/records');
+      if (response.status === 200) {
+        const data = response.data || [];
+        setResetSummary(buildResetSummary(data));
+        setResetCsv(buildResetCsv(data));
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage('Failed to load pentest summary.');
+    }
+  };
+
+  const downloadResetCsv = () => {
+    if (!resetCsv) return;
+    const blob = new Blob([resetCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'pentest_yearly_summary.csv');
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleResetOpenVulnerabilities = async () => {
@@ -406,30 +466,19 @@ const AdminSettings = ({ darkMode }) => {
     }
     setLoading(true);
     try {
-      const response = await axios.post('/pentest/reset-open-vulnerabilities', {
+      const response = await axios.post('/pentest/reset-keep-open', {
         confirm: true,
         phrase: resetPhrase
       });
       if (response.status === 200) {
-        const csvContent = response.data.csv || '';
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'open_vulnerabilities_backup.csv');
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
         setResetStats(response.data.stats || null);
         setMessageType('success');
-        setMessage('Open vulnerability pentest progress reset successfully.');
+        setMessage('Pentest progress reset successfully (open vulnerabilities preserved).');
         handleCloseResetDialog();
       }
     } catch (error) {
       setMessageType('error');
-      setMessage(error.response?.data?.error || 'Failed to reset open vulnerabilities.');
+      setMessage(error.response?.data?.error || 'Failed to reset pentest progress.');
     } finally {
       setLoading(false);
     }
@@ -496,11 +545,34 @@ const AdminSettings = ({ darkMode }) => {
       </Box>
 
       <Dialog open={resetDialogOpen} onClose={handleCloseResetDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Confirm Reset of Open Vulnerability Progress</DialogTitle>
+        <DialogTitle>Confirm Pentest Progress Refresh</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            This action will export current open vulnerability progress and then delete it. This cannot be undone.
+            This action will delete all pentest progress except open vulnerabilities. This cannot be undone.
           </Alert>
+          {resetSummary && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                Current Summary
+              </Typography>
+              <Typography variant="body2">Total Targets: {resetSummary.total}</Typography>
+              <Typography variant="body2">Completed Tests: {resetSummary.completed}</Typography>
+              <Typography variant="body2">In Progress: {resetSummary.inProgress}</Typography>
+              <Typography variant="body2">Not Started: {resetSummary.notStarted}</Typography>
+              <Typography variant="body2">Vulnerable: {resetSummary.vulnerable}</Typography>
+              <Typography variant="body2">Fixed/Closed: {resetSummary.fixed}</Typography>
+              <Typography variant="body2">Open Vulnerabilities: {resetSummary.open}</Typography>
+              <Typography variant="body2">Reports: {resetSummary.reports}</Typography>
+              <Button
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                onClick={downloadResetCsv}
+                sx={{ mt: 1 }}
+              >
+                Download Summary CSV
+              </Button>
+            </Box>
+          )}
           <Typography variant="body2" sx={{ mb: 2 }}>
             Type <strong>{requiredResetPhrase}</strong> to confirm.
           </Typography>
@@ -518,7 +590,7 @@ const AdminSettings = ({ darkMode }) => {
                 onChange={(e) => setResetConfirmChecked(e.target.checked)}
               />
             }
-            label="I understand this will delete all open vulnerability progress."
+            label="I understand this will delete all pentest progress except open vulnerabilities."
           />
         </DialogContent>
         <DialogActions>
@@ -531,7 +603,7 @@ const AdminSettings = ({ darkMode }) => {
             onClick={handleResetOpenVulnerabilities}
             disabled={loading}
           >
-            Export & Reset
+            Reset Progress
           </Button>
         </DialogActions>
       </Dialog>
@@ -604,11 +676,11 @@ const AdminSettings = ({ darkMode }) => {
               <Box display="flex" alignItems="center" mb={2}>
                 <WarningIcon sx={{ color: theme.palette.warning.main, mr: 1 }} />
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Reset Open Vulnerability Progress
+                  Refresh Pentest Progress (Keep Open Vulns)
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                This will export and then delete pentest progress for all open vulnerabilities.
+                Export current status and then delete all pentest progress except open vulnerabilities.
               </Typography>
               <Button
                 variant="contained"
@@ -617,12 +689,12 @@ const AdminSettings = ({ darkMode }) => {
                 onClick={handleOpenResetDialog}
                 disabled={loading}
               >
-                Export & Reset
+                Review & Reset
               </Button>
               {resetStats && (
                 <Box sx={{ mt: 2 }}>
                   <Alert severity="info">
-                    Reset {resetStats.total_reset} record(s). Completed: {resetStats.completed}, In Progress: {resetStats.in_progress}, Not Started: {resetStats.not_started}, Reports deleted: {resetStats.reports_deleted}, Report delete errors: {resetStats.report_delete_errors}.
+                    Reset {resetStats.total_reset} record(s). Remaining open vulnerabilities: {resetStats.remaining_open}. Reports deleted: {resetStats.reports_deleted}, Report delete errors: {resetStats.report_delete_errors}.
                   </Alert>
                 </Box>
               )}
