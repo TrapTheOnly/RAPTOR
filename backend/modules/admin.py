@@ -117,9 +117,15 @@ def change_admin_password(current_password, new_password):
     if not ok:
         return {"error": msg}, 400
     try:
-        hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
         with sqlite3.connect(DB_PATH) as conn:
             c = conn.cursor()
+            c.execute("SELECT password FROM admin_users WHERE username = ?", (ADMIN_USERNAME,))
+            result = c.fetchone()
+            if not result:
+                return {"error": "Admin user not found."}, 404
+            if bcrypt.checkpw(new_password.encode(), result[0]):
+                return {"error": "New password must be different from the current password."}, 400
+            hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
             c.execute(
                 "UPDATE admin_users SET password = ?, must_reset = 0 WHERE username = ?",
                 (hashed_password, ADMIN_USERNAME)
@@ -136,9 +142,15 @@ def reset_admin_password(new_password):
     if not ok:
         return {"error": msg}, 400
     try:
-        hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
         with sqlite3.connect(DB_PATH) as conn:
             c = conn.cursor()
+            c.execute("SELECT password FROM admin_users WHERE username = ?", (ADMIN_USERNAME,))
+            result = c.fetchone()
+            if not result:
+                return {"error": "Admin user not found."}, 404
+            if bcrypt.checkpw(new_password.encode(), result[0]):
+                return {"error": "New password must be different from the temporary password."}, 400
+            hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
             c.execute(
                 "UPDATE admin_users SET password = ?, must_reset = 0 WHERE username = ?",
                 (hashed_password, ADMIN_USERNAME)

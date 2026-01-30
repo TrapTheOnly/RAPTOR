@@ -34,6 +34,8 @@ const ModernLogin = ({
   setPasswordResetRequired,
   passwordResetRequired = false,
   resetUsername = '',
+  resetUserType = null,
+  setResetUserType = () => {},
   darkMode = false
 }) => {
   const [username, setUsername] = useState('');
@@ -49,9 +51,7 @@ const ModernLogin = ({
   const theme = useTheme();
 
   useEffect(() => {
-    if (passwordResetRequired) {
-      setResetMode(true);
-    }
+    setResetMode(passwordResetRequired);
   }, [passwordResetRequired]);
 
   useEffect(() => {
@@ -75,10 +75,12 @@ const ModernLogin = ({
         if (response.data.status === 'password_reset_required') {
           setResetMode(true);
           setPasswordResetRequired(true);
+          setResetUserType(response.data.user_type || null);
           setError('');
         } else if (response.data.status === 'logged_in') {
           setLoggedIn(true);
           setPasswordResetRequired(false);
+          setResetUserType(null);
           setGlobalUsername(username);
           setGlobalUserRole(response.data.user_type);
         }
@@ -126,14 +128,16 @@ const ModernLogin = ({
 
     setResetLoading(true);
     try {
-      const response = await axios.post('/admin-reset-password', {
+      const endpoint = resetUserType === 'admin' ? '/admin-reset-password' : '/user-reset-password';
+      const response = await axios.post(endpoint, {
         new_password: newPassword
       });
       if (response.status === 200 && response.data.status === 'logged_in') {
         setLoggedIn(true);
         setPasswordResetRequired(false);
+        setResetUserType(null);
         setGlobalUsername(response.data.username || username);
-        setGlobalUserRole(response.data.user_type || 'admin');
+        setGlobalUserRole(response.data.user_type || 'user');
       }
     } catch (error) {
       setResetError(error.response?.data?.error || 'Password reset failed. Please try again.');

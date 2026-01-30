@@ -18,6 +18,7 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
   const [passwordResetRequired, setPasswordResetRequired] = useState(false);
+  const [resetUserType, setResetUserType] = useState(null);
   const storedTheme = localStorage.getItem('theme') || 'light';
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
 
@@ -66,18 +67,21 @@ const App = () => {
             setLoggedIn(false);
             setPasswordResetRequired(true);
             setUsername(response.data.username || '');
+            setResetUserType(response.data.user_type || null);
             setUserRole(null);
           } else if (response.data.status === 'logged_in') {
             setLoggedIn(true);
             setPasswordResetRequired(false);
             setUsername(response.data.username);
             setUserRole(response.data.user_type);
+            setResetUserType(null);
           }
         }
       } catch (error) {
         console.error("User is not logged in:", error);
         setLoggedIn(false);
         setPasswordResetRequired(false);
+        setResetUserType(null);
         setUsername('');
         setUserRole(null);
       } finally {
@@ -139,6 +143,8 @@ const App = () => {
               setPasswordResetRequired={setPasswordResetRequired}
               passwordResetRequired={passwordResetRequired}
               resetUsername={username}
+              resetUserType={resetUserType}
+              setResetUserType={setResetUserType}
               darkMode={darkMode}
             /> : <Navigate to="/" />
           }

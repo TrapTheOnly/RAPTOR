@@ -1,5 +1,7 @@
 import os
 import logging
+import bcrypt
+import secrets
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -241,9 +243,22 @@ def init_db(db_path=DB_PATH):
             username TEXT NOT NULL UNIQUE,
             email TEXT,
             added_date TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
+            role TEXT NOT NULL DEFAULT 'user',
+            auth_type TEXT NOT NULL DEFAULT 'ldap',
+            password BLOB,
+            must_reset INTEGER NOT NULL DEFAULT 0
         )
     """)
+    # Ensure new columns exist for legacy DBs
+    c.execute("PRAGMA table_info(allowed_users)")
+    allowed_user_columns = {row[1] for row in c.fetchall()}
+    if "auth_type" not in allowed_user_columns:
+        c.execute("ALTER TABLE allowed_users ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'ldap'")
+    if "password" not in allowed_user_columns:
+        c.execute("ALTER TABLE allowed_users ADD COLUMN password BLOB")
+    if "must_reset" not in allowed_user_columns:
+        c.execute("ALTER TABLE allowed_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
+    c.execute("UPDATE allowed_users SET auth_type = 'ldap' WHERE auth_type IS NULL OR auth_type = ''")
 
     # IP sources table
     c.execute("""
@@ -428,7 +443,7 @@ def store_records_in_db(records, db_path=DB_PATH):
 # ---------------------------------------------------------
 # Utility: add user to the allowed_users table
 # ---------------------------------------------------------
-def add_user_to_system(username, email, role='user', db_path=DB_PATH):
+def add_user_to_system(username, email, role='user', auth_type='ldap', password_hash=None, must_reset=0, db_path=DB_PATH):
     """
     Add a user to the allowed_users table.
 
@@ -439,9 +454,9 @@ def add_user_to_system(username, email, role='user', db_path=DB_PATH):
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         c.execute("""
-            INSERT INTO allowed_users (username, email, added_date, role)
-            VALUES (?, ?, datetime('now', '+4 hours'), ?)
-        """, (username, email, role))
+            INSERT INTO allowed_users (username, email, added_date, role, auth_type, password, must_reset)
+            VALUES (?, ?, datetime('now', '+4 hours'), ?, ?, ?, ?)
+        """, (username, email, role, auth_type, password_hash, must_reset))
         conn.commit()
         logger.info(f"User {username} added to the system with role {role}.")
         conn.close()
@@ -756,10 +771,51 @@ def add_user():
         return jsonify({"error": "Invalid role specified."}), 400
 
     try:
-        add_user_to_system(username, email, role)
+        add_user_to_system(username, email, role, auth_type='ldap')
         return jsonify({"message": f"User {username} added successfully with role {role}."}), 200
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/add-local-user', methods=['POST'])
+@admin_required
+def add_local_user():
+    """
+    Add a local (non-LDAP) user with a temporary password.
+    """
+    data = request.get_json()
+    username = data.get('username', '').lower().strip()
+    role = data.get('role', 'user').lower()
+
+    if not username:
+        return jsonify({"error": "Username is required."}), 400
+    if username == os.getenv("ADMIN_USERNAME"):
+        return jsonify({"error": "Username is reserved."}), 400
+    if role not in ['user', 'pentester']:
+        return jsonify({"error": "Invalid role specified."}), 400
+
+    try:
+        # Generate a temporary password (meets minimum length)
+        temp_password = secrets.token_urlsafe(12)
+        if len(temp_password) < 12:
+            temp_password = temp_password + secrets.token_urlsafe(12)
+        temp_password = temp_password[:32]
+
+        hashed_password = bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt())
+        add_user_to_system(
+            username=username,
+            email='',
+            role=role,
+            auth_type='local',
+            password_hash=hashed_password,
+            must_reset=1
+        )
+        return jsonify({
+            "message": f"Local user {username} created successfully.",
+            "temp_password": temp_password
+        }), 200
+    except Exception as e:
+        logger.error(f"Error adding local user {username}: {e}")
         return jsonify({"error": str(e)}), 500
     
 @app.route('/change-password', methods=['POST'])
@@ -805,6 +861,59 @@ def api_admin_reset_password():
             "user_type": "admin"
         }), 200
     return jsonify(response), status_code
+
+@app.route('/user-reset-password', methods=['POST'])
+def api_user_reset_password():
+    """
+    Endpoint for local users to reset their password after first login.
+    """
+    if not session.get('reset_required') or session.get('user_type') == 'admin':
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    new_password = data.get('new_password')
+
+    if not new_password:
+        return jsonify({"error": "New password is required."}), 400
+
+    username = session.get('username')
+    ok, msg = validate_password_nist(new_password, username=username)
+    if not ok:
+        return jsonify({"error": msg}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT password FROM allowed_users WHERE username = ?", (username,))
+        result = c.fetchone()
+        if not result or not result[0]:
+            conn.close()
+            return jsonify({"error": "User not found."}), 404
+        if bcrypt.checkpw(new_password.encode(), result[0]):
+            conn.close()
+            return jsonify({"error": "New password must be different from the temporary password."}), 400
+        hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+        c.execute(
+            "UPDATE allowed_users SET password = ?, must_reset = 0, auth_type = 'local' WHERE username = ?",
+            (hashed_password, username)
+        )
+        if c.rowcount == 0:
+            conn.close()
+            return jsonify({"error": "User not found."}), 404
+        conn.commit()
+        conn.close()
+        session['logged_in'] = True
+        session['reset_required'] = False
+        return jsonify({
+            "status": "logged_in",
+            "username": username,
+            "user_type": session.get("user_type")
+        }), 200
+    except Exception as e:
+        logger.error(f"Error resetting password for user {username}: {e}")
+        return jsonify({"error": "Failed to reset password."}), 500
 
 @app.route('/existing-users', methods=['GET'])
 @admin_required
@@ -1015,7 +1124,7 @@ def login():
     # Check allowed users first
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT username, role FROM allowed_users WHERE username = ?", (username,))
+    c.execute("SELECT username, role, auth_type, password, must_reset FROM allowed_users WHERE username = ?", (username,))
     user = c.fetchone()
     conn.close()
     
@@ -1043,12 +1152,38 @@ def login():
             return jsonify({"error": "Invalid credentials"}), 401
 
     if user:
-        
+        user_role = user[1] if user[1] else 'user'
+        auth_type = user[2] if user[2] else 'ldap'
+        password_hash = user[3]
+        must_reset = bool(user[4])
+
+        if auth_type == 'local':
+            if not password_hash or not bcrypt.checkpw(password.encode(), password_hash):
+                return jsonify({"error": "Invalid credentials"}), 401
+
+            session.permanent = True
+            session['username'] = user[0]
+            session['user_type'] = user_role
+
+            if must_reset:
+                session['reset_required'] = True
+                session['logged_in'] = False
+                return jsonify({
+                    "status": "password_reset_required",
+                    "username": username,
+                    "user_type": user_role
+                }), 200
+
+            session['logged_in'] = True
+            session.pop('reset_required', None)
+            return jsonify({"status": "logged_in", "username": username, "user_type": user_role}), 200
+
         if ldap_authenticate(username, password):
             session.permanent = True
             session['logged_in'] = True
             session['username'] = user[0]
-            session['user_type'] = user[1] if user[1] else 'user'
+            session['user_type'] = user_role
+            session.pop('reset_required', None)
             return jsonify({"status": "logged_in", "username": username, "user_type": session['user_type']}), 200
         else:
             return jsonify({"error": "Invalid credentials"}), 401

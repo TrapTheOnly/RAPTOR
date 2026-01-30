@@ -76,6 +76,9 @@ const AdminSettings = ({ darkMode }) => {
   const [selectedUserRoles, setSelectedUserRoles] = useState({});
   const [editedUserRoles, setEditedUserRoles] = useState({});
   const [loading, setLoading] = useState(false);
+  const [localUsername, setLocalUsername] = useState('');
+  const [localRole, setLocalRole] = useState('user');
+  const [localTempPassword, setLocalTempPassword] = useState('');
   
   const theme = useTheme();
 
@@ -334,6 +337,40 @@ const AdminSettings = ({ darkMode }) => {
       setMessageType('error'); 
       setMessage('Failed to change password. Please check your current password.');
     } finally { 
+      setLoading(false);
+    }
+  };
+
+  const handleCreateLocalUser = async () => {
+    const trimmedUsername = localUsername.trim().toLowerCase();
+    if (!trimmedUsername) {
+      setMessageType('error');
+      setMessage('Local username is required.');
+      return;
+    }
+    if (!['user', 'pentester'].includes(localRole)) {
+      setMessageType('error');
+      setMessage('Invalid role specified.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.post('/add-local-user', {
+        username: trimmedUsername,
+        role: localRole
+      });
+      if (response.status === 200) {
+        setMessageType('success');
+        setMessage(`Local user ${trimmedUsername} created. Temporary password generated.`);
+        setLocalTempPassword(response.data.temp_password || '');
+        setLocalUsername('');
+        setLocalRole('user');
+        fetchExistingUsers();
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error.response?.data?.error || 'Failed to create local user.');
+    } finally {
       setLoading(false);
     }
   };
@@ -886,6 +923,60 @@ const AdminSettings = ({ darkMode }) => {
                   </Paper>
                 </Grid>
               </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Local User Creation */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={3}>
+                <AdminIcon sx={{ color: theme.palette.primary.main, mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Create Local User
+                </Typography>
+              </Box>
+
+              <Stack spacing={2}>
+                <TextField
+                  label="Username"
+                  variant="outlined"
+                  fullWidth
+                  value={localUsername}
+                  onChange={(e) => setLocalUsername(e.target.value)}
+                  placeholder="local.user"
+                />
+                <FormControl fullWidth size="small">
+                  <InputLabel id="local-user-role-label">Role</InputLabel>
+                  <Select
+                    labelId="local-user-role-label"
+                    value={localRole}
+                    label="Role"
+                    onChange={(e) => setLocalRole(e.target.value)}
+                  >
+                    <MenuItem value="user">User</MenuItem>
+                    <MenuItem value="pentester">Pentester</MenuItem>
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  startIcon={<PersonAddIcon />}
+                  onClick={handleCreateLocalUser}
+                  disabled={loading}
+                >
+                  Create Local User
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  Local users will be prompted to reset their password on first login.
+                </Typography>
+              </Stack>
+
+              {localTempPassword && (
+                <Alert severity="info" sx={{ mt: 3 }}>
+                  Temporary password: <strong>{localTempPassword}</strong>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </Grid>
