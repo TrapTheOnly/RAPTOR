@@ -979,6 +979,122 @@ def manual_update():
     except Exception as e:
         logger.error(f"Manual update error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/pentest/reset-open-vulnerabilities', methods=['POST'])
+@admin_required
+def reset_open_vulnerabilities():
+    """
+    Export and reset pentest progress for open vulnerabilities (vulnerable=1 and vulnerability_fixed=0).
+    Requires explicit confirmation.
+    """
+    data = request.get_json() or {}
+    confirm = data.get('confirm') is True
+    phrase = data.get('phrase')
+    required_phrase = "RESET OPEN VULNERABILITIES"
+    if not confirm or phrase != required_phrase:
+        return jsonify({"error": "Confirmation phrase required."}), 400
+
+    def csv_escape(value):
+        if value is None:
+            return ""
+        text = str(value)
+        if any(ch in text for ch in [',', '"', '\n']):
+            return '"' + text.replace('"', '""') + '"'
+        return text
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("""
+            SELECT p.*, r.name AS record_name, r.ip_address AS record_ip, r.source AS record_source
+            FROM pentest_data p
+            JOIN records r ON r.id = p.record_id
+            WHERE p.vulnerable = 1 AND p.vulnerability_fixed = 0
+        """)
+        rows = c.fetchall()
+
+        # Prepare export data before deletion
+        header = [
+            "Target Name",
+            "IP Address",
+            "Source",
+            "Status",
+            "Vulnerable",
+            "Tested By",
+            "Start Date",
+            "End Date",
+            "Fixed",
+            "Service Desk",
+            "Report"
+        ]
+        csv_lines = [",".join(header)]
+
+        completed_count = 0
+        in_progress_count = 0
+        not_started_count = 0
+        report_deleted = 0
+        report_delete_errors = 0
+
+        for row in rows:
+            status = row["status"] or "Not Started"
+            if status == "Completed":
+                completed_count += 1
+            elif status == "In Progress":
+                in_progress_count += 1
+            else:
+                not_started_count += 1
+
+            report_present = "Yes" if row["report_file"] else "No"
+            csv_lines.append(",".join([
+                csv_escape(row["record_name"] or row["dns_name"]),
+                csv_escape(row["record_ip"] or row["ip_address"]),
+                csv_escape(row["record_source"] or row["source"]),
+                csv_escape(status),
+                "Yes",
+                csv_escape(row["tested_by"]),
+                csv_escape(row["test_start_date"]),
+                csv_escape(row["test_end_date"]),
+                "No",
+                csv_escape(row["service_desk_link"]),
+                csv_escape(report_present)
+            ]))
+
+        # Delete report files before removing rows
+        for row in rows:
+            if row["report_file"]:
+                try:
+                    delete_report(row["report_file"])
+                    report_deleted += 1
+                except Exception:
+                    report_delete_errors += 1
+
+        # Delete pentest rows for open vulnerabilities
+        c.execute("""
+            DELETE FROM pentest_data
+            WHERE vulnerable = 1 AND vulnerability_fixed = 0
+        """)
+        deleted_count = c.rowcount
+        conn.commit()
+        conn.close()
+
+        stats = {
+            "total_reset": deleted_count,
+            "completed": completed_count,
+            "in_progress": in_progress_count,
+            "not_started": not_started_count,
+            "reports_deleted": report_deleted,
+            "report_delete_errors": report_delete_errors
+        }
+
+        return jsonify({
+            "message": "Open vulnerability pentest progress reset.",
+            "stats": stats,
+            "csv": "\n".join(csv_lines)
+        }), 200
+    except Exception as e:
+        logger.error(f"Error resetting open vulnerability progress: {e}")
+        return jsonify({"error": "Failed to reset open vulnerabilities."}), 500
     
 @app.route('/ip-sources', methods=['GET'])
 @admin_required

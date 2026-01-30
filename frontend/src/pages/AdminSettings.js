@@ -19,10 +19,16 @@ import {
   Chip,
   Avatar,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
+  Checkbox,
+  FormControlLabel,
   Stack,
   Tooltip,
   LinearProgress,
@@ -43,7 +49,8 @@ import {
   AdminPanelSettings as AdminIcon,
   PersonAdd as PersonAddIcon,
   Edit as EditIcon,
-  Password as PasswordIcon
+  Password as PasswordIcon,
+  Warning as WarningIcon
 } from '@mui/icons-material';
 
 const MIN_PASSWORD_LENGTH = 12;
@@ -79,6 +86,10 @@ const AdminSettings = ({ darkMode }) => {
   const [localUsername, setLocalUsername] = useState('');
   const [localRole, setLocalRole] = useState('user');
   const [localTempPassword, setLocalTempPassword] = useState('');
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetPhrase, setResetPhrase] = useState('');
+  const [resetConfirmChecked, setResetConfirmChecked] = useState(false);
+  const [resetStats, setResetStats] = useState(null);
   
   const theme = useTheme();
 
@@ -375,6 +386,55 @@ const AdminSettings = ({ darkMode }) => {
     }
   };
 
+  const requiredResetPhrase = "RESET OPEN VULNERABILITIES";
+
+  const handleOpenResetDialog = () => {
+    setResetDialogOpen(true);
+    setResetPhrase('');
+    setResetConfirmChecked(false);
+  };
+
+  const handleCloseResetDialog = () => {
+    setResetDialogOpen(false);
+  };
+
+  const handleResetOpenVulnerabilities = async () => {
+    if (!resetConfirmChecked || resetPhrase !== requiredResetPhrase) {
+      setMessageType('error');
+      setMessage('Please confirm the reset phrase to proceed.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.post('/pentest/reset-open-vulnerabilities', {
+        confirm: true,
+        phrase: resetPhrase
+      });
+      if (response.status === 200) {
+        const csvContent = response.data.csv || '';
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'open_vulnerabilities_backup.csv');
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        setResetStats(response.data.stats || null);
+        setMessageType('success');
+        setMessage('Open vulnerability pentest progress reset successfully.');
+        handleCloseResetDialog();
+      }
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error.response?.data?.error || 'Failed to reset open vulnerabilities.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getRoleChip = (role) => {
     const configs = {
       'admin': { label: 'Admin', color: theme.palette.error.main },
@@ -435,6 +495,47 @@ const AdminSettings = ({ darkMode }) => {
         )}
       </Box>
 
+      <Dialog open={resetDialogOpen} onClose={handleCloseResetDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Confirm Reset of Open Vulnerability Progress</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            This action will export current open vulnerability progress and then delete it. This cannot be undone.
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Type <strong>{requiredResetPhrase}</strong> to confirm.
+          </Typography>
+          <TextField
+            fullWidth
+            value={resetPhrase}
+            onChange={(e) => setResetPhrase(e.target.value)}
+            placeholder={requiredResetPhrase}
+            sx={{ mb: 2 }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={resetConfirmChecked}
+                onChange={(e) => setResetConfirmChecked(e.target.checked)}
+              />
+            }
+            label="I understand this will delete all open vulnerability progress."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseResetDialog} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleResetOpenVulnerabilities}
+            disabled={loading}
+          >
+            Export & Reset
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Box>
@@ -492,6 +593,39 @@ const AdminSettings = ({ darkMode }) => {
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 Manually trigger record parsing and database updates
               </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Reset Open Vulnerability Progress */}
+        <Grid item xs={12}>
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={2}>
+                <WarningIcon sx={{ color: theme.palette.warning.main, mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Reset Open Vulnerability Progress
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                This will export and then delete pentest progress for all open vulnerabilities.
+              </Typography>
+              <Button
+                variant="contained"
+                color="warning"
+                startIcon={<DeleteIcon />}
+                onClick={handleOpenResetDialog}
+                disabled={loading}
+              >
+                Export & Reset
+              </Button>
+              {resetStats && (
+                <Box sx={{ mt: 2 }}>
+                  <Alert severity="info">
+                    Reset {resetStats.total_reset} record(s). Completed: {resetStats.completed}, In Progress: {resetStats.in_progress}, Not Started: {resetStats.not_started}, Reports deleted: {resetStats.reports_deleted}, Report delete errors: {resetStats.report_delete_errors}.
+                  </Alert>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
