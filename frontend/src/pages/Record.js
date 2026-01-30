@@ -679,7 +679,7 @@ const Record = ({ darkMode }) => {
                       <TableBody>
                         {history.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((historyItem) => (
                           <TableRow 
-                            key={historyItem.history_id}
+                            key={historyItem.id}
                             sx={{
                               '&:hover': { 
                                 backgroundColor: alpha(getActionColor(historyItem.action), 0.05) 

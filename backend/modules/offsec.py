@@ -62,42 +62,62 @@ def pentest_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def get_pentest_data_internal():
-    """Internal function to fetch record details."""
+def get_pentest_data_internal(record_id=None):
+    """Internal function to fetch pentest data (all records or a single record)."""
+    default_pentest = {
+        'report_file': None,
+        'vulnerable': 0,
+        'tested_by': None,
+        'test_start_date': None,
+        'test_end_date': None,
+        'vulnerability_fixed': 0,
+        'service_desk_link': None,
+        'status': 'Not Started',
+        'open_ports': "",
+        'notes': "",
+        'owasp_checklist': ""
+    }
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            
+
+            if record_id is not None:
+                c.execute("SELECT * FROM records WHERE id = ?", (record_id,))
+                record_row = c.fetchone()
+                if not record_row:
+                    return None
+                record = dict(record_row)
+
+                c.execute("SELECT * FROM pentest_data WHERE record_id = ?", (record_id,))
+                pentest_row = c.fetchone()
+                pentest = dict(pentest_row) if pentest_row else default_pentest
+
+                return {
+                    **pentest,
+                    'recordId': record['id'],
+                    'name': record['name'],
+                    'ip_address': record['ip_address'],
+                    'source': record['source'],
+                }
+
             c.execute("SELECT * FROM records")
             rows = c.fetchall()
             dns_records = [dict(ix) for ix in rows]
 
-            c.execute("SELECT * FROM pentest_data")            
+            c.execute("SELECT * FROM pentest_data")
             pentest_records = {row['record_id']: dict(row) for row in c.fetchall()}
 
             return [
                 {
-                    **pentest_records.get(record['id'], {
-                        'report_file': None,
-                        'vulnerable': 0,
-                        'tested_by': None,
-                        'test_start_date': None,
-                        'test_end_date': None,
-                        'vulnerability_fixed': 0,
-                        'service_desk_link': None,
-                        'status': 'Not Started',
-                        'open_ports': "",
-                        'notes': "",
-                        'owasp_checklist': ""
-                    }),
+                    **pentest_records.get(record['id'], default_pentest),
                     'recordId': record['id'],
                     'name': record['name'],
                     'ip_address': record['ip_address'],
                     'source': record['source'],
                 } for record in dns_records
             ]
-        
+
     except Exception as e:
         logger.error(f"Error fetching record details: {e}")
         return None

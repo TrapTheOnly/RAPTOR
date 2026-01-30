@@ -730,7 +730,10 @@ def ldap_search():
     """
     Search for users in the LDAP directory.
     """
-    query = request.args.get('query').lower()
+    query = request.args.get('query', '')
+    if not query:
+        return jsonify({"error": "Query parameter is required."}), 400
+    query = query.lower()
     try:
         results = search_ldap_users(query)
         return jsonify({"results": results}), 200
