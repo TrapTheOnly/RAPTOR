@@ -13,7 +13,9 @@ from flask import jsonify, request, send_file, session, current_app
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.getenv("DATA_PATH") + "database.db"
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATA_PATH = os.getenv("DATA_PATH", os.path.join(BASE_DIR, "data"))
+DB_PATH = os.path.join(DATA_PATH, "database.db")
 FTP_HOST = os.getenv("FTP_HOST")
 FTP_USER = os.getenv("FTP_USER")
 FTP_PASS = os.getenv("FTP_PASS")

@@ -2,12 +2,11 @@ import os
 import logging
 from functools import wraps
 from flask import session, jsonify, redirect
-from modules.admin import admin_login
+from modules.admin import admin_login, ADMIN_USERNAME
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE
 
 logger = logging.getLogger(__name__)
 
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 LDAP_SERVER = os.getenv("LDAP_SERVER")
 LDAP_DOMAIN = os.getenv("LDAP_DOMAIN")
 LDAP_USER = os.getenv("LDAP_USER")

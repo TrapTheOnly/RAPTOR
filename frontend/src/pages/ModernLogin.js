@@ -580,7 +580,7 @@ const ModernLogin = ({
           {/* Footer */}
           <Box mt={4}>
             <Typography variant="caption" color="text.secondary">
-              {resetMode ? 'Password reset required for admin access' : 'Secure authentication via LDAP'}
+              {resetMode ? 'Password reset required for admin access' : ''}
             </Typography>
           </Box>
         </Paper>

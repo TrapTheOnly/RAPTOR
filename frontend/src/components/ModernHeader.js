@@ -90,11 +90,13 @@ const ModernHeader = ({
 
   return (
     <AppBar 
-      position="static" 
+      position="sticky" 
       elevation={0}
       sx={{ 
         backgroundColor: theme.palette.background.paper,
         borderBottom: `1px solid ${theme.palette.divider}`,
+        top: 0,
+        zIndex: theme.zIndex.drawer + 1
       }}
     >
       <Toolbar sx={{ justifyContent: 'space-between', py: 1 }}>

@@ -9,7 +9,14 @@ from functools import wraps
 logger = logging.getLogger(__name__)
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
-DB_PATH = os.getenv("DATA_PATH") + "database.db"
+if not ADMIN_USERNAME:
+    ADMIN_USERNAME = "awadmin"
+    logger.warning("ADMIN_USERNAME not set; defaulting to 'awadmin'.")
+ADMIN_USERNAME = ADMIN_USERNAME.strip().lower()
+os.environ.setdefault("ADMIN_USERNAME", ADMIN_USERNAME)
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATA_PATH = os.getenv("DATA_PATH", os.path.join(BASE_DIR, "data"))
+DB_PATH = os.path.join(DATA_PATH, "database.db")
 
 # Basic NIST-aligned password policy (length + block common/compromised patterns)
 MIN_PASSWORD_LENGTH = 12
@@ -169,7 +176,7 @@ def get_existing_users():
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT username, email, added_date, role FROM allowed_users")
+            c.execute("SELECT username, email, added_date, role, auth_type FROM allowed_users")
             return {"users": [dict(row) for row in c.fetchall()]}, 200
     except Exception as e:
         logger.error(f"Error retrieving existing users: {e}")

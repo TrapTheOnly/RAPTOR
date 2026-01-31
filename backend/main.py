@@ -1,4 +1,5 @@
 import os
+import atexit
 import logging
 import bcrypt
 import secrets
@@ -22,8 +23,11 @@ from flask import Flask, request, jsonify, send_from_directory, session
 # ---------------------------------------------------------
 #! Paths for DB & backups (can be overridden by environment)
 # ---------------------------------------------------------
-DB_PATH = os.getenv("DATA_PATH") + "database.db"
-BACKUP_FOLDER = os.getenv("BACKUP_FOLDER")
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DATA_PATH = os.getenv("DATA_PATH", os.path.join(BASE_DIR, "data"))
+SHARED_PATH = os.getenv("SHARED_PATH", os.path.join(BASE_DIR, "shared"))
+BACKUP_FOLDER = os.getenv("BACKUP_FOLDER", os.path.join(BASE_DIR, "backups"))
+DB_PATH = os.path.join(DATA_PATH, "database.db")
 
 # ---------------------------------------------------------
 #! Configure logging
@@ -548,6 +552,13 @@ def add_user_to_system(username, email, role='user', auth_type='ldap', password_
 # ---------------------------------------------------------
 # Utility: periodic update scheduling
 # ---------------------------------------------------------
+update_stop_event = threading.Event()
+
+def stop_periodic_update():
+    update_stop_event.set()
+
+atexit.register(stop_periodic_update)
+
 def periodic_update(interval, update_function):
     """
     Runs `update_function` every `interval` seconds in a separate thread.
@@ -556,9 +567,15 @@ def periodic_update(interval, update_function):
     Returns: None
     """
     def wrapper():
+        if update_stop_event.is_set():
+            return
         update_function()
-        threading.Timer(interval, wrapper).start()
-    threading.Timer(interval, wrapper).start()
+        timer = threading.Timer(interval, wrapper)
+        timer.daemon = True
+        timer.start()
+    timer = threading.Timer(interval, wrapper)
+    timer.daemon = True
+    timer.start()
 
 # ---------------------------------------------------------
 # Utility: extract domain from filename
@@ -587,7 +604,7 @@ def update_data():
     try:
         logger.info(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-        shared_path = os.getenv("SHARED_PATH", "")
+        shared_path = SHARED_PATH
         zone_files = glob.glob(f"{shared_path}/*_A_Records")
         if not zone_files:
             logger.warning("No zone files found in shared path.")
@@ -602,7 +619,7 @@ def update_data():
                 continue
 
             logger.info(f"Processing zone file for domain: {domain}")
-            final_zone_file_path = os.path.join(os.getenv("DATA_PATH", ""), os.path.basename(zone_file))
+            final_zone_file_path = os.path.join(DATA_PATH, os.path.basename(zone_file))
             final_zone_file = handle_zone_file_changes(zone_file, final_zone_file_path)
             if not final_zone_file:
                 continue
@@ -871,7 +888,7 @@ def add_local_user():
 
     if not username:
         return jsonify({"error": "Username is required."}), 400
-    if username == os.getenv("ADMIN_USERNAME"):
+    if username == ADMIN_USERNAME:
         return jsonify({"error": "Username is reserved."}), 400
     if role not in ['user', 'pentester']:
         return jsonify({"error": "Invalid role specified."}), 400
@@ -921,7 +938,7 @@ def api_admin_reset_password():
     """
     Endpoint to reset admin password after first login.
     """
-    if not session.get('reset_required') or session.get('username') != os.getenv("ADMIN_USERNAME"):
+    if not session.get('reset_required') or session.get('username') != ADMIN_USERNAME:
         return jsonify({"error": "Unauthorized"}), 403
 
     data = request.get_json()
@@ -1341,7 +1358,7 @@ def login():
     conn.close()
     
 
-    if username == os.getenv("ADMIN_USERNAME"):
+    if username == ADMIN_USERNAME:
 
         if admin_login(username, password):
             session.permanent = True
