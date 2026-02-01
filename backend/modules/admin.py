@@ -3,6 +3,7 @@ import bcrypt
 import secrets
 import sqlite3
 import logging
+import json
 from flask import session, jsonify
 from functools import wraps
 
@@ -176,8 +177,20 @@ def get_existing_users():
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT username, email, added_date, role, auth_type FROM allowed_users")
-            return {"users": [dict(row) for row in c.fetchall()]}, 200
+            c.execute("SELECT username, email, added_date, role, auth_type, permissions FROM allowed_users")
+            users = []
+            for row in c.fetchall():
+                user = dict(row)
+                raw_permissions = user.get("permissions")
+                if raw_permissions:
+                    try:
+                        user["permissions"] = json.loads(raw_permissions)
+                    except json.JSONDecodeError:
+                        user["permissions"] = []
+                else:
+                    user["permissions"] = []
+                users.append(user)
+            return {"users": users}, 200
     except Exception as e:
         logger.error(f"Error retrieving existing users: {e}")
         return {"error": "Failed to fetch existing users."}, 500

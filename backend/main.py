@@ -3,6 +3,7 @@ import atexit
 import logging
 import bcrypt
 import secrets
+import json
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -18,6 +19,15 @@ from datetime import timedelta
 from modules.user import *
 from modules.admin import *
 from modules.offsec import *
+from modules.permissions import (
+    PERMISSIONS,
+    ROLE_DEFAULTS,
+    ROLE_OPTIONAL,
+    get_user_permissions,
+    sanitize_extra_permissions,
+    permission_required,
+    user_has_permission
+)
 from flask import Flask, request, jsonify, send_from_directory, session
 
 # ---------------------------------------------------------
@@ -255,7 +265,8 @@ def init_db(db_path=DB_PATH):
             role TEXT NOT NULL DEFAULT 'user',
             auth_type TEXT NOT NULL DEFAULT 'ldap',
             password BLOB,
-            must_reset INTEGER NOT NULL DEFAULT 0
+            must_reset INTEGER NOT NULL DEFAULT 0,
+            permissions TEXT
         )
     """)
     # Ensure new columns exist for legacy DBs
@@ -267,6 +278,8 @@ def init_db(db_path=DB_PATH):
         c.execute("ALTER TABLE allowed_users ADD COLUMN password BLOB")
     if "must_reset" not in allowed_user_columns:
         c.execute("ALTER TABLE allowed_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
+    if "permissions" not in allowed_user_columns:
+        c.execute("ALTER TABLE allowed_users ADD COLUMN permissions TEXT")
     c.execute("UPDATE allowed_users SET auth_type = 'ldap' WHERE auth_type IS NULL OR auth_type = ''")
 
     # Applications table
@@ -542,7 +555,7 @@ def store_records_in_db(records, db_path=DB_PATH):
 # ---------------------------------------------------------
 # Utility: add user to the allowed_users table
 # ---------------------------------------------------------
-def add_user_to_system(username, email, role='user', auth_type='ldap', password_hash=None, must_reset=0, db_path=DB_PATH):
+def add_user_to_system(username, email, role='user', auth_type='ldap', password_hash=None, must_reset=0, permissions=None, db_path=DB_PATH):
     """
     Add a user to the allowed_users table.
 
@@ -552,10 +565,11 @@ def add_user_to_system(username, email, role='user', auth_type='ldap', password_
     try:
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
+        sanitized_permissions = sanitize_extra_permissions(role, permissions)
         c.execute("""
-            INSERT INTO allowed_users (username, email, added_date, role, auth_type, password, must_reset)
-            VALUES (?, ?, datetime('now', '+4 hours'), ?, ?, ?, ?)
-        """, (username, email, role, auth_type, password_hash, must_reset))
+            INSERT INTO allowed_users (username, email, added_date, role, auth_type, password, must_reset, permissions)
+            VALUES (?, ?, datetime('now', '+4 hours'), ?, ?, ?, ?, ?)
+        """, (username, email, role, auth_type, password_hash, must_reset, json.dumps(sanitized_permissions)))
         conn.commit()
         logger.info(f"User {username} added to the system with role {role}.")
         conn.close()
@@ -664,7 +678,7 @@ CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(","
 #! Record API Endpoints
 # ---------------------------------------------------------
 @app.route('/api/records', methods=['GET'])
-@login_required_json
+@permission_required('view_records')
 def get_records():
     """
     Returns all records from the database with pentest data (including open_ports).
@@ -685,7 +699,7 @@ def get_records():
     return jsonify(records)
 
 @app.route('/api/records/<int:record_id>', methods=['POST'])
-@login_required_json
+@permission_required('modify_records')
 def update_record(record_id):
     """
     Update a record by ID (including open_ports in pentest_data).
@@ -777,7 +791,7 @@ def update_record(record_id):
         return jsonify({"error": str(e)}), 400
 
 @app.route('/api/apps', methods=['GET'])
-@login_required_json
+@permission_required('view_records')
 def get_applications():
     """Return all application groups."""
     try:
@@ -796,7 +810,7 @@ def get_applications():
         return jsonify({"error": "Failed to fetch applications."}), 500
 
 @app.route('/api/apps', methods=['POST'])
-@login_required_json
+@permission_required('manage_apps')
 def create_application():
     """Create a new application group."""
     data = request.get_json(force=True)
@@ -824,7 +838,7 @@ def create_application():
         return jsonify({"error": "Failed to create application."}), 500
 
 @app.route('/api/apps/<int:app_id>', methods=['PUT'])
-@login_required_json
+@permission_required('manage_apps')
 def update_application(app_id):
     """Rename an application group."""
     data = request.get_json(force=True)
@@ -852,7 +866,7 @@ def update_application(app_id):
         return jsonify({"error": "Failed to update application."}), 500
 
 @app.route('/api/apps/<int:app_id>', methods=['DELETE'])
-@login_required_json
+@permission_required('manage_apps')
 def delete_application(app_id):
     """Delete an application group and unassign its records."""
     try:
@@ -870,7 +884,7 @@ def delete_application(app_id):
         return jsonify({"error": "Failed to delete application."}), 500
 
 @app.route('/api/records/<int:record_id>', methods=['DELETE'])
-@admin_or_manager_required
+@permission_required('delete_records')
 def delete_record(record_id):
     """
     Delete a record by ID.
@@ -913,7 +927,7 @@ def delete_record(record_id):
         return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/api/records/<int:record_id>/history', methods=['GET'])
-@login_required_json
+@permission_required('view_record_details')
 def get_record_history(record_id):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # Important for getting dict-like results
@@ -926,7 +940,7 @@ def get_record_history(record_id):
     return jsonify(history)
 
 @app.route('/api/records/<string:domain>', methods=['GET'])
-@login_required_json
+@permission_required('view_record_details')
 def get_record_by_domain(domain):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -987,13 +1001,14 @@ def add_user():
     username = data.get('username').lower()
     email = data.get('email').lower()
     role = data.get('role', 'user').lower()
+    permissions = data.get('permissions', [])
 
     #Basic role validation
     if role not in ['user', 'pentester', 'manager']:
         return jsonify({"error": "Invalid role specified."}), 400
 
     try:
-        add_user_to_system(username, email, role, auth_type='ldap')
+        add_user_to_system(username, email, role, auth_type='ldap', permissions=permissions)
         return jsonify({"message": f"User {username} added successfully with role {role}."}), 200
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")
@@ -1008,6 +1023,7 @@ def add_local_user():
     data = request.get_json()
     username = data.get('username', '').lower().strip()
     role = data.get('role', 'user').lower()
+    permissions = data.get('permissions', [])
 
     if not username:
         return jsonify({"error": "Username is required."}), 400
@@ -1030,7 +1046,8 @@ def add_local_user():
             role=role,
             auth_type='local',
             password_hash=hashed_password,
-            must_reset=1
+            must_reset=1,
+            permissions=permissions
         )
         return jsonify({
             "message": f"Local user {username} created successfully.",
@@ -1163,7 +1180,10 @@ def update_user_role():
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("UPDATE allowed_users SET role = ? WHERE username = ?", (new_role, username))
+        c.execute(
+            "UPDATE allowed_users SET role = ?, permissions = ? WHERE username = ?",
+            (new_role, json.dumps([]), username)
+        )
         if c.rowcount == 0:
             conn.close()
             return jsonify({"error": f"User {username} not found"}), 404
@@ -1173,6 +1193,47 @@ def update_user_role():
     except Exception as e:
         logger.error(f"Error updating role for user {username}: {e}")
         return jsonify({"error": "Failed to update user role"}), 500
+
+@app.route('/update-user-permissions', methods=['POST'])
+@admin_required
+def update_user_permissions():
+    data = request.get_json() or {}
+    username = data.get('username')
+    requested_permissions = data.get('permissions', [])
+
+    if not username:
+        return jsonify({"error": "Username is required"}), 400
+    if not isinstance(requested_permissions, list):
+        return jsonify({"error": "Permissions must be a list"}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT role FROM allowed_users WHERE username = ?", (username,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": f"User {username} not found"}), 404
+
+        role = (row[0] or 'user').lower()
+        sanitized = sanitize_extra_permissions(role, requested_permissions)
+        if set(requested_permissions) - set(sanitized):
+            conn.close()
+            return jsonify({"error": "Invalid permissions for role"}), 400
+
+        c.execute(
+            "UPDATE allowed_users SET permissions = ? WHERE username = ?",
+            (json.dumps(sanitized), username)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({
+            "message": "User permissions updated.",
+            "permissions": sanitized
+        }), 200
+    except Exception as e:
+        logger.error(f"Error updating permissions for user {username}: {e}")
+        return jsonify({"error": "Failed to update user permissions"}), 500
 
 @app.route('/delete-user', methods=['DELETE'])
 @admin_required
@@ -1494,12 +1555,18 @@ def login():
                 return jsonify({
                     "status": "password_reset_required",
                     "username": username,
-                    "user_type": "admin"
+                    "user_type": "admin",
+                    "permissions": list(get_user_permissions(username, "admin"))
                 }), 200
 
             session['logged_in'] = True
             session.pop('reset_required', None)
-            return jsonify({"status": "logged_in", "username": username, "user_type": 'admin'}), 200
+            return jsonify({
+                "status": "logged_in",
+                "username": username,
+                "user_type": "admin",
+                "permissions": list(get_user_permissions(username, "admin"))
+            }), 200
         else:
             return jsonify({"error": "Invalid credentials"}), 401
 
@@ -1523,12 +1590,18 @@ def login():
                 return jsonify({
                     "status": "password_reset_required",
                     "username": username,
-                    "user_type": user_role
+                    "user_type": user_role,
+                    "permissions": list(get_user_permissions(username, user_role))
                 }), 200
 
             session['logged_in'] = True
             session.pop('reset_required', None)
-            return jsonify({"status": "logged_in", "username": username, "user_type": user_role}), 200
+            return jsonify({
+                "status": "logged_in",
+                "username": username,
+                "user_type": user_role,
+                "permissions": list(get_user_permissions(username, user_role))
+            }), 200
 
         if ldap_authenticate(username, password):
             session.permanent = True
@@ -1536,7 +1609,12 @@ def login():
             session['username'] = user[0]
             session['user_type'] = user_role
             session.pop('reset_required', None)
-            return jsonify({"status": "logged_in", "username": username, "user_type": session['user_type']}), 200
+            return jsonify({
+                "status": "logged_in",
+                "username": username,
+                "user_type": session['user_type'],
+                "permissions": list(get_user_permissions(username, user_role))
+            }), 200
         else:
             return jsonify({"error": "Invalid credentials"}), 401
     else:
@@ -1551,11 +1629,17 @@ def session_status():
         return jsonify({
             "status": "password_reset_required",
             "username": session.get("username"),
-            "user_type": session.get("user_type")
+            "user_type": session.get("user_type"),
+            "permissions": list(get_user_permissions(session.get("username"), session.get("user_type")))
         }), 200
     if 'logged_in' in session and session['logged_in']:
         user_type = session.get('user_type')
-        return jsonify({"status": "logged_in", "username": session.get("username"), "user_type": user_type}), 200
+        return jsonify({
+            "status": "logged_in",
+            "username": session.get("username"),
+            "user_type": user_type,
+            "permissions": list(get_user_permissions(session.get("username"), user_type))
+        }), 200
     return jsonify({"status": "logged_out"}), 401
 
 @app.route('/logout', methods=['POST'])

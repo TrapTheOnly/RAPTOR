@@ -31,6 +31,7 @@ const ModernLogin = ({
   setLoggedIn,
   setGlobalUsername,
   setGlobalUserRole,
+  setGlobalUserPermissions,
   setPasswordResetRequired,
   passwordResetRequired = false,
   resetUsername = '',
@@ -83,6 +84,7 @@ const ModernLogin = ({
           setResetUserType(null);
           setGlobalUsername(username);
           setGlobalUserRole(response.data.user_type);
+          setGlobalUserPermissions(response.data.permissions || []);
         }
       }
     } catch (error) {
@@ -138,6 +140,7 @@ const ModernLogin = ({
         setResetUserType(null);
         setGlobalUsername(response.data.username || username);
         setGlobalUserRole(response.data.user_type || 'user');
+        setGlobalUserPermissions(response.data.permissions || []);
       }
     } catch (error) {
       setResetError(error.response?.data?.error || 'Password reset failed. Please try again.');

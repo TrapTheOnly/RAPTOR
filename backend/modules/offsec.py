@@ -8,7 +8,8 @@ from io import BytesIO
 from functools import wraps
 import xml.etree.ElementTree as ET
 from modules.user import login_required_json
-from modules.admin import admin_required, admin_or_manager_required
+from modules.admin import admin_required
+from modules.permissions import permission_required, user_has_permission
 from flask import jsonify, request, send_file, session, current_app
 
 logger = logging.getLogger(__name__)
@@ -96,24 +97,6 @@ def delete_report(relative_path):
     except Exception as e:
         logger.error(f"Error deleting report file {relative_path}: {e}")
         raise
-
-def pentest_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('logged_in') or session.get('user_type') not in ('pentester', 'admin', 'manager'):
-            response = jsonify({"error": "Unauthorized access"})
-            return response, 403
-        return f(*args, **kwargs)
-    return decorated_function
-
-def pentest_view_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('logged_in') or session.get('user_type') not in ('user', 'pentester', 'admin', 'manager'):
-            response = jsonify({"error": "Unauthorized access"})
-            return response, 403
-        return f(*args, **kwargs)
-    return decorated_function
 
 def get_pentest_data_internal(record_id=None):
     """Internal function to fetch pentest data (all records or a single record)."""
@@ -217,8 +200,7 @@ def get_pentest_users_internal():
         logger.error(f"Error fetching pentesters: {e}")
         return None
 
-@login_required_json
-@admin_or_manager_required
+@permission_required('reassign_pentests_admin')
 def get_pentest_users():
     """GET /pentest_users: Get users with pentest role."""
     try:
@@ -239,8 +221,7 @@ def get_pentest_row(record_id):
         logger.error(f"Error fetching pentest data for ID {record_id}: {e}")
         return None
 
-@login_required_json
-@pentest_required
+@permission_required('modify_pentests')
 def create_or_update_pentest_data(record_id):
     """POST /pentest/<record_id>: Create or update pentest data."""
     record = get_record_details_internal(record_id)
@@ -259,18 +240,21 @@ def create_or_update_pentest_data(record_id):
         else:
             existing_data = {}
         
-        elevated = session.get('user_type') in ('admin', 'manager')
+        username = session.get('username')
+        role = session.get('user_type')
+        can_reassign = user_has_permission(username, role, 'reassign_pentests_admin')
+        can_modify_others = user_has_permission(username, role, 'modify_others_pentests_admin')
 
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status', 'open_ports', 'notes', 'owasp_checklist', 'vulnerabilities', 'description']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
-        if not elevated:
-            if data.get('tested_by') != session['username']:
-                return jsonify({"error": "Unauthorized to complete this action."}), 403
-            
-            if existing_data and existing_data.get('tested_by') not in [session['username'], 'Unassigned', None]:
+        if not can_reassign and data.get('tested_by') and data.get('tested_by') != username:
+            return jsonify({"error": "Unauthorized to change tester assignment."}), 403
+
+        if not can_modify_others:
+            if existing_data and existing_data.get('tested_by') not in [username, 'Unassigned', None, '']:
                 return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
             
         if data.get('status') not in ['Not Started', 'In Progress', 'Completed']:
@@ -349,8 +333,7 @@ def create_or_update_pentest_data(record_id):
         logger.error(f"Error creating/updating pentest data for record {record_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
-@login_required_json
-@pentest_required
+@permission_required('modify_pentests')
 def upload_pentest_image(record_id):
     """POST /pentest/<record_id>/images: Upload image for pentest notes/vulns."""
     record = get_record_details_internal(record_id)
@@ -358,9 +341,11 @@ def upload_pentest_image(record_id):
         return jsonify({"error": "Record not found"}), 404
 
     pentest_row = get_pentest_row(record_id)
-    elevated = session.get('user_type') in ('admin', 'manager')
-    if not elevated:
-        if not pentest_row or pentest_row['tested_by'] != session.get('username'):
+    username = session.get('username')
+    role = session.get('user_type')
+    can_modify_others = user_has_permission(username, role, 'modify_others_pentests_admin')
+    if not can_modify_others:
+        if not pentest_row or pentest_row['tested_by'] != username:
             return jsonify({"error": "Unauthorized to upload images for this record."}), 403
 
     if 'image' not in request.files:
@@ -380,8 +365,7 @@ def upload_pentest_image(record_id):
         logger.error(f"Error uploading image for record {record_id}: {e}")
         return jsonify({"error": "Failed to upload image."}), 500
 
-@login_required_json
-@pentest_required
+@permission_required('view_pentest_page')
 def get_pentest_image(filename):
     """GET /pentest/images/<filename>: Serve image by filename."""
     if not re.match(r'^[a-f0-9]{32}\.(png|jpg|jpeg|gif|webp)$', filename):
@@ -395,8 +379,7 @@ def get_pentest_image(filename):
         logger.error(f"Error fetching image {filename}: {e}")
         return jsonify({"error": "Image not found."}), 404
 
-@login_required_json
-@pentest_view_required
+@permission_required('view_security_dashboard')
 def get_pentest_data():
     """GET /pentest/records: Retrieve pentest data."""
     data = get_pentest_data_internal()
@@ -435,8 +418,7 @@ def delete_pentest_data(record_id):
         logger.error(f"Error deleting pentest data for record {record_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
-@login_required_json
-@pentest_required
+@permission_required('view_pentest_page')
 def get_report(record_id):
     """GET /pentest/<record_id>/report: Serve the PDF report."""
     pentest_data = get_pentest_data_internal(record_id)
@@ -454,8 +436,7 @@ def get_report(record_id):
         logger.error(f"Error retrieving report for record {record_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
-@login_required_json
-@pentest_required
+@permission_required('modify_pentests')
 def delete_report_route(record_id):
     """DELETE /pentest/<record_id>/report: Deletes report file."""
     pentest_data = get_pentest_data_internal(record_id)

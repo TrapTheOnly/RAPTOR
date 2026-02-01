@@ -17,6 +17,7 @@ const App = () => {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
+  const [userPermissions, setUserPermissions] = useState([]);
   const [passwordResetRequired, setPasswordResetRequired] = useState(false);
   const [resetUserType, setResetUserType] = useState(null);
   const storedTheme = localStorage.getItem('theme') || 'light';
@@ -69,12 +70,14 @@ const App = () => {
             setUsername(response.data.username || '');
             setResetUserType(response.data.user_type || null);
             setUserRole(null);
+            setUserPermissions(response.data.permissions || []);
           } else if (response.data.status === 'logged_in') {
             setLoggedIn(true);
             setPasswordResetRequired(false);
             setUsername(response.data.username);
             setUserRole(response.data.user_type);
             setResetUserType(null);
+            setUserPermissions(response.data.permissions || []);
           }
         }
       } catch (error) {
@@ -84,6 +87,7 @@ const App = () => {
         setResetUserType(null);
         setUsername('');
         setUserRole(null);
+        setUserPermissions([]);
       } finally {
         setLoading(false);
       }
@@ -113,11 +117,13 @@ const App = () => {
           <ModernHeader
             username={username}
             userRole={userRole}
+            userPermissions={userPermissions}
             setUserRole={setUserRole}
             setLoggedIn={setLoggedIn}
             setUsername={setUsername}
               darkMode={darkMode}
               setDarkMode={setDarkMode}
+            setUserPermissions={setUserPermissions}
           />
         )}
       <Routes>
@@ -129,8 +135,8 @@ const App = () => {
         />
         <Route
           path="/records"
-          element={loggedIn && userRole ? 
-            <RecordsTable userRole={userRole} darkMode={darkMode}/> : 
+          element={loggedIn && userPermissions.includes('view_records') ? 
+            <RecordsTable userRole={userRole} userPermissions={userPermissions} darkMode={darkMode}/> : 
               <Navigate to="/login" />}
         />
         <Route
@@ -140,6 +146,7 @@ const App = () => {
               setLoggedIn={setLoggedIn}
               setGlobalUsername={setUsername}
               setGlobalUserRole={setUserRole}
+              setGlobalUserPermissions={setUserPermissions}
               setPasswordResetRequired={setPasswordResetRequired}
               passwordResetRequired={passwordResetRequired}
               resetUsername={username}
@@ -159,26 +166,27 @@ const App = () => {
         />
         <Route
             path="/pentest"
-            element={loggedIn && userRole ?
+            element={loggedIn && userPermissions.includes('view_security_dashboard') ?
                 <PentestDashboard
                   darkMode={darkMode}
                   isAdmin={userRole === 'admin'}
                   username={username}
                   userRole={userRole}
+                  userPermissions={userPermissions}
                 /> : <Navigate to="/login" />
             }
         />
         <Route
           path="/pentest/record/:recordId"
           element={
-            loggedIn && (userRole === 'pentester' || userRole === 'admin' || userRole === 'manager') ?
-              <PentestRecord darkMode={darkMode} /> :
+            loggedIn && userPermissions.includes('view_pentest_page') ?
+              <PentestRecord darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} username={username} /> :
               <Navigate to={loggedIn ? "/pentest" : "/login"} />
           }
         />
         <Route
           path="/records/:domain"
-          element={loggedIn ? <Record darkMode={darkMode} /> : <Navigate to="/login" />}
+          element={loggedIn && userPermissions.includes('view_record_details') ? <Record darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} /> : <Navigate to="/login" />}
         />
         <Route path="/records/*" element={<Navigate to="/" />} />
         <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />

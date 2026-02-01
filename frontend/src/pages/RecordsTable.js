@@ -60,7 +60,7 @@ import {
 } from '@mui/icons-material';
 import Papa from 'papaparse';
 
-const RecordsTable = ({ userRole, darkMode }) => {
+const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
   const [records, setRecords] = useState([]);
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,8 +93,20 @@ const RecordsTable = ({ userRole, darkMode }) => {
 
   const navigate = useNavigate();
   const theme = useTheme();
-  const canDeleteRecords = userRole === 'admin' || userRole === 'manager';
-  const canManageApps = Boolean(userRole);
+  const appDialogIconBg = alpha(
+    theme.palette.primary.main,
+    theme.palette.mode === 'dark' ? 0.22 : 0.14
+  );
+  const appDialogIconColor = theme.palette.mode === 'dark'
+    ? theme.palette.primary.light
+    : theme.palette.primary.dark;
+  const hasPermission = (permission) => userRole === 'admin' || userPermissions?.includes(permission);
+  const canDeleteRecords = hasPermission('delete_records');
+  const canManageApps = hasPermission('manage_apps');
+  const canModifyRecords = hasPermission('modify_records');
+  const canViewRecordDetails = hasPermission('view_record_details');
+  const canExportRecords = hasPermission('export_records');
+  const canViewPentestPage = hasPermission('view_pentest_page');
 
   // Search parameters configuration with aliases
   const searchParameters = [
@@ -610,6 +622,7 @@ const RecordsTable = ({ userRole, darkMode }) => {
   };
 
   const startEditing = (record) => {
+    if (!canModifyRecords) return;
     setEditingRecord(record.id);
     setEditForm({
       application_id: record.application_id || '',
@@ -1116,30 +1129,36 @@ const RecordsTable = ({ userRole, darkMode }) => {
                 </>
               ) : (
                 <>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<Edit />}
-                    onClick={() => startEditing(record)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<History />}
-                    onClick={() => navigate(`/records/${record.name}`)}
-                  >
-                    History
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<Security />}
-                    onClick={() => navigate(`/pentest/record/${record.id}`)}
-                  >
-                    Pentest
-                  </Button>
+                  {canModifyRecords && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Edit />}
+                      onClick={() => startEditing(record)}
+                    >
+                      Edit
+                    </Button>
+                  )}
+                  {canViewRecordDetails && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<History />}
+                      onClick={() => navigate(`/records/${record.name}`)}
+                    >
+                      History
+                    </Button>
+                  )}
+                  {canViewPentestPage && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Security />}
+                      onClick={() => navigate(`/pentest/record/${record.id}`)}
+                    >
+                      Pentest
+                    </Button>
+                  )}
                   {canDeleteRecords && (
                     <Button
                       variant="outlined"
@@ -1317,11 +1336,13 @@ const RecordsTable = ({ userRole, darkMode }) => {
                 ),
                 endAdornment: (
                   <InputAdornment position="end">
-                    <Tooltip title="Export Filtered Results">
-                      <IconButton onClick={exportCSV} size="small">
-                        <Download />
-                      </IconButton>
-                    </Tooltip>
+                    {canExportRecords && (
+                      <Tooltip title="Export Filtered Results">
+                        <IconButton onClick={exportCSV} size="small">
+                          <Download />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <Tooltip title="Refresh">
                       <IconButton onClick={fetchRecords} size="small">
                         <Refresh />
@@ -1775,6 +1796,17 @@ const RecordsTable = ({ userRole, darkMode }) => {
             size="small"
             startIcon={<AccountTree />}
             onClick={() => setAppsDialogOpen(true)}
+            sx={{
+              borderColor: alpha(theme.palette.primary.main, 0.4),
+              color: theme.palette.primary.main,
+              backgroundColor: alpha(theme.palette.primary.main, 0.08),
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                backgroundColor: alpha(theme.palette.primary.main, 0.15),
+                borderColor: theme.palette.primary.main,
+                transform: 'translateY(-1px)'
+              }
+            }}
           >
             Manage Apps
           </Button>
@@ -1859,79 +1891,166 @@ const RecordsTable = ({ userRole, darkMode }) => {
         onClose={() => setAppsDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: 'hidden',
+            backgroundColor: theme.palette.background.paper,
+            border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+            boxShadow: theme.shadows[12]
+          }
+        }}
       >
-        <DialogTitle>Manage Applications</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', gap: 1, mt: 1, mb: 2 }}>
-            <TextField
-              fullWidth
-              label="New application"
-              value={newAppName}
-              onChange={(e) => setNewAppName(e.target.value)}
-              size="small"
-            />
-            <Button
-              variant="contained"
-              onClick={handleCreateApp}
-              disabled={!newAppName.trim() || appsBusy}
+        <DialogTitle sx={{ pb: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+          <Box display="flex" alignItems="center" gap={1.5}>
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: 2,
+                backgroundColor: appDialogIconBg,
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 0
+              }}
             >
-              Create
-            </Button>
+              <AccountTree sx={{ color: appDialogIconColor, fontSize: 22 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Manage Applications
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Group domains into apps for a cleaner records tree.
+              </Typography>
+            </Box>
           </Box>
-
-          <Divider sx={{ mb: 2 }} />
-
-          {apps.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              No applications created yet.
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5 }}>
+          <Paper
+            sx={{
+              p: 2,
+              mb: 2,
+              borderRadius: 2,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
+              backgroundColor: 'background.paper'
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+              Create a new application
             </Typography>
-          ) : (
-            <List sx={{ p: 0 }}>
-              {apps.map((app) => (
-                <ListItemButton
-                  key={app.id}
-                  sx={{
-                    px: 0,
-                    '&:hover': { backgroundColor: 'transparent' }
-                  }}
-                >
-                  <Box display="flex" alignItems="center" gap={1} width="100%">
-                    <TextField
-                      fullWidth
-                      size="small"
-                      value={appEdits[app.id] ?? app.name}
-                      onChange={(e) =>
-                        setAppEdits((prev) => ({ ...prev, [app.id]: e.target.value }))
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField
+                fullWidth
+                label="New application"
+                value={newAppName}
+                onChange={(e) => setNewAppName(e.target.value)}
+                size="small"
+                sx={{ backgroundColor: 'background.default' }}
+              />
+              <Button
+                variant="contained"
+                onClick={handleCreateApp}
+                disabled={!newAppName.trim() || appsBusy}
+                sx={{
+                  px: 3,
+                  boxShadow: '0 8px 16px rgba(0,0,0,0.12)',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    transform: 'translateY(-1px)',
+                    boxShadow: '0 12px 20px rgba(0,0,0,0.16)'
+                  }
+                }}
+              >
+                Create
+              </Button>
+            </Stack>
+          </Paper>
+
+          <Paper
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              border: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
+              backgroundColor: 'background.paper'
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>
+              Existing applications
+            </Typography>
+            {apps.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No applications created yet.
+              </Typography>
+            ) : (
+              <List sx={{ p: 0, display: 'grid', gap: 1 }}>
+                {apps.map((app) => (
+                  <ListItemButton
+                    key={app.id}
+                    sx={{
+                      px: 1,
+                      py: 1,
+                      borderRadius: 1.5,
+                      border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                      backgroundColor: alpha(theme.palette.background.default, 0.8),
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                        borderColor: alpha(theme.palette.primary.main, 0.3)
                       }
-                    />
-                    <IconButton
-                      onClick={() => handleRenameApp(app.id)}
-                      disabled={appsBusy}
-                      size="small"
-                      color="primary"
-                    >
-                      <Save />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => handleDeleteApp(app.id)}
-                      disabled={appsBusy}
-                      size="small"
-                      color="error"
-                    >
-                      <Delete />
-                    </IconButton>
-                  </Box>
-                </ListItemButton>
-              ))}
-            </List>
-          )}
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1} width="100%">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={appEdits[app.id] ?? app.name}
+                        onChange={(e) =>
+                          setAppEdits((prev) => ({ ...prev, [app.id]: e.target.value }))
+                        }
+                        sx={{ backgroundColor: 'background.paper' }}
+                      />
+                      <IconButton
+                        onClick={() => handleRenameApp(app.id)}
+                        disabled={appsBusy}
+                        size="small"
+                        color="primary"
+                        sx={{
+                          backgroundColor: alpha(theme.palette.primary.main, 0.12),
+                          '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.2) }
+                        }}
+                      >
+                        <Save />
+                      </IconButton>
+                      <IconButton
+                        onClick={() => handleDeleteApp(app.id)}
+                        disabled={appsBusy}
+                        size="small"
+                        color="error"
+                        sx={{
+                          backgroundColor: alpha(theme.palette.error.main, 0.12),
+                          '&:hover': { backgroundColor: alpha(theme.palette.error.main, 0.2) }
+                        }}
+                      >
+                        <Delete />
+                      </IconButton>
+                    </Box>
+                  </ListItemButton>
+                ))}
+              </List>
+            )}
+          </Paper>
 
           <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
             Assign domains by editing a record and selecting an application.
           </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAppsDialogOpen(false)}>Close</Button>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setAppsDialogOpen(false)} variant="outlined">
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

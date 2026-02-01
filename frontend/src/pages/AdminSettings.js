@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Collapse,
   Dialog,
@@ -16,6 +17,7 @@ import {
   DialogTitle,
   Divider,
   Drawer,
+  FormControlLabel,
   FormControl,
   Grid,
   IconButton,
@@ -69,60 +71,53 @@ const COMMON_PASSWORDS = new Set([
 ]);
 
 const drawerWidth = 280;
-const ROLE_PERMISSIONS = [
-  {
-    key: 'user',
+const ROLE_METADATA = {
+  user: {
     label: 'User',
-    permissions: [
-      'View records page',
-      'View security dashboard',
-      'Modify records',
-      'View record details',
-      'Export records',
-      'Manage apps'
-    ]
+    description: 'Default access to records with optional security dashboard and app management.',
+    optionalPermissions: ['view_security_dashboard', 'manage_apps']
   },
-  {
-    key: 'pentester',
+  pentester: {
     label: 'Pentester',
-    permissions: [
-      'View records page',
-      'View security dashboard',
-      'Modify records',
-      'View record details',
-      'Export records',
-      'Manage apps',
-      'View pentest page',
-      'Modify pentests (assign to self, run tests)',
-      'Export pentests'
-    ]
+    description: 'Security testing access with optional record editing and app management.',
+    optionalPermissions: ['modify_records', 'manage_apps']
   },
-  {
-    key: 'manager',
+  manager: {
     label: 'Manager',
-    permissions: [
-      'All user and pentester permissions',
-      'Reassign pentests as admin',
-      'Delete records',
-      "Modify others' pentests as admin"
-    ]
+    description: 'Full user and pentester capabilities plus admin-level pentest reassignment and record deletion.',
+    optionalPermissions: []
   },
-  {
-    key: 'admin',
+  admin: {
     label: 'Admin',
-    permissions: [
-      'Full system access and user management'
-    ]
+    description: 'Full system access, user management, and configuration control.',
+    optionalPermissions: []
   }
-];
+};
+
+const OPTIONAL_PERMISSION_LABELS = {
+  view_security_dashboard: {
+    label: 'View security dashboard',
+    description: 'Allows access to the Security dashboard overview.'
+  },
+  manage_apps: {
+    label: 'Manage apps',
+    description: 'Create applications and assign domains to them.'
+  },
+  modify_records: {
+    label: 'Modify records',
+    description: 'Edit record ownership, ports, and descriptions.'
+  }
+};
 
 const AdminSettings = ({ darkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedUserRoles, setSelectedUserRoles] = useState({});
+  const [selectedUserPermissions, setSelectedUserPermissions] = useState({});
   const [existingUsers, setExistingUsers] = useState([]);
   const [editedUserRoles, setEditedUserRoles] = useState({});
+  const [editedUserPermissions, setEditedUserPermissions] = useState({});
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
   const [loading, setLoading] = useState(false);
@@ -142,6 +137,7 @@ const AdminSettings = ({ darkMode }) => {
   const [localUsername, setLocalUsername] = useState('');
   const [localRole, setLocalRole] = useState('user');
   const [localTempPassword, setLocalTempPassword] = useState('');
+  const [localPermissions, setLocalPermissions] = useState([]);
 
   const [vulnCategories, setVulnCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -218,6 +214,93 @@ const AdminSettings = ({ darkMode }) => {
       return 'Password is too common.';
     }
     return '';
+  };
+
+  const getRoleMeta = (roleKey) => ROLE_METADATA[roleKey] || ROLE_METADATA.user;
+  const getOptionalPermissions = (roleKey) => getRoleMeta(roleKey).optionalPermissions || [];
+  const normalizeOptionalPermissions = (roleKey, permissions = []) => {
+    const allowed = new Set(getOptionalPermissions(roleKey));
+    return permissions.filter((perm) => allowed.has(perm));
+  };
+
+  const renderOptionalPermissionControls = (roleKey, permissions, onToggle) => {
+    const optionalPermissions = getOptionalPermissions(roleKey);
+    return (
+      <Paper
+        sx={{
+          mt: 1.5,
+          p: 1.5,
+          borderRadius: 2,
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${alpha(theme.palette.secondary.main, 0.05)} 100%)`
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{ display: 'block', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'text.secondary' }}
+        >
+          Optional permissions
+        </Typography>
+        {optionalPermissions.length === 0 ? (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            No optional permissions for this role.
+          </Typography>
+        ) : (
+          <Box sx={{ mt: 1, display: 'grid', gap: 0.75 }}>
+            {optionalPermissions.map((permission) => {
+              const meta = OPTIONAL_PERMISSION_LABELS[permission] || { label: permission, description: '' };
+              const isChecked = permissions.includes(permission);
+              return (
+                <Box
+                  key={permission}
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 0.35,
+                    p: 0.75,
+                    borderRadius: 1.5,
+                    border: `1px solid ${alpha(theme.palette.divider, 0.4)}`,
+                    backgroundColor: isChecked
+                      ? alpha(theme.palette.primary.main, 0.12)
+                      : alpha(theme.palette.background.paper, 0.6),
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      borderColor: alpha(theme.palette.primary.main, 0.4),
+                      transform: 'translateY(-1px)'
+                    }
+                  }}
+                >
+                  <FormControlLabel
+                    sx={{ m: 0 }}
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={isChecked}
+                        onChange={() => onToggle(permission)}
+                        sx={{
+                          color: alpha(theme.palette.primary.main, 0.6),
+                          '&.Mui-checked': { color: theme.palette.primary.main }
+                        }}
+                      />
+                    }
+                    label={
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {meta.label}
+                      </Typography>
+                    }
+                  />
+                  {meta.description && (
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 3.5 }}>
+                      {meta.description}
+                    </Typography>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+      </Paper>
+    );
   };
   useEffect(() => {
     fetchIpSources();
@@ -319,6 +402,7 @@ const AdminSettings = ({ darkMode }) => {
       setSelectedUsers([...selectedUsers, user]);
       setSearchResults(searchResults.filter((result) => result.username !== user.username));
       setSelectedUserRoles({ ...selectedUserRoles, [user.username]: 'user' });
+      setSelectedUserPermissions({ ...selectedUserPermissions, [user.username]: [] });
     }
   };
 
@@ -327,6 +411,8 @@ const AdminSettings = ({ darkMode }) => {
     setSelectedUsers(selectedUsers.filter((selected) => selected.username !== user.username));
     const { [user.username]: removedRole, ...restRoles } = selectedUserRoles;
     setSelectedUserRoles(restRoles);
+    const { [user.username]: removedPerms, ...restPerms } = selectedUserPermissions;
+    setSelectedUserPermissions(restPerms);
   };
 
   const handleSubmit = async () => {
@@ -335,13 +421,18 @@ const AdminSettings = ({ darkMode }) => {
       const usersWithRoles = selectedUsers.map((user) => ({
         username: user.username,
         email: user.email,
-        role: selectedUserRoles[user.username] || 'user'
+        role: selectedUserRoles[user.username] || 'user',
+        permissions: normalizeOptionalPermissions(
+          selectedUserRoles[user.username] || 'user',
+          selectedUserPermissions[user.username] || []
+        )
       }));
       const responses = await Promise.all(usersWithRoles.map((user) => axios.post('/add-user', user)));
       if (responses.every((response) => response.status === 200)) {
         showMessage('success', 'Users added successfully.');
         setSelectedUsers([]);
         setSelectedUserRoles({});
+        setSelectedUserPermissions({});
         fetchExistingUsers();
       }
     } catch (error) {
@@ -358,12 +449,33 @@ const AdminSettings = ({ darkMode }) => {
         setExistingUsers((prevUsers) => prevUsers.map((user) =>
           user.username === username ? { ...user, role: newRole } : user
         ));
+        setEditedUserPermissions((prev) => ({ ...prev, [username]: [] }));
         showMessage('success', response.data.message);
       } else {
         showMessage('error', 'Failed to update role. Please try again.');
       }
     } catch (error) {
       showMessage('error', error.response?.data?.error || 'Failed to update user role. Please try again.');
+    }
+  };
+
+  const handleSavePermissions = async (username, role, permissions) => {
+    const normalized = normalizeOptionalPermissions(role, permissions);
+    try {
+      const response = await axios.post('/update-user-permissions', {
+        username,
+        permissions: normalized
+      });
+      if (response.status === 200) {
+        setExistingUsers((prevUsers) => prevUsers.map((user) =>
+          user.username === username ? { ...user, permissions: normalized } : user
+        ));
+        showMessage('success', response.data.message);
+      } else {
+        showMessage('error', 'Failed to update permissions. Please try again.');
+      }
+    } catch (error) {
+      showMessage('error', error.response?.data?.error || 'Failed to update permissions. Please try again.');
     }
   };
 
@@ -512,13 +624,15 @@ const AdminSettings = ({ darkMode }) => {
     try {
       const response = await axios.post('/add-local-user', {
         username: trimmedUsername,
-        role: localRole
+        role: localRole,
+        permissions: normalizeOptionalPermissions(localRole, localPermissions)
       });
       if (response.status === 200) {
-        showMessage('success', "Local user  created. Temporary password generated.");
+        showMessage('success', 'Local user created. Temporary password generated.');
         setLocalTempPassword(response.data.temp_password || '');
         setLocalUsername('');
         setLocalRole('user');
+        setLocalPermissions([]);
         fetchExistingUsers();
       }
     } catch (error) {
@@ -680,51 +794,6 @@ const AdminSettings = ({ darkMode }) => {
       </List>
     </Box>
   );
-  const renderRolePermissions = () => (
-    <Paper
-      sx={{
-        p: 2,
-        mb: 3,
-        backgroundColor: alpha(theme.palette.info.main, 0.06),
-        border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`
-      }}
-    >
-      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-        Role permissions
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Roles are fixed permission bundles. Per-user custom permissions are not supported yet.
-      </Typography>
-      <Grid container spacing={2}>
-        {ROLE_PERMISSIONS.map((role) => (
-          <Grid item xs={12} md={6} key={role.key}>
-            <Box
-              sx={{
-                p: 1.5,
-                borderRadius: 1,
-                border: `1px solid ${theme.palette.divider}`,
-                backgroundColor: 'background.paper'
-              }}
-            >
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-                {role.label}
-              </Typography>
-              <List dense sx={{ py: 0 }}>
-                {role.permissions.map((permission) => (
-                  <ListItem key={permission} disableGutters>
-                    <ListItemText
-                      primary={permission}
-                      primaryTypographyProps={{ fontSize: '0.8rem' }}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            </Box>
-          </Grid>
-        ))}
-      </Grid>
-    </Paper>
-  );
   const renderUserManagement = () => (
     <Card>
       <CardContent>
@@ -743,8 +812,6 @@ const AdminSettings = ({ darkMode }) => {
             }}
           />
         </Box>
-
-        {renderRolePermissions()}
 
         {existingUsers.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -793,9 +860,17 @@ const AdminSettings = ({ darkMode }) => {
                         onChange={(e) => {
                           const newRole = e.target.value;
                           setEditedUserRoles({ ...editedUserRoles, [user.username]: newRole });
+                          setEditedUserPermissions((prev) => ({
+                            ...prev,
+                            [user.username]: normalizeOptionalPermissions(newRole, prev[user.username] || [])
+                          }));
                           handleSaveRole(user.username, newRole);
                         }}
                         size="small"
+                        sx={{
+                          backgroundColor: 'background.paper',
+                          transition: 'all 0.2s ease'
+                        }}
                       >
                         <MenuItem value="user">User</MenuItem>
                         <MenuItem value="pentester">Pentester</MenuItem>
@@ -812,6 +887,32 @@ const AdminSettings = ({ darkMode }) => {
                         <DeleteIcon />
                       </IconButton>
                     </Tooltip>
+                  </Box>
+
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    {getRoleMeta(editedUserRoles[user.username] || user.role).description}
+                  </Typography>
+
+                  <Box sx={{ mt: 1.5 }}>
+                    {renderOptionalPermissionControls(
+                      editedUserRoles[user.username] || user.role,
+                      normalizeOptionalPermissions(
+                        editedUserRoles[user.username] || user.role,
+                        editedUserPermissions[user.username] ?? user.permissions ?? []
+                      ),
+                      (permission) => {
+                        const roleKey = editedUserRoles[user.username] || user.role;
+                        const current = normalizeOptionalPermissions(
+                          roleKey,
+                          editedUserPermissions[user.username] ?? user.permissions ?? []
+                        );
+                        const next = current.includes(permission)
+                          ? current.filter((perm) => perm !== permission)
+                          : [...current, permission];
+                        setEditedUserPermissions((prev) => ({ ...prev, [user.username]: next }));
+                        handleSavePermissions(user.username, roleKey, next);
+                      }
+                    )}
                   </Box>
 
                   <Box mt={1}>
@@ -835,8 +936,6 @@ const AdminSettings = ({ darkMode }) => {
             Add Domain Users
           </Typography>
         </Box>
-
-        {renderRolePermissions()}
 
         <Box display="flex" gap={1} mb={2}>
           <TextField
@@ -934,20 +1033,54 @@ const AdminSettings = ({ darkMode }) => {
                       <ListItemText
                         primary={user.full_name}
                         secondary={
-                          <FormControl size="small" sx={{ mt: 0.5, minWidth: 80 }}>
-                            <Select
-                              value={selectedUserRoles[user.username] || 'user'}
-                              onChange={(e) => setSelectedUserRoles({
-                                ...selectedUserRoles,
-                                [user.username]: e.target.value
-                              })}
-                              size="small"
-                            >
-                              <MenuItem value="user">User</MenuItem>
-                              <MenuItem value="pentester">Pentester</MenuItem>
-                              <MenuItem value="manager">Manager</MenuItem>
-                            </Select>
-                          </FormControl>
+                          <Box sx={{ mt: 0.5 }}>
+                            <FormControl size="small" sx={{ minWidth: 120 }}>
+                              <Select
+                                value={selectedUserRoles[user.username] || 'user'}
+                                onChange={(e) => {
+                                  const newRole = e.target.value;
+                                  setSelectedUserRoles({
+                                    ...selectedUserRoles,
+                                    [user.username]: newRole
+                                  });
+                                  setSelectedUserPermissions((prev) => ({
+                                    ...prev,
+                                    [user.username]: normalizeOptionalPermissions(newRole, prev[user.username] || [])
+                                  }));
+                                }}
+                                size="small"
+                                sx={{
+                                  backgroundColor: 'background.paper',
+                                  transition: 'all 0.2s ease'
+                                }}
+                              >
+                                <MenuItem value="user">User</MenuItem>
+                                <MenuItem value="pentester">Pentester</MenuItem>
+                                <MenuItem value="manager">Manager</MenuItem>
+                              </Select>
+                            </FormControl>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                              {getRoleMeta(selectedUserRoles[user.username] || 'user').description}
+                            </Typography>
+                            {renderOptionalPermissionControls(
+                              selectedUserRoles[user.username] || 'user',
+                              normalizeOptionalPermissions(
+                                selectedUserRoles[user.username] || 'user',
+                                selectedUserPermissions[user.username] || []
+                              ),
+                              (permission) => {
+                                const roleKey = selectedUserRoles[user.username] || 'user';
+                                const current = normalizeOptionalPermissions(
+                                  roleKey,
+                                  selectedUserPermissions[user.username] || []
+                                );
+                                const next = current.includes(permission)
+                                  ? current.filter((perm) => perm !== permission)
+                                  : [...current, permission];
+                                setSelectedUserPermissions((prev) => ({ ...prev, [user.username]: next }));
+                              }
+                            )}
+                          </Box>
                         }
                         primaryTypographyProps={{ fontSize: '0.875rem' }}
                       />
@@ -992,8 +1125,6 @@ const AdminSettings = ({ darkMode }) => {
           </Typography>
         </Box>
 
-        {renderRolePermissions()}
-
         <Stack spacing={2}>
           <TextField
             label="Username"
@@ -1009,13 +1140,35 @@ const AdminSettings = ({ darkMode }) => {
               labelId="local-user-role-label"
               value={localRole}
               label="Role"
-              onChange={(e) => setLocalRole(e.target.value)}
+              onChange={(e) => {
+                const nextRole = e.target.value;
+                setLocalRole(nextRole);
+                setLocalPermissions((prev) => normalizeOptionalPermissions(nextRole, prev));
+              }}
+              sx={{
+                backgroundColor: 'background.paper',
+                transition: 'all 0.2s ease'
+              }}
             >
               <MenuItem value="user">User</MenuItem>
               <MenuItem value="pentester">Pentester</MenuItem>
               <MenuItem value="manager">Manager</MenuItem>
             </Select>
           </FormControl>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+            {getRoleMeta(localRole).description}
+          </Typography>
+          {renderOptionalPermissionControls(
+            localRole,
+            normalizeOptionalPermissions(localRole, localPermissions),
+            (permission) => {
+              const current = normalizeOptionalPermissions(localRole, localPermissions);
+              const next = current.includes(permission)
+                ? current.filter((perm) => perm !== permission)
+                : [...current, permission];
+              setLocalPermissions(next);
+            }
+          )}
           <Button
             variant="contained"
             startIcon={<PersonAddIcon />}

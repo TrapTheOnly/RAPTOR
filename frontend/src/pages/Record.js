@@ -46,7 +46,7 @@ import {
 } from '@mui/icons-material';
 import { MuiMarkdown } from 'mui-markdown';
 
-const Record = ({ darkMode }) => {
+const Record = ({ darkMode, userPermissions }) => {
   const [record, setRecord] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +58,8 @@ const Record = ({ darkMode }) => {
   const [editingDescription, setEditingDescription] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');
   const theme = useTheme();
+  const hasPermission = (permission) => (userPermissions || []).includes(permission);
+  const canModifyRecords = hasPermission('modify_records');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -141,10 +143,12 @@ const Record = ({ darkMode }) => {
   };
 
   const handleEditDescription = () => { 
+    if (!canModifyRecords) return;
     setEditingDescription(true); 
   };
 
   const handleSaveDescription = async () => {
+    if (!canModifyRecords || !record) return;
     try {
       await axios.post(`/api/records/${record.id}`, { ...record, description: editedDescription });
       setRecord((await axios.get(`/api/records/${domain}`)).data);
@@ -503,6 +507,7 @@ const Record = ({ darkMode }) => {
                       minRows={4}
                       placeholder="Enter a description for this record..."
                       sx={{ mb: 2 }}
+                      disabled={!canModifyRecords}
                     />
                     <Stack direction="row" spacing={1}>
                       <Button 
@@ -510,6 +515,7 @@ const Record = ({ darkMode }) => {
                         startIcon={<SaveIcon />}
                         onClick={handleSaveDescription}
                         size="small"
+                        disabled={!canModifyRecords}
                       >
                         Save
                       </Button>
@@ -546,6 +552,7 @@ const Record = ({ darkMode }) => {
                       startIcon={<EditIcon />}
                       onClick={handleEditDescription}
                       size="small"
+                      disabled={!canModifyRecords}
                     >
                       Edit Description
                     </Button>

@@ -30,11 +30,13 @@ import {
 const ModernHeader = ({ 
   username, 
   userRole, 
+  userPermissions,
   setUserRole, 
   setLoggedIn, 
   setUsername,
   darkMode,
-  setDarkMode
+  setDarkMode,
+  setUserPermissions
 }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const navigate = useNavigate();
@@ -55,6 +57,7 @@ const ModernHeader = ({
       setLoggedIn(false);
       setUsername('');
       setUserRole(null);
+      setUserPermissions([]);
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
@@ -62,16 +65,21 @@ const ModernHeader = ({
     handleMenuClose();
   };
 
+  const hasPermission = (permission) => {
+    if (userRole === 'admin') return true;
+    return userPermissions?.includes(permission);
+  };
+
+  const canViewDashboard = ['admin', 'pentester', 'manager'].includes(userRole);
+
   const navigationItems = [
-    { label: 'Dashboard', path: '/', icon: Dashboard, roles: ['admin', 'pentester', 'manager'] },
-    { label: 'Records', path: '/records', icon: TableView, roles: ['admin', 'user', 'pentester', 'manager'] },
-    { label: 'Security', path: '/pentest', icon: Security, roles: ['admin', 'pentester', 'user', 'manager'] },
-    { label: 'Settings', path: '/settings', icon: Settings, roles: ['admin'] },
+    { label: 'Dashboard', path: '/', icon: Dashboard, visible: canViewDashboard },
+    { label: 'Records', path: '/records', icon: TableView, visible: hasPermission('view_records') },
+    { label: 'Security', path: '/pentest', icon: Security, visible: hasPermission('view_security_dashboard') },
+    { label: 'Settings', path: '/settings', icon: Settings, visible: userRole === 'admin' },
   ];
 
-  const visibleNavItems = navigationItems.filter(item => 
-    item.roles.includes(userRole)
-  );
+  const visibleNavItems = navigationItems.filter(item => item.visible);
 
   const isActive = (path) => {
     if (path === '/' && location.pathname === '/') return true;
