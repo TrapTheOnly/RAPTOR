@@ -63,9 +63,9 @@ const ModernHeader = ({
   };
 
   const navigationItems = [
-    { label: 'Dashboard', path: '/', icon: Dashboard, roles: ['admin', 'pentester'] },
-    { label: 'Records', path: '/records', icon: TableView, roles: ['admin', 'user', 'pentester'] },
-    { label: 'Security', path: '/pentest', icon: Security, roles: ['admin', 'pentester'] },
+    { label: 'Dashboard', path: '/', icon: Dashboard, roles: ['admin', 'pentester', 'manager'] },
+    { label: 'Records', path: '/records', icon: TableView, roles: ['admin', 'user', 'pentester', 'manager'] },
+    { label: 'Security', path: '/pentest', icon: Security, roles: ['admin', 'pentester', 'user', 'manager'] },
     { label: 'Settings', path: '/settings', icon: Settings, roles: ['admin'] },
   ];
 
@@ -84,6 +84,7 @@ const ModernHeader = ({
       case 'admin': return '#F44336';
       case 'pentester': return '#FF9800';
       case 'user': return '#4CAF50';
+      case 'manager': return '#00897B';
       default: return '#666666';
     }
   };

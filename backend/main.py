@@ -236,9 +236,14 @@ def init_db(db_path=DB_PATH):
             last_modification_date TEXT,
             application_owner TEXT DEFAULT '',
             maintainer TEXT DEFAULT '',
-            description TEXT DEFAULT ''
+            description TEXT DEFAULT '',
+            application_id INTEGER
         )
     """)
+    c.execute("PRAGMA table_info(records)")
+    record_columns = {row[1] for row in c.fetchall()}
+    if "application_id" not in record_columns:
+        c.execute("ALTER TABLE records ADD COLUMN application_id INTEGER")
 
     # Allowed users table
     c.execute("""
@@ -263,6 +268,16 @@ def init_db(db_path=DB_PATH):
     if "must_reset" not in allowed_user_columns:
         c.execute("ALTER TABLE allowed_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
     c.execute("UPDATE allowed_users SET auth_type = 'ldap' WHERE auth_type IS NULL OR auth_type = ''")
+
+    # Applications table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            created_by TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
 
     # IP sources table
     c.execute("""
@@ -658,9 +673,10 @@ def get_records():
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("""
-        SELECT r.*, p.open_ports
+        SELECT r.*, p.open_ports, a.name AS application_name
         FROM records r
         LEFT JOIN pentest_data p ON r.id = p.record_id
+        LEFT JOIN applications a ON r.application_id = a.id
     """)
     rows = c.fetchall()
     conn.close()
@@ -684,9 +700,22 @@ def update_record(record_id):
         maintainer = sanitize_string(data.get('maintainer', ''))
         open_ports = data.get('open_ports', '')
         description = data.get('description', '')
+        raw_application_id = data.get('application_id')
+        application_id = None
+        if raw_application_id not in (None, '', 'null'):
+            try:
+                application_id = int(raw_application_id)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid application ID."}), 400
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
+
+        if application_id is not None:
+            c.execute("SELECT id FROM applications WHERE id = ?", (application_id,))
+            if not c.fetchone():
+                conn.close()
+                return jsonify({"error": "Application not found."}), 404
 
         c.execute("SELECT maintainer FROM records WHERE id = ?", (record_id,))
         old_record = c.fetchone()
@@ -702,9 +731,10 @@ def update_record(record_id):
             SET application_owner = ?,
                 maintainer = ?,
                 description = ?,
+                application_id = ?,
                 last_modification_date = datetime('now', '+4 hours')
             WHERE id = ?
-        """, (application_owner, maintainer, description, record_id))
+        """, (application_owner, maintainer, description, application_id, record_id))
 
         # Update or insert open_ports in pentest_data
         c.execute("SELECT record_id FROM pentest_data WHERE record_id = ?", (record_id,))
@@ -746,8 +776,101 @@ def update_record(record_id):
         logger.error(f"Error updating record {record_id}: {e}")
         return jsonify({"error": str(e)}), 400
 
+@app.route('/api/apps', methods=['GET'])
+@login_required_json
+def get_applications():
+    """Return all application groups."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, name, created_by, created_at
+                FROM applications
+                ORDER BY name
+            """)
+            rows = c.fetchall()
+        return jsonify([dict(ix) for ix in rows]), 200
+    except Exception as e:
+        logger.error(f"Error fetching applications: {e}")
+        return jsonify({"error": "Failed to fetch applications."}), 500
+
+@app.route('/api/apps', methods=['POST'])
+@login_required_json
+def create_application():
+    """Create a new application group."""
+    data = request.get_json(force=True)
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Application name is required."}), 400
+
+    sanitized = re.sub(r'[^a-zA-Z0-9\\-_. ]+', '', name)
+    if not sanitized:
+        return jsonify({"error": "Invalid application name."}), 400
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO applications (name, created_by, created_at)
+                VALUES (?, ?, datetime('now', '+4 hours'))
+            """, (sanitized, session.get('username', 'unknown')))
+            conn.commit()
+        return jsonify({"message": "Application created.", "name": sanitized}), 201
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Application name already exists."}), 409
+    except Exception as e:
+        logger.error(f"Error creating application: {e}")
+        return jsonify({"error": "Failed to create application."}), 500
+
+@app.route('/api/apps/<int:app_id>', methods=['PUT'])
+@login_required_json
+def update_application(app_id):
+    """Rename an application group."""
+    data = request.get_json(force=True)
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Application name is required."}), 400
+
+    sanitized = re.sub(r'[^a-zA-Z0-9\\-_. ]+', '', name)
+    if not sanitized:
+        return jsonify({"error": "Invalid application name."}), 400
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
+            if not c.fetchone():
+                return jsonify({"error": "Application not found."}), 404
+            c.execute("UPDATE applications SET name = ? WHERE id = ?", (sanitized, app_id))
+            conn.commit()
+        return jsonify({"message": "Application updated.", "name": sanitized}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Application name already exists."}), 409
+    except Exception as e:
+        logger.error(f"Error updating application: {e}")
+        return jsonify({"error": "Failed to update application."}), 500
+
+@app.route('/api/apps/<int:app_id>', methods=['DELETE'])
+@login_required_json
+def delete_application(app_id):
+    """Delete an application group and unassign its records."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
+            if not c.fetchone():
+                return jsonify({"error": "Application not found."}), 404
+            c.execute("UPDATE records SET application_id = NULL WHERE application_id = ?", (app_id,))
+            c.execute("DELETE FROM applications WHERE id = ?", (app_id,))
+            conn.commit()
+        return jsonify({"message": "Application deleted."}), 200
+    except Exception as e:
+        logger.error(f"Error deleting application: {e}")
+        return jsonify({"error": "Failed to delete application."}), 500
+
 @app.route('/api/records/<int:record_id>', methods=['DELETE'])
-@admin_required
+@admin_or_manager_required
 def delete_record(record_id):
     """
     Delete a record by ID.
@@ -866,7 +989,7 @@ def add_user():
     role = data.get('role', 'user').lower()
 
     #Basic role validation
-    if role not in ['user', 'pentester']:
+    if role not in ['user', 'pentester', 'manager']:
         return jsonify({"error": "Invalid role specified."}), 400
 
     try:
@@ -890,7 +1013,7 @@ def add_local_user():
         return jsonify({"error": "Username is required."}), 400
     if username == ADMIN_USERNAME:
         return jsonify({"error": "Username is reserved."}), 400
-    if role not in ['user', 'pentester']:
+    if role not in ['user', 'pentester', 'manager']:
         return jsonify({"error": "Invalid role specified."}), 400
 
     try:
@@ -1034,7 +1157,7 @@ def update_user_role():
     if not username or not new_role:
         return jsonify({"error": "Username and role are required"}), 400
 
-    if new_role not in ['user', 'pentester']:
+    if new_role not in ['user', 'pentester', 'manager']:
         return jsonify({"error": "Invalid user role"}), 400
 
     try:

@@ -211,4 +211,17 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def admin_or_manager_required(f):
+    """Decorator to protect admin- or manager-only routes."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if (
+            not session.get('logged_in')
+            or session.get('user_type') not in ('admin', 'manager')
+            or session.get('reset_required')
+        ):
+            return jsonify({"error": "Unauthorized access"}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
 # 

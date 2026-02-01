@@ -8,7 +8,7 @@ from io import BytesIO
 from functools import wraps
 import xml.etree.ElementTree as ET
 from modules.user import login_required_json
-from modules.admin import admin_required
+from modules.admin import admin_required, admin_or_manager_required
 from flask import jsonify, request, send_file, session, current_app
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,16 @@ def delete_report(relative_path):
 def pentest_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('logged_in') or session.get('user_type') not in ('pentester', 'admin'):
+        if not session.get('logged_in') or session.get('user_type') not in ('pentester', 'admin', 'manager'):
+            response = jsonify({"error": "Unauthorized access"})
+            return response, 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+def pentest_view_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in') or session.get('user_type') not in ('user', 'pentester', 'admin', 'manager'):
             response = jsonify({"error": "Unauthorized access"})
             return response, 403
         return f(*args, **kwargs)
@@ -128,7 +137,12 @@ def get_pentest_data_internal(record_id=None):
             c = conn.cursor()
 
             if record_id is not None:
-                c.execute("SELECT * FROM records WHERE id = ?", (record_id,))
+                c.execute("""
+                    SELECT r.*, a.name AS application_name
+                    FROM records r
+                    LEFT JOIN applications a ON r.application_id = a.id
+                    WHERE r.id = ?
+                """, (record_id,))
                 record_row = c.fetchone()
                 if not record_row:
                     return None
@@ -144,10 +158,16 @@ def get_pentest_data_internal(record_id=None):
                     'name': record['name'],
                     'ip_address': record['ip_address'],
                     'source': record['source'],
-                    'description': record.get('description', '')
+                    'description': record.get('description', ''),
+                    'application_id': record.get('application_id'),
+                    'application_name': record.get('application_name')
                 }
 
-            c.execute("SELECT * FROM records")
+            c.execute("""
+                SELECT r.*, a.name AS application_name
+                FROM records r
+                LEFT JOIN applications a ON r.application_id = a.id
+            """)
             rows = c.fetchall()
             dns_records = [dict(ix) for ix in rows]
 
@@ -161,7 +181,9 @@ def get_pentest_data_internal(record_id=None):
                     'name': record['name'],
                     'ip_address': record['ip_address'],
                     'source': record['source'],
-                    'description': record.get('description', '')
+                    'description': record.get('description', ''),
+                    'application_id': record.get('application_id'),
+                    'application_name': record.get('application_name')
                 } for record in dns_records
             ]
 
@@ -188,7 +210,7 @@ def get_pentest_users_internal():
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             users = c.execute(
-                "SELECT id, username FROM allowed_users WHERE role = 'pentester'"
+                "SELECT id, username FROM allowed_users WHERE role IN ('pentester', 'manager')"
             ).fetchall()
             return [{"id": user['id'], "username": user['username']} for user in users]
     except Exception as e:
@@ -196,7 +218,7 @@ def get_pentest_users_internal():
         return None
 
 @login_required_json
-@admin_required
+@admin_or_manager_required
 def get_pentest_users():
     """GET /pentest_users: Get users with pentest role."""
     try:
@@ -237,14 +259,14 @@ def create_or_update_pentest_data(record_id):
         else:
             existing_data = {}
         
-        admin = session['user_type'] == 'admin'
+        elevated = session.get('user_type') in ('admin', 'manager')
 
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status', 'open_ports', 'notes', 'owasp_checklist', 'vulnerabilities', 'description']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
-        if not admin:
+        if not elevated:
             if data.get('tested_by') != session['username']:
                 return jsonify({"error": "Unauthorized to complete this action."}), 403
             
@@ -336,8 +358,8 @@ def upload_pentest_image(record_id):
         return jsonify({"error": "Record not found"}), 404
 
     pentest_row = get_pentest_row(record_id)
-    admin = session.get('user_type') == 'admin'
-    if not admin:
+    elevated = session.get('user_type') in ('admin', 'manager')
+    if not elevated:
         if not pentest_row or pentest_row['tested_by'] != session.get('username'):
             return jsonify({"error": "Unauthorized to upload images for this record."}), 403
 
@@ -374,7 +396,7 @@ def get_pentest_image(filename):
         return jsonify({"error": "Image not found."}), 404
 
 @login_required_json
-@pentest_required
+@pentest_view_required
 def get_pentest_data():
     """GET /pentest/records: Retrieve pentest data."""
     data = get_pentest_data_internal()

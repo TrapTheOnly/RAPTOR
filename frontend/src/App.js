@@ -123,7 +123,7 @@ const App = () => {
       <Routes>
         <Route
           path="/"
-            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ? 
+            element={loggedIn && (userRole === 'pentester' || userRole === 'admin' || userRole === 'manager') ? 
             <Dashboard userRole={userRole} darkMode={darkMode}/> : 
               loggedIn ? <Navigate to="/records" /> : <Navigate to="/login" />}
         />
@@ -159,13 +159,22 @@ const App = () => {
         />
         <Route
             path="/pentest"
-            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
-                <PentestDashboard darkMode={darkMode} isAdmin={userRole === 'admin'} username={username}/> : <Navigate to="/login" />
+            element={loggedIn && userRole ?
+                <PentestDashboard
+                  darkMode={darkMode}
+                  isAdmin={userRole === 'admin'}
+                  username={username}
+                  userRole={userRole}
+                /> : <Navigate to="/login" />
             }
         />
         <Route
           path="/pentest/record/:recordId"
-          element={loggedIn ? <PentestRecord darkMode={darkMode} /> : <Navigate to="/login" />}
+          element={
+            loggedIn && (userRole === 'pentester' || userRole === 'admin' || userRole === 'manager') ?
+              <PentestRecord darkMode={darkMode} /> :
+              <Navigate to={loggedIn ? "/pentest" : "/login"} />
+          }
         />
         <Route
           path="/records/:domain"

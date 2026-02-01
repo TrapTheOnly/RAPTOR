@@ -69,6 +69,52 @@ const COMMON_PASSWORDS = new Set([
 ]);
 
 const drawerWidth = 280;
+const ROLE_PERMISSIONS = [
+  {
+    key: 'user',
+    label: 'User',
+    permissions: [
+      'View records page',
+      'View security dashboard',
+      'Modify records',
+      'View record details',
+      'Export records',
+      'Manage apps'
+    ]
+  },
+  {
+    key: 'pentester',
+    label: 'Pentester',
+    permissions: [
+      'View records page',
+      'View security dashboard',
+      'Modify records',
+      'View record details',
+      'Export records',
+      'Manage apps',
+      'View pentest page',
+      'Modify pentests (assign to self, run tests)',
+      'Export pentests'
+    ]
+  },
+  {
+    key: 'manager',
+    label: 'Manager',
+    permissions: [
+      'All user and pentester permissions',
+      'Reassign pentests as admin',
+      'Delete records',
+      "Modify others' pentests as admin"
+    ]
+  },
+  {
+    key: 'admin',
+    label: 'Admin',
+    permissions: [
+      'Full system access and user management'
+    ]
+  }
+];
 
 const AdminSettings = ({ darkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -458,7 +504,7 @@ const AdminSettings = ({ darkMode }) => {
       showMessage('error', 'Local username is required.');
       return;
     }
-    if (!['user', 'pentester'].includes(localRole)) {
+    if (!['user', 'pentester', 'manager'].includes(localRole)) {
       showMessage('error', 'Invalid role specified.');
       return;
     }
@@ -634,6 +680,51 @@ const AdminSettings = ({ darkMode }) => {
       </List>
     </Box>
   );
+  const renderRolePermissions = () => (
+    <Paper
+      sx={{
+        p: 2,
+        mb: 3,
+        backgroundColor: alpha(theme.palette.info.main, 0.06),
+        border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`
+      }}
+    >
+      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+        Role permissions
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Roles are fixed permission bundles. Per-user custom permissions are not supported yet.
+      </Typography>
+      <Grid container spacing={2}>
+        {ROLE_PERMISSIONS.map((role) => (
+          <Grid item xs={12} md={6} key={role.key}>
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 1,
+                border: `1px solid ${theme.palette.divider}`,
+                backgroundColor: 'background.paper'
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                {role.label}
+              </Typography>
+              <List dense sx={{ py: 0 }}>
+                {role.permissions.map((permission) => (
+                  <ListItem key={permission} disableGutters>
+                    <ListItemText
+                      primary={permission}
+                      primaryTypographyProps={{ fontSize: '0.8rem' }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          </Grid>
+        ))}
+      </Grid>
+    </Paper>
+  );
   const renderUserManagement = () => (
     <Card>
       <CardContent>
@@ -652,6 +743,8 @@ const AdminSettings = ({ darkMode }) => {
             }}
           />
         </Box>
+
+        {renderRolePermissions()}
 
         {existingUsers.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -706,6 +799,7 @@ const AdminSettings = ({ darkMode }) => {
                       >
                         <MenuItem value="user">User</MenuItem>
                         <MenuItem value="pentester">Pentester</MenuItem>
+                        <MenuItem value="manager">Manager</MenuItem>
                       </Select>
                     </FormControl>
 
@@ -741,6 +835,8 @@ const AdminSettings = ({ darkMode }) => {
             Add Domain Users
           </Typography>
         </Box>
+
+        {renderRolePermissions()}
 
         <Box display="flex" gap={1} mb={2}>
           <TextField
@@ -849,6 +945,7 @@ const AdminSettings = ({ darkMode }) => {
                             >
                               <MenuItem value="user">User</MenuItem>
                               <MenuItem value="pentester">Pentester</MenuItem>
+                              <MenuItem value="manager">Manager</MenuItem>
                             </Select>
                           </FormControl>
                         }
@@ -895,6 +992,8 @@ const AdminSettings = ({ darkMode }) => {
           </Typography>
         </Box>
 
+        {renderRolePermissions()}
+
         <Stack spacing={2}>
           <TextField
             label="Username"
@@ -914,6 +1013,7 @@ const AdminSettings = ({ darkMode }) => {
             >
               <MenuItem value="user">User</MenuItem>
               <MenuItem value="pentester">Pentester</MenuItem>
+              <MenuItem value="manager">Manager</MenuItem>
             </Select>
           </FormControl>
           <Button
