@@ -74,13 +74,13 @@ const drawerWidth = 280;
 const ROLE_METADATA = {
   user: {
     label: 'User',
-    description: 'Default access to records with optional security dashboard and app management.',
-    optionalPermissions: ['view_security_dashboard', 'manage_apps']
+    description: 'Default access to records with optional dashboard, pentest view, and app management.',
+    optionalPermissions: ['view_dashboard', 'view_security_dashboard', 'manage_apps']
   },
   pentester: {
     label: 'Pentester',
     description: 'Security testing access with optional record editing and app management.',
-    optionalPermissions: ['modify_records', 'manage_apps']
+    optionalPermissions: ['view_dashboard', 'modify_records', 'manage_apps']
   },
   manager: {
     label: 'Manager',
@@ -95,9 +95,13 @@ const ROLE_METADATA = {
 };
 
 const OPTIONAL_PERMISSION_LABELS = {
+  view_dashboard: {
+    label: 'View dashboard',
+    description: 'Allows access to the main dashboard overview.'
+  },
   view_security_dashboard: {
-    label: 'View security dashboard',
-    description: 'Allows access to the Security dashboard overview.'
+    label: 'View pentest dashboard',
+    description: 'Allows access to the pentest dashboard overview.'
   },
   manage_apps: {
     label: 'Manage apps',
