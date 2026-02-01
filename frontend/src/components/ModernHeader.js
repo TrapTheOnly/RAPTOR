@@ -70,7 +70,7 @@ const ModernHeader = ({
     return userPermissions?.includes(permission);
   };
 
-  const canViewDashboard = ['admin', 'pentester', 'manager'].includes(userRole);
+  const canViewDashboard = hasPermission('view_dashboard');
 
   const navigationItems = [
     { label: 'Dashboard', path: '/', icon: Dashboard, visible: canViewDashboard },

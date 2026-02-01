@@ -129,7 +129,7 @@ const App = () => {
       <Routes>
         <Route
           path="/"
-            element={loggedIn && (userRole === 'pentester' || userRole === 'admin' || userRole === 'manager') ? 
+            element={loggedIn && userPermissions.includes('view_dashboard') ? 
             <Dashboard userRole={userRole} darkMode={darkMode}/> : 
               loggedIn ? <Navigate to="/records" /> : <Navigate to="/login" />}
         />
