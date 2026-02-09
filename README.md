@@ -29,6 +29,7 @@ RAPTOR is a comprehensive cybersecurity operations platform designed for securit
 ### 👥 **Multi-Role Access Control**
 - Admin: Full system control and user management
 - Pentester: Security testing and vulnerability management
+- Manager: Elevated operations across records and pentests
 - User: Asset viewing and basic operations
 - LDAP/Active Directory integration
 
@@ -112,15 +113,41 @@ KEY_FILE=./certs/key.pem
 
 ## User Roles & Permissions
 
-| Feature | Admin | Pentester | User |
-|---------|-------|-----------|------|
-| View Assets | ✅ | ✅ | ✅ |
-| Edit Asset Details | ✅ | ✅ | ✅ |
-| Delete Assets | ✅ | ❌ | ❌ |
-| Security Testing | ✅ | ✅ | ❌ |
-| User Management | ✅ | ❌ | ❌ |
-| System Configuration | ✅ | ❌ | ❌ |
-| Reports & Analytics | ✅ | ✅ | ✅ |
+Roles are fixed permission bundles. Per-user custom permissions are not supported yet.
+
+### User
+- View records page
+- View security dashboard
+- Modify records
+- View record details
+- Export records
+- Manage apps
+
+### Pentester
+- View records page
+- View security dashboard
+- Modify records
+- View record details
+- Export records
+- Manage apps
+- View pentest page
+- Modify pentests (assign to self, run tests)
+- Export pentests
+
+### Manager
+- All user and pentester permissions
+- Reassign pentests as admin
+- Delete records
+- Modify others' pentests as admin
+
+### Admin
+- Full system access, including user management and configuration
+
+## Applications & Domain Grouping
+
+- Create applications in the Records page via  Manage Apps.
+- Assign domains by editing a record and selecting an application.
+- Records and Pentest dashboards can group by application (folder/tree view).
 
 ## Security Features
 
@@ -141,6 +168,12 @@ KEY_FILE=./certs/key.pem
 - `GET /api/records` - Retrieve all assets
 - `POST /api/records/{id}` - Update asset details
 - `DELETE /api/records/{id}` - Delete asset (admin only)
+
+### Applications
+- GET /api/apps - List applications
+- POST /api/apps - Create application
+- PUT /api/apps/{id} - Rename application
+- DELETE /api/apps/{id} - Delete application (unassigns records)
 
 ### Security Testing
 - `GET /pentest/records` - Get penetration test data

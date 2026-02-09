@@ -11,11 +11,20 @@ import {
   IconButton,
   Button,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
   Grid,
   InputAdornment,
   Divider,
   Paper,
   LinearProgress,
+  List,
+  ListItemButton,
+  ListItemText,
+  Switch,
   useTheme,
   alpha,
   Tooltip,
@@ -44,11 +53,14 @@ import {
   Refresh,
   Add,
   Close,
-  ArrowDropDown
+  ArrowDropDown,
+  AccountTree,
+  Folder,
+  FolderOpen
 } from '@mui/icons-material';
 import Papa from 'papaparse';
 
-const RecordsTable = ({ userRole, darkMode }) => {
+const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
   const [records, setRecords] = useState([]);
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,6 +76,13 @@ const RecordsTable = ({ userRole, darkMode }) => {
   const [searchInput, setSearchInput] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
+  const [apps, setApps] = useState([]);
+  const [groupByApp, setGroupByApp] = useState(true);
+  const [expandedApps, setExpandedApps] = useState(new Set());
+  const [appsDialogOpen, setAppsDialogOpen] = useState(false);
+  const [newAppName, setNewAppName] = useState('');
+  const [appEdits, setAppEdits] = useState({});
+  const [appsBusy, setAppsBusy] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -74,7 +93,20 @@ const RecordsTable = ({ userRole, darkMode }) => {
 
   const navigate = useNavigate();
   const theme = useTheme();
-  const isAdmin = userRole === 'admin';
+  const appDialogIconBg = alpha(
+    theme.palette.primary.main,
+    theme.palette.mode === 'dark' ? 0.22 : 0.14
+  );
+  const appDialogIconColor = theme.palette.mode === 'dark'
+    ? theme.palette.primary.light
+    : theme.palette.primary.dark;
+  const hasPermission = (permission) => userRole === 'admin' || userPermissions?.includes(permission);
+  const canDeleteRecords = hasPermission('delete_records');
+  const canManageApps = hasPermission('manage_apps');
+  const canModifyRecords = hasPermission('modify_records');
+  const canViewRecordDetails = hasPermission('view_record_details');
+  const canExportRecords = hasPermission('export_records');
+  const canViewPentestPage = hasPermission('view_pentest_page');
 
   // Search parameters configuration with aliases
   const searchParameters = [
@@ -146,6 +178,7 @@ const RecordsTable = ({ userRole, darkMode }) => {
 
   useEffect(() => {
     fetchRecords();
+    fetchApps();
   }, []);
 
   useEffect(() => {
@@ -177,6 +210,62 @@ const RecordsTable = ({ userRole, darkMode }) => {
         navigate('/login');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchApps = async () => {
+    try {
+      const response = await axios.get('/api/apps');
+      if (response.status === 200) {
+        setApps(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching applications:', error);
+    }
+  };
+
+  const handleCreateApp = async () => {
+    const name = newAppName.trim();
+    if (!name) return;
+    setAppsBusy(true);
+    try {
+      await axios.post('/api/apps', { name });
+      setNewAppName('');
+      fetchApps();
+      fetchRecords();
+    } catch (error) {
+      console.error('Error creating application:', error);
+    } finally {
+      setAppsBusy(false);
+    }
+  };
+
+  const handleRenameApp = async (appId) => {
+    const name = (appEdits[appId] || '').trim();
+    if (!name) return;
+    setAppsBusy(true);
+    try {
+      await axios.put(`/api/apps/${appId}`, { name });
+      fetchApps();
+      fetchRecords();
+    } catch (error) {
+      console.error('Error renaming application:', error);
+    } finally {
+      setAppsBusy(false);
+    }
+  };
+
+  const handleDeleteApp = async (appId) => {
+    if (!window.confirm('Delete this application? Domains will be unassigned.')) return;
+    setAppsBusy(true);
+    try {
+      await axios.delete(`/api/apps/${appId}`);
+      fetchApps();
+      fetchRecords();
+    } catch (error) {
+      console.error('Error deleting application:', error);
+    } finally {
+      setAppsBusy(false);
     }
   };
 
@@ -522,9 +611,21 @@ const RecordsTable = ({ userRole, darkMode }) => {
     setExpandedRecords(newExpanded);
   };
 
+  const toggleAppGroup = (groupKey) => {
+    const nextExpanded = new Set(expandedApps);
+    if (nextExpanded.has(groupKey)) {
+      nextExpanded.delete(groupKey);
+    } else {
+      nextExpanded.add(groupKey);
+    }
+    setExpandedApps(nextExpanded);
+  };
+
   const startEditing = (record) => {
+    if (!canModifyRecords) return;
     setEditingRecord(record.id);
     setEditForm({
+      application_id: record.application_id || '',
       application_owner: record.application_owner || '',
       maintainer: record.maintainer || '',
       open_ports: record.open_ports || ''
@@ -719,6 +820,404 @@ const RecordsTable = ({ userRole, darkMode }) => {
     );
   };
 
+  const buildAppGroups = () => {
+    const grouped = new Map();
+
+    filteredRecords.forEach((record) => {
+      const appKey = record.application_id ? `app-${record.application_id}` : 'unassigned';
+      const appName = record.application_name || 'Unassigned';
+      if (!grouped.has(appKey)) {
+        grouped.set(appKey, { key: appKey, name: appName, records: [] });
+      }
+      grouped.get(appKey).records.push(record);
+    });
+
+    return Array.from(grouped.values()).sort((a, b) => {
+      if (a.key === 'unassigned') return 1;
+      if (b.key === 'unassigned') return -1;
+      return a.name.localeCompare(b.name);
+    });
+  };
+
+  const renderRecordCard = (record) => (
+    <Card
+      key={record.id}
+      sx={{
+        mb: 1,
+        backgroundColor: 'background.paper',
+        border: `1px solid ${theme.palette.divider}`,
+        '&:hover': {
+          borderColor: theme.palette.primary.main,
+          backgroundColor: alpha(theme.palette.primary.main, 0.02)
+        },
+        transition: 'all 0.2s ease-in-out'
+      }}
+    >
+      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        {/* Collapsed View */}
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          onClick={() => toggleExpanded(record.id)}
+          sx={{ cursor: 'pointer' }}
+        >
+          <Box display="flex" alignItems="center" flex={1}>
+            <IconButton size="small" sx={{ mr: 1 }}>
+              {expandedRecords.has(record.id) ? <ExpandLess /> : <ExpandMore />}
+            </IconButton>
+            
+            <Typography variant="h6" sx={{ mr: 2, fontWeight: 500 }}>
+              {record.name}
+            </Typography>
+            
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mr: 2, fontFamily: 'monospace' }}
+            >
+              {record.ip_address}
+            </Typography>
+
+            {record.application_name && (
+              <Chip
+                label={record.application_name}
+                size="small"
+                sx={{
+                  mr: 2,
+                  backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.primary.main,
+                  fontWeight: 600
+                }}
+              />
+            )}
+            
+            {getStatusChip(record.status)}
+          </Box>
+
+          <Box display="flex" alignItems="center">
+            {getSourceAvatar(record.source)}
+            <Typography variant="body2" color="text.secondary" sx={{ mr: 2 }}>
+              {record.source}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Modified {formatDateTime(record.last_modification_date)}
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Expanded View */}
+        <Collapse in={expandedRecords.has(record.id)}>
+          <Box sx={{ mt: 2 }}>
+            <Divider sx={{ mb: 2 }} />
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Details
+                </Typography>
+                
+                {editingRecord === record.id ? (
+                  <Box>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Application"
+                      value={editForm.application_id}
+                      onChange={(e) => setEditForm({ ...editForm, application_id: e.target.value })}
+                      sx={{ mb: 2 }}
+                      size="small"
+                    >
+                      <MenuItem value="">Unassigned</MenuItem>
+                      {apps.map((app) => (
+                        <MenuItem key={app.id} value={app.id}>
+                          {app.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      fullWidth
+                      label="Application Owner"
+                      value={editForm.application_owner}
+                      onChange={(e) => setEditForm({ ...editForm, application_owner: e.target.value })}
+                      sx={{ mb: 2 }}
+                      size="small"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Maintainer"
+                      value={editForm.maintainer}
+                      onChange={(e) => setEditForm({ ...editForm, maintainer: e.target.value })}
+                      sx={{ mb: 2 }}
+                      size="small"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Open Ports"
+                      value={editForm.open_ports}
+                      onChange={(e) => setEditForm({ ...editForm, open_ports: e.target.value })}
+                      placeholder="22, 80, 443, 8080"
+                      size="small"
+                      multiline
+                      rows={2}
+                      helperText="Comma-separated port numbers (e.g., 22, 80, 443)"
+                      InputProps={{
+                        sx: { fontFamily: 'monospace' }
+                      }}
+                    />
+                  </Box>
+                ) : (
+                  <Box>
+                    <Box 
+                      sx={{ 
+                        display: 'grid', 
+                        gap: 2, 
+                        gridTemplateColumns: 'repeat(2, 1fr)',
+                        alignItems: 'start'
+                      }}
+                    >
+                      <Box sx={{ minWidth: 100 }}>
+                        <Typography 
+                          variant="caption" 
+                          color="text.secondary"
+                          sx={{ 
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.5,
+                            fontWeight: 500
+                          }}
+                        >
+                          Application
+                        </Typography>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontWeight: 500,
+                            color: record.application_name ? 'text.primary' : 'text.secondary'
+                          }}
+                        >
+                          {record.application_name || 'Unassigned'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ minWidth: 100 }}>
+                        <Typography 
+                          variant="caption" 
+                          color="text.secondary"
+                          sx={{ 
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.5,
+                            fontWeight: 500
+                          }}
+                        >
+                          Owner
+                        </Typography>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontWeight: 500,
+                            color: record.application_owner ? 'text.primary' : 'text.secondary'
+                          }}
+                        >
+                          {record.application_owner || 'Not assigned'}
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{ minWidth: 100 }}>
+                        <Typography 
+                          variant="caption" 
+                          color="text.secondary"
+                          sx={{ 
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.5,
+                            fontWeight: 500
+                          }}
+                        >
+                          Maintainer
+                        </Typography>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontWeight: 500,
+                            color: record.maintainer ? 'text.primary' : 'text.secondary'
+                          }}
+                        >
+                          {record.maintainer || 'Not assigned'}
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{ minWidth: 100 }}>
+                        <Typography 
+                          variant="caption" 
+                          color="text.secondary"
+                          sx={{ 
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.5,
+                            fontWeight: 500
+                          }}
+                        >
+                          Open Ports
+                        </Typography>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontWeight: 500,
+                            fontFamily: 'monospace',
+                            color: record.open_ports ? 'text.primary' : 'text.secondary'
+                          }}
+                        >
+                          {record.open_ports || 'None'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+                )}
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Security
+                </Typography>
+                
+                {editingRecord === record.id ? (
+                  <Box>
+                    <TextField
+                      fullWidth
+                      label="Description"
+                      value={editForm.description}
+                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      size="small"
+                      multiline
+                      rows={3}
+                      sx={{ mb: 2 }}
+                    />
+                  </Box>
+                ) : (
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {record.description || 'No description'}
+                    </Typography>
+                  </Box>
+                )}
+              </Grid>
+            </Grid>
+
+            {/* Action Buttons */}
+            <Box
+              display="flex"
+              justifyContent="flex-end"
+              gap={1}
+              sx={{ mt: 2 }}
+            >
+              {editingRecord === record.id ? (
+                <>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="small"
+                    startIcon={<Save />}
+                    onClick={() => saveRecord(record.id)}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<Cancel />}
+                    onClick={cancelEditing}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {canModifyRecords && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Edit />}
+                      onClick={() => startEditing(record)}
+                    >
+                      Edit
+                    </Button>
+                  )}
+                  {canViewRecordDetails && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<History />}
+                      onClick={() => navigate(`/records/${record.name}`)}
+                    >
+                      History
+                    </Button>
+                  )}
+                  {canViewPentestPage && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Security />}
+                      onClick={() => navigate(`/pentest/record/${record.id}`)}
+                    >
+                      Pentest
+                    </Button>
+                  )}
+                  {canDeleteRecords && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      color="error"
+                      startIcon={<Delete />}
+                      onClick={() => deleteRecord(record.id)}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </>
+              )}
+            </Box>
+          </Box>
+        </Collapse>
+      </CardContent>
+    </Card>
+  );
+
+  const renderAppGroups = () => {
+    const groups = buildAppGroups();
+    if (groups.length === 0) {
+      return null;
+    }
+
+    return groups.map((group) => (
+      <Paper
+        key={group.key}
+        sx={{
+          mb: 2,
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundColor: 'background.paper'
+        }}
+      >
+        <ListItemButton onClick={() => toggleAppGroup(group.key)}>
+          <Box display="flex" alignItems="center" flex={1} gap={1.5}>
+            {expandedApps.has(group.key) ? (
+              <FolderOpen sx={{ color: theme.palette.primary.main }} />
+            ) : (
+              <Folder sx={{ color: theme.palette.primary.main }} />
+            )}
+            <ListItemText
+              primary={group.name}
+              secondary={`${group.records.length} domain${group.records.length === 1 ? '' : 's'}`}
+              primaryTypographyProps={{ fontWeight: 600 }}
+            />
+          </Box>
+          {expandedApps.has(group.key) ? <ExpandLess /> : <ExpandMore />}
+        </ListItemButton>
+        <Collapse in={expandedApps.has(group.key)} timeout="auto" unmountOnExit>
+          <Box sx={{ p: 1 }}>
+            {group.records.map(renderRecordCard)}
+          </Box>
+        </Collapse>
+      </Paper>
+    ));
+  };
+
   if (loading) {
     return (
       <Box p={3}>
@@ -837,11 +1336,13 @@ const RecordsTable = ({ userRole, darkMode }) => {
                 ),
                 endAdornment: (
                   <InputAdornment position="end">
-                    <Tooltip title="Export Filtered Results">
-                      <IconButton onClick={exportCSV} size="small">
-                        <Download />
-                      </IconButton>
-                    </Tooltip>
+                    {canExportRecords && (
+                      <Tooltip title="Export Filtered Results">
+                        <IconButton onClick={exportCSV} size="small">
+                          <Download />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <Tooltip title="Refresh">
                       <IconButton onClick={fetchRecords} size="small">
                         <Refresh />
@@ -1273,6 +1774,45 @@ const RecordsTable = ({ userRole, darkMode }) => {
         </Menu>
       </Box>
 
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="space-between"
+        mb={3}
+      >
+        <FormControlLabel
+          control={
+            <Switch
+              checked={groupByApp}
+              onChange={(e) => setGroupByApp(e.target.checked)}
+              color="primary"
+            />
+          }
+          label="Group by application"
+        />
+        {canManageApps && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AccountTree />}
+            onClick={() => setAppsDialogOpen(true)}
+            sx={{
+              borderColor: alpha(theme.palette.primary.main, 0.4),
+              color: theme.palette.primary.main,
+              backgroundColor: alpha(theme.palette.primary.main, 0.08),
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                backgroundColor: alpha(theme.palette.primary.main, 0.15),
+                borderColor: theme.palette.primary.main,
+                transform: 'translateY(-1px)'
+              }
+            }}
+          >
+            Manage Apps
+          </Button>
+        )}
+      </Box>
+
       {/* Stats Bar */}
       <Paper sx={{ p: 2, mb: 3, backgroundColor: 'background.paper' }}>
         <Grid container spacing={3} alignItems="center">
@@ -1329,299 +1869,7 @@ const RecordsTable = ({ userRole, darkMode }) => {
 
       {/* Records List */}
       <Box>
-        {filteredRecords.map((record) => (
-          <Card
-            key={record.id}
-            sx={{
-              mb: 1,
-              backgroundColor: 'background.paper',
-              border: `1px solid ${theme.palette.divider}`,
-              '&:hover': {
-                borderColor: theme.palette.primary.main,
-                backgroundColor: alpha(theme.palette.primary.main, 0.02)
-              },
-              transition: 'all 0.2s ease-in-out'
-            }}
-          >
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              {/* Collapsed View */}
-              <Box
-                display="flex"
-                alignItems="center"
-                justifyContent="space-between"
-                onClick={() => toggleExpanded(record.id)}
-                sx={{ cursor: 'pointer' }}
-              >
-                <Box display="flex" alignItems="center" flex={1}>
-                  <IconButton size="small" sx={{ mr: 1 }}>
-                    {expandedRecords.has(record.id) ? <ExpandLess /> : <ExpandMore />}
-                  </IconButton>
-                  
-                  <Typography variant="h6" sx={{ mr: 2, fontWeight: 500 }}>
-                    {record.name}
-                  </Typography>
-                  
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mr: 2, fontFamily: 'monospace' }}
-                  >
-                    {record.ip_address}
-                  </Typography>
-                  
-                  {getStatusChip(record.status)}
-                </Box>
-
-                <Box display="flex" alignItems="center">
-                  {getSourceAvatar(record.source)}
-                  <Typography variant="body2" color="text.secondary" sx={{ mr: 2 }}>
-                    {record.source}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Modified {formatDateTime(record.last_modification_date)}
-                  </Typography>
-                </Box>
-              </Box>
-
-              {/* Expanded View */}
-              <Collapse in={expandedRecords.has(record.id)}>
-                <Box sx={{ mt: 2 }}>
-                  <Divider sx={{ mb: 2 }} />
-                  
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Details
-                      </Typography>
-                      
-                      {editingRecord === record.id ? (
-                        <Box>
-                          <TextField
-                            fullWidth
-                            label="Application Owner"
-                            value={editForm.application_owner}
-                            onChange={(e) => setEditForm({ ...editForm, application_owner: e.target.value })}
-                            sx={{ mb: 2 }}
-                            size="small"
-                          />
-                          <TextField
-                            fullWidth
-                            label="Maintainer"
-                            value={editForm.maintainer}
-                            onChange={(e) => setEditForm({ ...editForm, maintainer: e.target.value })}
-                            sx={{ mb: 2 }}
-                            size="small"
-                          />
-                          <TextField
-                            fullWidth
-                            label="Open Ports"
-                            value={editForm.open_ports}
-                            onChange={(e) => setEditForm({ ...editForm, open_ports: e.target.value })}
-                            placeholder="22, 80, 443, 8080"
-                            size="small"
-                            multiline
-                            rows={2}
-                            helperText="Comma-separated port numbers (e.g., 22, 80, 443)"
-                            InputProps={{
-                              sx: { fontFamily: 'monospace' }
-                            }}
-                          />
-                        </Box>
-                      ) : (
-                        <Box>
-                          <Box 
-                            sx={{ 
-                              display: 'grid', 
-                              gap: 2, 
-                              gridTemplateColumns: 'repeat(2, 1fr)',
-                              alignItems: 'start'
-                            }}
-                          >
-                            <Box sx={{ minWidth: 100 }}>
-                              <Typography 
-                                variant="caption" 
-                                color="text.secondary"
-                                sx={{ 
-                                  textTransform: 'uppercase',
-                                  letterSpacing: 0.5,
-                                  fontWeight: 500
-                                }}
-                              >
-                                Owner
-                              </Typography>
-                              <Typography 
-                                variant="body2" 
-                                sx={{ 
-                                  fontWeight: 500,
-                                  color: record.application_owner ? 'text.primary' : 'text.secondary'
-                                }}
-                              >
-                                {record.application_owner || 'Not assigned'}
-                              </Typography>
-                            </Box>
-
-                            <Box sx={{ minWidth: 100 }}>
-                              <Typography 
-                                variant="caption" 
-                                color="text.secondary"
-                                sx={{ 
-                                  textTransform: 'uppercase',
-                                  letterSpacing: 0.5,
-                                  fontWeight: 500
-                                }}
-                              >
-                                Maintainer
-                              </Typography>
-                              <Typography 
-                                variant="body2" 
-                                sx={{ 
-                                  fontWeight: 500,
-                                  color: record.maintainer ? 'text.primary' : 'text.secondary'
-                                }}
-                              >
-                                {record.maintainer || 'Not assigned'}
-                              </Typography>
-                            </Box>
-
-                            <Box sx={{ minWidth: 100 }}>
-                              <Typography 
-                                variant="caption" 
-                                color="text.secondary"
-                                sx={{ 
-                                  textTransform: 'uppercase',
-                                  letterSpacing: 0.5,
-                                  fontWeight: 500
-                                }}
-                              >
-                                Open Ports
-                              </Typography>
-                              <PortsDisplay ports={record.open_ports} />
-                            </Box>
-
-                            <Box sx={{ minWidth: 100 }}>
-                              <Typography 
-                                variant="caption" 
-                                color="text.secondary"
-                                sx={{ 
-                                  textTransform: 'uppercase',
-                                  letterSpacing: 0.5,
-                                  fontWeight: 500
-                                }}
-                              >
-                                Created
-                              </Typography>
-                              <Typography 
-                                variant="body2" 
-                                sx={{ fontWeight: 500 }}
-                              >
-                                {formatDateTime(record.creation_date)}
-                              </Typography>
-                            </Box>
-
-                            <Box sx={{ minWidth: 100 }}>
-                              <Typography 
-                                variant="caption" 
-                                color="text.secondary"
-                                sx={{ 
-                                  textTransform: 'uppercase',
-                                  letterSpacing: 0.5,
-                                  fontWeight: 500
-                                }}
-                              >
-                                Status
-                              </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                {getStatusIcon(record.status)}
-                                <Typography 
-                                  variant="body2" 
-                                  sx={{ 
-                                    fontWeight: 500,
-                                    textTransform: 'capitalize'
-                                  }}
-                                >
-                                  {record.status}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          </Box>
-                        </Box>
-                      )}
-                    </Grid>
-
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Actions
-                      </Typography>
-                      
-                      <Box display="flex" gap={1} flexWrap="wrap">
-                        {editingRecord === record.id ? (
-                          <>
-                            <Button
-                              size="small"
-                              variant="contained"
-                              startIcon={<Save />}
-                              onClick={() => saveRecord(record.id)}
-                            >
-                              Save
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<Cancel />}
-                              onClick={cancelEditing}
-                            >
-                              Cancel
-                            </Button>
-                    </>
-                  ) : (
-                    <>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<Edit />}
-                              onClick={() => startEditing(record)}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<History />}
-                              onClick={() => navigate(`/records/${record.name}`)}
-                            >
-                              View
-                            </Button>
-                            {(userRole === 'admin' || userRole === 'pentester') && (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={<Security />}
-                                onClick={() => navigate(`/pentest/record/${record.id}`)}
-                              >
-                                Security
-                              </Button>
-                            )}
-                            {isAdmin && (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="error"
-                                startIcon={<Delete />}
-                                onClick={() => deleteRecord(record.id)}
-                              >
-                                Delete
-                              </Button>
-                            )}
-                    </>
-                  )}
-                      </Box>
-                    </Grid>
-                  </Grid>
-                </Box>
-              </Collapse>
-            </CardContent>
-          </Card>
-        ))}
+        {groupByApp ? renderAppGroups() : filteredRecords.map(renderRecordCard)}
 
         {filteredRecords.length === 0 && (
           <Paper sx={{ p: 4, textAlign: 'center', backgroundColor: 'background.paper' }}>
@@ -1637,6 +1885,174 @@ const RecordsTable = ({ userRole, darkMode }) => {
           </Paper>
         )}
       </Box>
+
+      <Dialog
+        open={appsDialogOpen}
+        onClose={() => setAppsDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: 'hidden',
+            backgroundColor: theme.palette.background.paper,
+            border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+            boxShadow: theme.shadows[12]
+          }
+        }}
+      >
+        <DialogTitle sx={{ pb: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+          <Box display="flex" alignItems="center" gap={1.5}>
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: 2,
+                backgroundColor: appDialogIconBg,
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 0
+              }}
+            >
+              <AccountTree sx={{ color: appDialogIconColor, fontSize: 22 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Manage Applications
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Group domains into apps for a cleaner records tree.
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5 }}>
+          <Paper
+            sx={{
+              p: 2,
+              mb: 2,
+              borderRadius: 2,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
+              backgroundColor: 'background.paper'
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+              Create a new application
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField
+                fullWidth
+                label="New application"
+                value={newAppName}
+                onChange={(e) => setNewAppName(e.target.value)}
+                size="small"
+                sx={{ backgroundColor: 'background.default' }}
+              />
+              <Button
+                variant="contained"
+                onClick={handleCreateApp}
+                disabled={!newAppName.trim() || appsBusy}
+                sx={{
+                  px: 3,
+                  boxShadow: '0 8px 16px rgba(0,0,0,0.12)',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    transform: 'translateY(-1px)',
+                    boxShadow: '0 12px 20px rgba(0,0,0,0.16)'
+                  }
+                }}
+              >
+                Create
+              </Button>
+            </Stack>
+          </Paper>
+
+          <Paper
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              border: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
+              backgroundColor: 'background.paper'
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>
+              Existing applications
+            </Typography>
+            {apps.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No applications created yet.
+              </Typography>
+            ) : (
+              <List sx={{ p: 0, display: 'grid', gap: 1 }}>
+                {apps.map((app) => (
+                  <ListItemButton
+                    key={app.id}
+                    sx={{
+                      px: 1,
+                      py: 1,
+                      borderRadius: 1.5,
+                      border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                      backgroundColor: alpha(theme.palette.background.default, 0.8),
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                        borderColor: alpha(theme.palette.primary.main, 0.3)
+                      }
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1} width="100%">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={appEdits[app.id] ?? app.name}
+                        onChange={(e) =>
+                          setAppEdits((prev) => ({ ...prev, [app.id]: e.target.value }))
+                        }
+                        sx={{ backgroundColor: 'background.paper' }}
+                      />
+                      <IconButton
+                        onClick={() => handleRenameApp(app.id)}
+                        disabled={appsBusy}
+                        size="small"
+                        color="primary"
+                        sx={{
+                          backgroundColor: alpha(theme.palette.primary.main, 0.12),
+                          '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.2) }
+                        }}
+                      >
+                        <Save />
+                      </IconButton>
+                      <IconButton
+                        onClick={() => handleDeleteApp(app.id)}
+                        disabled={appsBusy}
+                        size="small"
+                        color="error"
+                        sx={{
+                          backgroundColor: alpha(theme.palette.error.main, 0.12),
+                          '&:hover': { backgroundColor: alpha(theme.palette.error.main, 0.2) }
+                        }}
+                      >
+                        <Delete />
+                      </IconButton>
+                    </Box>
+                  </ListItemButton>
+                ))}
+              </List>
+            )}
+          </Paper>
+
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+            Assign domains by editing a record and selecting an application.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setAppsDialogOpen(false)} variant="outlined">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

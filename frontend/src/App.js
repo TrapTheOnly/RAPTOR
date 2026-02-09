@@ -17,6 +17,9 @@ const App = () => {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
+  const [userPermissions, setUserPermissions] = useState([]);
+  const [passwordResetRequired, setPasswordResetRequired] = useState(false);
+  const [resetUserType, setResetUserType] = useState(null);
   const storedTheme = localStorage.getItem('theme') || 'light';
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
 
@@ -61,15 +64,30 @@ const App = () => {
       try {
         const response = await axios.get('/session-status');
         if (response.status === 200) {
-          setLoggedIn(true);
-          setUsername(response.data.username);
-          setUserRole(response.data.user_type);
+          if (response.data.status === 'password_reset_required') {
+            setLoggedIn(false);
+            setPasswordResetRequired(true);
+            setUsername(response.data.username || '');
+            setResetUserType(response.data.user_type || null);
+            setUserRole(null);
+            setUserPermissions(response.data.permissions || []);
+          } else if (response.data.status === 'logged_in') {
+            setLoggedIn(true);
+            setPasswordResetRequired(false);
+            setUsername(response.data.username);
+            setUserRole(response.data.user_type);
+            setResetUserType(null);
+            setUserPermissions(response.data.permissions || []);
+          }
         }
       } catch (error) {
         console.error("User is not logged in:", error);
         setLoggedIn(false);
+        setPasswordResetRequired(false);
+        setResetUserType(null);
         setUsername('');
         setUserRole(null);
+        setUserPermissions([]);
       } finally {
         setLoading(false);
       }
@@ -99,24 +117,26 @@ const App = () => {
           <ModernHeader
             username={username}
             userRole={userRole}
+            userPermissions={userPermissions}
             setUserRole={setUserRole}
             setLoggedIn={setLoggedIn}
             setUsername={setUsername}
               darkMode={darkMode}
               setDarkMode={setDarkMode}
+            setUserPermissions={setUserPermissions}
           />
         )}
       <Routes>
         <Route
           path="/"
-            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ? 
+            element={loggedIn && userPermissions.includes('view_dashboard') ? 
             <Dashboard userRole={userRole} darkMode={darkMode}/> : 
-              loggedIn ? <Navigate to="/records" /> : <Navigate to="/login" />}
+              loggedIn ? <Navigate to="/" /> : <Navigate to="/login" />}
         />
         <Route
           path="/records"
-          element={loggedIn && userRole ? 
-            <RecordsTable userRole={userRole} darkMode={darkMode}/> : 
+          element={loggedIn && userPermissions.includes('view_records') ? 
+            <RecordsTable userRole={userRole} userPermissions={userPermissions} darkMode={darkMode}/> : 
               <Navigate to="/login" />}
         />
         <Route
@@ -126,7 +146,13 @@ const App = () => {
               setLoggedIn={setLoggedIn}
               setGlobalUsername={setUsername}
               setGlobalUserRole={setUserRole}
-                darkMode={darkMode}
+              setGlobalUserPermissions={setUserPermissions}
+              setPasswordResetRequired={setPasswordResetRequired}
+              passwordResetRequired={passwordResetRequired}
+              resetUsername={username}
+              resetUserType={resetUserType}
+              setResetUserType={setResetUserType}
+              darkMode={darkMode}
             /> : <Navigate to="/" />
           }
         />
@@ -140,17 +166,27 @@ const App = () => {
         />
         <Route
             path="/pentest"
-            element={loggedIn && (userRole === 'pentester' || userRole === 'admin') ?
-                <PentestDashboard darkMode={darkMode} isAdmin={userRole === 'admin'} username={username}/> : <Navigate to="/login" />
+            element={loggedIn && userPermissions.includes('view_security_dashboard') ?
+                <PentestDashboard
+                  darkMode={darkMode}
+                  isAdmin={userRole === 'admin'}
+                  username={username}
+                  userRole={userRole}
+                  userPermissions={userPermissions}
+                /> : <Navigate to="/login" />
             }
         />
         <Route
           path="/pentest/record/:recordId"
-          element={loggedIn ? <PentestRecord darkMode={darkMode} /> : <Navigate to="/login" />}
+          element={
+            loggedIn && userPermissions.includes('view_pentest_page') ?
+              <PentestRecord darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} username={username} /> :
+              <Navigate to={loggedIn ? "/pentest" : "/login"} />
+          }
         />
         <Route
           path="/records/:domain"
-          element={loggedIn ? <Record darkMode={darkMode} /> : <Navigate to="/login" />}
+          element={loggedIn && userPermissions.includes('view_record_details') ? <Record darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} /> : <Navigate to="/login" />}
         />
         <Route path="/records/*" element={<Navigate to="/" />} />
         <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />

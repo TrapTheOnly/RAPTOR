@@ -1,5 +1,9 @@
 import os
+import atexit
 import logging
+import bcrypt
+import secrets
+import json
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -15,13 +19,25 @@ from datetime import timedelta
 from modules.user import *
 from modules.admin import *
 from modules.offsec import *
+from modules.permissions import (
+    PERMISSIONS,
+    ROLE_DEFAULTS,
+    ROLE_OPTIONAL,
+    get_user_permissions,
+    sanitize_extra_permissions,
+    permission_required,
+    user_has_permission
+)
 from flask import Flask, request, jsonify, send_from_directory, session
 
 # ---------------------------------------------------------
 #! Paths for DB & backups (can be overridden by environment)
 # ---------------------------------------------------------
-DB_PATH = os.getenv("DATA_PATH") + "database.db"
-BACKUP_FOLDER = os.getenv("BACKUP_FOLDER")
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DATA_PATH = os.getenv("DATA_PATH", os.path.join(BASE_DIR, "data"))
+SHARED_PATH = os.getenv("SHARED_PATH", os.path.join(BASE_DIR, "shared"))
+BACKUP_FOLDER = os.getenv("BACKUP_FOLDER", os.path.join(BASE_DIR, "backups"))
+DB_PATH = os.path.join(DATA_PATH, "database.db")
 
 # ---------------------------------------------------------
 #! Configure logging
@@ -230,9 +246,14 @@ def init_db(db_path=DB_PATH):
             last_modification_date TEXT,
             application_owner TEXT DEFAULT '',
             maintainer TEXT DEFAULT '',
-            description TEXT DEFAULT ''
+            description TEXT DEFAULT '',
+            application_id INTEGER
         )
     """)
+    c.execute("PRAGMA table_info(records)")
+    record_columns = {row[1] for row in c.fetchall()}
+    if "application_id" not in record_columns:
+        c.execute("ALTER TABLE records ADD COLUMN application_id INTEGER")
 
     # Allowed users table
     c.execute("""
@@ -241,7 +262,33 @@ def init_db(db_path=DB_PATH):
             username TEXT NOT NULL UNIQUE,
             email TEXT,
             added_date TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
+            role TEXT NOT NULL DEFAULT 'user',
+            auth_type TEXT NOT NULL DEFAULT 'ldap',
+            password BLOB,
+            must_reset INTEGER NOT NULL DEFAULT 0,
+            permissions TEXT
+        )
+    """)
+    # Ensure new columns exist for legacy DBs
+    c.execute("PRAGMA table_info(allowed_users)")
+    allowed_user_columns = {row[1] for row in c.fetchall()}
+    if "auth_type" not in allowed_user_columns:
+        c.execute("ALTER TABLE allowed_users ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'ldap'")
+    if "password" not in allowed_user_columns:
+        c.execute("ALTER TABLE allowed_users ADD COLUMN password BLOB")
+    if "must_reset" not in allowed_user_columns:
+        c.execute("ALTER TABLE allowed_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
+    if "permissions" not in allowed_user_columns:
+        c.execute("ALTER TABLE allowed_users ADD COLUMN permissions TEXT")
+    c.execute("UPDATE allowed_users SET auth_type = 'ldap' WHERE auth_type IS NULL OR auth_type = ''")
+
+    # Applications table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            created_by TEXT,
+            created_at TEXT NOT NULL
         )
     """)
 
@@ -290,9 +337,89 @@ def init_db(db_path=DB_PATH):
             open_ports TEXT,
             notes TEXT,
             owasp_checklist TEXT,
+            vulnerabilities TEXT,
             FOREIGN KEY (record_id) REFERENCES records(id)
         )
     """)
+    # Ensure vulnerabilities column exists for legacy DBs
+    c.execute("PRAGMA table_info(pentest_data)")
+    pentest_columns = {row[1] for row in c.fetchall()}
+    if "vulnerabilities" not in pentest_columns:
+        c.execute("ALTER TABLE pentest_data ADD COLUMN vulnerabilities TEXT")
+
+    # Vulnerability categories table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS vuln_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            is_custom INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    # Seed vulnerability categories if empty
+    c.execute("SELECT COUNT(*) FROM vuln_categories")
+    if c.fetchone()[0] == 0:
+        default_categories = [
+            "SQL Injection",
+            "Blind SQL Injection",
+            "Stored XSS",
+            "Reflected XSS",
+            "DOM-based XSS",
+            "Cross-Site Request Forgery (CSRF)",
+            "Server-Side Request Forgery (SSRF)",
+            "Remote Code Execution (RCE)",
+            "Command Injection",
+            "OS Command Injection",
+            "Local File Inclusion (LFI)",
+            "Remote File Inclusion (RFI)",
+            "Path Traversal",
+            "Directory Listing",
+            "Insecure File Upload",
+            "XML External Entity (XXE)",
+            "XPath Injection",
+            "LDAP Injection",
+            "Server-Side Template Injection (SSTI)",
+            "Insecure Deserialization",
+            "Broken Authentication",
+            "Weak Password Policy",
+            "Credential Stuffing",
+            "Session Fixation",
+            "Session Hijacking",
+            "Broken Access Control",
+            "IDOR",
+            "Privilege Escalation",
+            "Open Redirect",
+            "Clickjacking",
+            "CORS Misconfiguration",
+            "HTTP Request Smuggling",
+            "HTTP Response Splitting",
+            "Host Header Injection",
+            "Prototype Pollution",
+            "Business Logic Flaw",
+            "Information Disclosure",
+            "Sensitive Data Exposure",
+            "Insufficient Logging & Monitoring",
+            "Security Misconfiguration",
+            "Insecure Defaults",
+            "Rate Limiting Missing",
+            "Brute Force",
+            "JWT Weakness",
+            "OAuth Misconfiguration",
+            "SAML Misconfiguration",
+            "API Mass Assignment",
+            "API Rate Limit Bypass",
+            "Insecure Direct Object Reference (IDOR)",
+            "Cache Poisoning",
+            "CRLF Injection",
+            "HTTP Verb Tampering"
+        ]
+        for name in default_categories:
+            c.execute("""
+                INSERT INTO vuln_categories (name, created_by, created_at, is_custom)
+                VALUES (?, ?, datetime('now', '+4 hours'), 0)
+            """, (name, 'system'))
 
     conn.commit()
     conn.close()
@@ -428,7 +555,7 @@ def store_records_in_db(records, db_path=DB_PATH):
 # ---------------------------------------------------------
 # Utility: add user to the allowed_users table
 # ---------------------------------------------------------
-def add_user_to_system(username, email, role='user', db_path=DB_PATH):
+def add_user_to_system(username, email, role='user', auth_type='ldap', password_hash=None, must_reset=0, permissions=None, db_path=DB_PATH):
     """
     Add a user to the allowed_users table.
 
@@ -438,10 +565,11 @@ def add_user_to_system(username, email, role='user', db_path=DB_PATH):
     try:
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
+        sanitized_permissions = sanitize_extra_permissions(role, permissions)
         c.execute("""
-            INSERT INTO allowed_users (username, email, added_date, role)
-            VALUES (?, ?, datetime('now', '+4 hours'), ?)
-        """, (username, email, role))
+            INSERT INTO allowed_users (username, email, added_date, role, auth_type, password, must_reset, permissions)
+            VALUES (?, ?, datetime('now', '+4 hours'), ?, ?, ?, ?, ?)
+        """, (username, email, role, auth_type, password_hash, must_reset, json.dumps(sanitized_permissions)))
         conn.commit()
         logger.info(f"User {username} added to the system with role {role}.")
         conn.close()
@@ -453,6 +581,13 @@ def add_user_to_system(username, email, role='user', db_path=DB_PATH):
 # ---------------------------------------------------------
 # Utility: periodic update scheduling
 # ---------------------------------------------------------
+update_stop_event = threading.Event()
+
+def stop_periodic_update():
+    update_stop_event.set()
+
+atexit.register(stop_periodic_update)
+
 def periodic_update(interval, update_function):
     """
     Runs `update_function` every `interval` seconds in a separate thread.
@@ -461,9 +596,15 @@ def periodic_update(interval, update_function):
     Returns: None
     """
     def wrapper():
+        if update_stop_event.is_set():
+            return
         update_function()
-        threading.Timer(interval, wrapper).start()
-    threading.Timer(interval, wrapper).start()
+        timer = threading.Timer(interval, wrapper)
+        timer.daemon = True
+        timer.start()
+    timer = threading.Timer(interval, wrapper)
+    timer.daemon = True
+    timer.start()
 
 # ---------------------------------------------------------
 # Utility: extract domain from filename
@@ -492,7 +633,7 @@ def update_data():
     try:
         logger.info(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-        shared_path = os.getenv("SHARED_PATH", "")
+        shared_path = SHARED_PATH
         zone_files = glob.glob(f"{shared_path}/*_A_Records")
         if not zone_files:
             logger.warning("No zone files found in shared path.")
@@ -507,7 +648,7 @@ def update_data():
                 continue
 
             logger.info(f"Processing zone file for domain: {domain}")
-            final_zone_file_path = os.path.join(os.getenv("DATA_PATH", ""), os.path.basename(zone_file))
+            final_zone_file_path = os.path.join(DATA_PATH, os.path.basename(zone_file))
             final_zone_file = handle_zone_file_changes(zone_file, final_zone_file_path)
             if not final_zone_file:
                 continue
@@ -537,7 +678,7 @@ CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(","
 #! Record API Endpoints
 # ---------------------------------------------------------
 @app.route('/api/records', methods=['GET'])
-@login_required_json
+@permission_required('view_records')
 def get_records():
     """
     Returns all records from the database with pentest data (including open_ports).
@@ -546,9 +687,10 @@ def get_records():
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("""
-        SELECT r.*, p.open_ports
+        SELECT r.*, p.open_ports, a.name AS application_name
         FROM records r
         LEFT JOIN pentest_data p ON r.id = p.record_id
+        LEFT JOIN applications a ON r.application_id = a.id
     """)
     rows = c.fetchall()
     conn.close()
@@ -557,7 +699,7 @@ def get_records():
     return jsonify(records)
 
 @app.route('/api/records/<int:record_id>', methods=['POST'])
-@login_required_json
+@permission_required('modify_records')
 def update_record(record_id):
     """
     Update a record by ID (including open_ports in pentest_data).
@@ -572,9 +714,22 @@ def update_record(record_id):
         maintainer = sanitize_string(data.get('maintainer', ''))
         open_ports = data.get('open_ports', '')
         description = data.get('description', '')
+        raw_application_id = data.get('application_id')
+        application_id = None
+        if raw_application_id not in (None, '', 'null'):
+            try:
+                application_id = int(raw_application_id)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid application ID."}), 400
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
+
+        if application_id is not None:
+            c.execute("SELECT id FROM applications WHERE id = ?", (application_id,))
+            if not c.fetchone():
+                conn.close()
+                return jsonify({"error": "Application not found."}), 404
 
         c.execute("SELECT maintainer FROM records WHERE id = ?", (record_id,))
         old_record = c.fetchone()
@@ -590,9 +745,10 @@ def update_record(record_id):
             SET application_owner = ?,
                 maintainer = ?,
                 description = ?,
+                application_id = ?,
                 last_modification_date = datetime('now', '+4 hours')
             WHERE id = ?
-        """, (application_owner, maintainer, description, record_id))
+        """, (application_owner, maintainer, description, application_id, record_id))
 
         # Update or insert open_ports in pentest_data
         c.execute("SELECT record_id FROM pentest_data WHERE record_id = ?", (record_id,))
@@ -634,8 +790,101 @@ def update_record(record_id):
         logger.error(f"Error updating record {record_id}: {e}")
         return jsonify({"error": str(e)}), 400
 
+@app.route('/api/apps', methods=['GET'])
+@permission_required('view_records')
+def get_applications():
+    """Return all application groups."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, name, created_by, created_at
+                FROM applications
+                ORDER BY name
+            """)
+            rows = c.fetchall()
+        return jsonify([dict(ix) for ix in rows]), 200
+    except Exception as e:
+        logger.error(f"Error fetching applications: {e}")
+        return jsonify({"error": "Failed to fetch applications."}), 500
+
+@app.route('/api/apps', methods=['POST'])
+@permission_required('manage_apps')
+def create_application():
+    """Create a new application group."""
+    data = request.get_json(force=True)
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Application name is required."}), 400
+
+    sanitized = re.sub(r'[^a-zA-Z0-9\\-_. ]+', '', name)
+    if not sanitized:
+        return jsonify({"error": "Invalid application name."}), 400
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO applications (name, created_by, created_at)
+                VALUES (?, ?, datetime('now', '+4 hours'))
+            """, (sanitized, session.get('username', 'unknown')))
+            conn.commit()
+        return jsonify({"message": "Application created.", "name": sanitized}), 201
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Application name already exists."}), 409
+    except Exception as e:
+        logger.error(f"Error creating application: {e}")
+        return jsonify({"error": "Failed to create application."}), 500
+
+@app.route('/api/apps/<int:app_id>', methods=['PUT'])
+@permission_required('manage_apps')
+def update_application(app_id):
+    """Rename an application group."""
+    data = request.get_json(force=True)
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Application name is required."}), 400
+
+    sanitized = re.sub(r'[^a-zA-Z0-9\\-_. ]+', '', name)
+    if not sanitized:
+        return jsonify({"error": "Invalid application name."}), 400
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
+            if not c.fetchone():
+                return jsonify({"error": "Application not found."}), 404
+            c.execute("UPDATE applications SET name = ? WHERE id = ?", (sanitized, app_id))
+            conn.commit()
+        return jsonify({"message": "Application updated.", "name": sanitized}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Application name already exists."}), 409
+    except Exception as e:
+        logger.error(f"Error updating application: {e}")
+        return jsonify({"error": "Failed to update application."}), 500
+
+@app.route('/api/apps/<int:app_id>', methods=['DELETE'])
+@permission_required('manage_apps')
+def delete_application(app_id):
+    """Delete an application group and unassign its records."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
+            if not c.fetchone():
+                return jsonify({"error": "Application not found."}), 404
+            c.execute("UPDATE records SET application_id = NULL WHERE application_id = ?", (app_id,))
+            c.execute("DELETE FROM applications WHERE id = ?", (app_id,))
+            conn.commit()
+        return jsonify({"message": "Application deleted."}), 200
+    except Exception as e:
+        logger.error(f"Error deleting application: {e}")
+        return jsonify({"error": "Failed to delete application."}), 500
+
 @app.route('/api/records/<int:record_id>', methods=['DELETE'])
-@admin_required
+@permission_required('delete_records')
 def delete_record(record_id):
     """
     Delete a record by ID.
@@ -678,7 +927,7 @@ def delete_record(record_id):
         return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/api/records/<int:record_id>/history', methods=['GET'])
-@login_required_json
+@permission_required('view_record_details')
 def get_record_history(record_id):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # Important for getting dict-like results
@@ -691,7 +940,7 @@ def get_record_history(record_id):
     return jsonify(history)
 
 @app.route('/api/records/<string:domain>', methods=['GET'])
-@login_required_json
+@permission_required('view_record_details')
 def get_record_by_domain(domain):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -720,6 +969,8 @@ app.add_url_rule('/pentest/<int:record_id>', methods=['DELETE'], view_func=delet
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['GET'], view_func=get_report)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['DELETE'], view_func=delete_report_route)
 app.add_url_rule('/pentest_users', methods=['GET'], view_func=get_pentest_users)
+app.add_url_rule('/pentest/<int:record_id>/images', methods=['POST'], view_func=upload_pentest_image)
+app.add_url_rule('/pentest/images/<string:filename>', methods=['GET'], view_func=get_pentest_image)
 
 # ---------------------------------------------------------
 #! Admin API Endpoints
@@ -730,7 +981,10 @@ def ldap_search():
     """
     Search for users in the LDAP directory.
     """
-    query = request.args.get('query').lower()
+    query = request.args.get('query', '')
+    if not query:
+        return jsonify({"error": "Query parameter is required."}), 400
+    query = query.lower()
     try:
         results = search_ldap_users(query)
         return jsonify({"results": results}), 200
@@ -747,16 +1001,60 @@ def add_user():
     username = data.get('username').lower()
     email = data.get('email').lower()
     role = data.get('role', 'user').lower()
+    permissions = data.get('permissions', [])
 
     #Basic role validation
-    if role not in ['user', 'pentester']:
+    if role not in ['user', 'pentester', 'manager']:
         return jsonify({"error": "Invalid role specified."}), 400
 
     try:
-        add_user_to_system(username, email, role)
+        add_user_to_system(username, email, role, auth_type='ldap', permissions=permissions)
         return jsonify({"message": f"User {username} added successfully with role {role}."}), 200
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/add-local-user', methods=['POST'])
+@admin_required
+def add_local_user():
+    """
+    Add a local (non-LDAP) user with a temporary password.
+    """
+    data = request.get_json()
+    username = data.get('username', '').lower().strip()
+    role = data.get('role', 'user').lower()
+    permissions = data.get('permissions', [])
+
+    if not username:
+        return jsonify({"error": "Username is required."}), 400
+    if username == ADMIN_USERNAME:
+        return jsonify({"error": "Username is reserved."}), 400
+    if role not in ['user', 'pentester', 'manager']:
+        return jsonify({"error": "Invalid role specified."}), 400
+
+    try:
+        # Generate a temporary password (meets minimum length)
+        temp_password = secrets.token_urlsafe(12)
+        if len(temp_password) < 12:
+            temp_password = temp_password + secrets.token_urlsafe(12)
+        temp_password = temp_password[:32]
+
+        hashed_password = bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt())
+        add_user_to_system(
+            username=username,
+            email='',
+            role=role,
+            auth_type='local',
+            password_hash=hashed_password,
+            must_reset=1,
+            permissions=permissions
+        )
+        return jsonify({
+            "message": f"Local user {username} created successfully.",
+            "temp_password": temp_password
+        }), 200
+    except Exception as e:
+        logger.error(f"Error adding local user {username}: {e}")
         return jsonify({"error": str(e)}), 500
     
 @app.route('/change-password', methods=['POST'])
@@ -774,6 +1072,87 @@ def api_change_password():
 
     response, status_code = change_admin_password(current_password, new_password)
     return jsonify(response), status_code
+
+@app.route('/admin-reset-password', methods=['POST'])
+def api_admin_reset_password():
+    """
+    Endpoint to reset admin password after first login.
+    """
+    if not session.get('reset_required') or session.get('username') != ADMIN_USERNAME:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    new_password = data.get('new_password')
+
+    if not new_password:
+        return jsonify({"error": "New password is required."}), 400
+
+    response, status_code = reset_admin_password(new_password)
+    if status_code == 200:
+        session['logged_in'] = True
+        session['reset_required'] = False
+        session['user_type'] = 'admin'
+        return jsonify({
+            "status": "logged_in",
+            "username": session.get("username"),
+            "user_type": "admin"
+        }), 200
+    return jsonify(response), status_code
+
+@app.route('/user-reset-password', methods=['POST'])
+def api_user_reset_password():
+    """
+    Endpoint for local users to reset their password after first login.
+    """
+    if not session.get('reset_required') or session.get('user_type') == 'admin':
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    new_password = data.get('new_password')
+
+    if not new_password:
+        return jsonify({"error": "New password is required."}), 400
+
+    username = session.get('username')
+    ok, msg = validate_password_nist(new_password, username=username)
+    if not ok:
+        return jsonify({"error": msg}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT password FROM allowed_users WHERE username = ?", (username,))
+        result = c.fetchone()
+        if not result or not result[0]:
+            conn.close()
+            return jsonify({"error": "User not found."}), 404
+        if bcrypt.checkpw(new_password.encode(), result[0]):
+            conn.close()
+            return jsonify({"error": "New password must be different from the temporary password."}), 400
+        hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+        c.execute(
+            "UPDATE allowed_users SET password = ?, must_reset = 0, auth_type = 'local' WHERE username = ?",
+            (hashed_password, username)
+        )
+        if c.rowcount == 0:
+            conn.close()
+            return jsonify({"error": "User not found."}), 404
+        conn.commit()
+        conn.close()
+        session['logged_in'] = True
+        session['reset_required'] = False
+        return jsonify({
+            "status": "logged_in",
+            "username": username,
+            "user_type": session.get("user_type")
+        }), 200
+    except Exception as e:
+        logger.error(f"Error resetting password for user {username}: {e}")
+        return jsonify({"error": "Failed to reset password."}), 500
 
 @app.route('/existing-users', methods=['GET'])
 @admin_required
@@ -795,13 +1174,16 @@ def update_user_role():
     if not username or not new_role:
         return jsonify({"error": "Username and role are required"}), 400
 
-    if new_role not in ['user', 'pentester']:
+    if new_role not in ['user', 'pentester', 'manager']:
         return jsonify({"error": "Invalid user role"}), 400
 
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("UPDATE allowed_users SET role = ? WHERE username = ?", (new_role, username))
+        c.execute(
+            "UPDATE allowed_users SET role = ?, permissions = ? WHERE username = ?",
+            (new_role, json.dumps([]), username)
+        )
         if c.rowcount == 0:
             conn.close()
             return jsonify({"error": f"User {username} not found"}), 404
@@ -811,6 +1193,47 @@ def update_user_role():
     except Exception as e:
         logger.error(f"Error updating role for user {username}: {e}")
         return jsonify({"error": "Failed to update user role"}), 500
+
+@app.route('/update-user-permissions', methods=['POST'])
+@admin_required
+def update_user_permissions():
+    data = request.get_json() or {}
+    username = data.get('username')
+    requested_permissions = data.get('permissions', [])
+
+    if not username:
+        return jsonify({"error": "Username is required"}), 400
+    if not isinstance(requested_permissions, list):
+        return jsonify({"error": "Permissions must be a list"}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT role FROM allowed_users WHERE username = ?", (username,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": f"User {username} not found"}), 404
+
+        role = (row[0] or 'user').lower()
+        sanitized = sanitize_extra_permissions(role, requested_permissions)
+        if set(requested_permissions) - set(sanitized):
+            conn.close()
+            return jsonify({"error": "Invalid permissions for role"}), 400
+
+        c.execute(
+            "UPDATE allowed_users SET permissions = ? WHERE username = ?",
+            (json.dumps(sanitized), username)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({
+            "message": "User permissions updated.",
+            "permissions": sanitized
+        }), 200
+    except Exception as e:
+        logger.error(f"Error updating permissions for user {username}: {e}")
+        return jsonify({"error": "Failed to update user permissions"}), 500
 
 @app.route('/delete-user', methods=['DELETE'])
 @admin_required
@@ -839,6 +1262,76 @@ def manual_update():
     except Exception as e:
         logger.error(f"Manual update error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/pentest/reset-keep-open', methods=['POST'])
+@admin_required
+def reset_keep_open_vulnerabilities():
+    """
+    Reset pentest progress for all records except open vulnerabilities
+    (vulnerable=1 and vulnerability_fixed=0). Requires explicit confirmation.
+    """
+    data = request.get_json() or {}
+    confirm = data.get('confirm') is True
+    phrase = data.get('phrase')
+    required_phrase = "RESET ALL BUT OPEN VULNERABILITIES"
+    if not confirm or phrase != required_phrase:
+        return jsonify({"error": "Confirmation phrase required."}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        # Select rows to delete (everything except open vulnerabilities)
+        c.execute("""
+            SELECT p.*
+            FROM pentest_data p
+            WHERE NOT (p.vulnerable = 1 AND p.vulnerability_fixed = 0)
+        """)
+        rows = c.fetchall()
+
+        report_deleted = 0
+        report_delete_errors = 0
+
+        for row in rows:
+            if row["report_file"]:
+                try:
+                    delete_report(row["report_file"])
+                    report_deleted += 1
+                except Exception:
+                    report_delete_errors += 1
+
+        c.execute("""
+            DELETE FROM pentest_data
+            WHERE NOT (vulnerable = 1 AND vulnerability_fixed = 0)
+        """)
+        deleted_count = c.rowcount
+
+        # Count remaining open vulnerabilities
+        c.execute("""
+            SELECT COUNT(*)
+            FROM pentest_data
+            WHERE vulnerable = 1 AND vulnerability_fixed = 0
+        """)
+        remaining_open = c.fetchone()[0]
+
+        conn.commit()
+        conn.close()
+
+        stats = {
+            "total_reset": deleted_count,
+            "remaining_open": remaining_open,
+            "reports_deleted": report_deleted,
+            "report_delete_errors": report_delete_errors
+        }
+
+        return jsonify({
+            "message": "Pentest progress reset (open vulnerabilities preserved).",
+            "stats": stats
+        }), 200
+    except Exception as e:
+        logger.error(f"Error resetting pentest progress: {e}")
+        return jsonify({"error": "Failed to reset pentest progress."}), 500
     
 @app.route('/ip-sources', methods=['GET'])
 @admin_required
@@ -961,6 +1454,66 @@ def delete_ip_source():
         return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------
+#! Vulnerability Categories API Endpoints
+# ---------------------------------------------------------
+@app.route('/vuln-categories', methods=['GET'])
+@login_required_json
+def get_vuln_categories():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, name, created_by, created_at, is_custom FROM vuln_categories ORDER BY name ASC")
+        rows = c.fetchall()
+        conn.close()
+        return jsonify({"categories": [dict(row) for row in rows]}), 200
+    except Exception as e:
+        logger.error(f"Error fetching vulnerability categories: {e}")
+        return jsonify({"error": "Failed to fetch categories."}), 500
+
+@app.route('/vuln-categories', methods=['POST'])
+@login_required_json
+def add_vuln_category():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Category name is required."}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO vuln_categories (name, created_by, created_at, is_custom)
+            VALUES (?, ?, datetime('now', '+4 hours'), 1)
+        """, (name, session.get('username', 'unknown')))
+        category_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Category added successfully.", "id": category_id, "name": name}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Category already exists."}), 400
+    except Exception as e:
+        logger.error(f"Error adding vulnerability category: {e}")
+        return jsonify({"error": "Failed to add category."}), 500
+
+@app.route('/vuln-categories/<int:category_id>', methods=['DELETE'])
+@admin_required
+def delete_vuln_category(category_id):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM vuln_categories WHERE id = ?", (category_id,))
+        if c.rowcount == 0:
+            conn.close()
+            return jsonify({"error": "Category not found."}), 404
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Category deleted successfully."}), 200
+    except Exception as e:
+        logger.error(f"Error deleting vulnerability category: {e}")
+        return jsonify({"error": "Failed to delete category."}), 500
+
+# ---------------------------------------------------------
 #! User Authentication Endpoints
 # ---------------------------------------------------------
 @app.route('/login', methods=['POST'])
@@ -984,30 +1537,84 @@ def login():
     # Check allowed users first
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT username, role FROM allowed_users WHERE username = ?", (username,))
+    c.execute("SELECT username, role, auth_type, password, must_reset FROM allowed_users WHERE username = ?", (username,))
     user = c.fetchone()
     conn.close()
     
 
-    if username == os.getenv("ADMIN_USERNAME"):
-        
+    if username == ADMIN_USERNAME:
+
         if admin_login(username, password):
             session.permanent = True
-            session['logged_in'] = True
             session['username'] = username
             session['user_type'] = 'admin'
-            return jsonify({"status": "logged_in", "username": username, "user_type": 'admin'}), 200
+
+            if admin_requires_password_reset(username):
+                session['reset_required'] = True
+                session['logged_in'] = False
+                return jsonify({
+                    "status": "password_reset_required",
+                    "username": username,
+                    "user_type": "admin",
+                    "permissions": list(get_user_permissions(username, "admin"))
+                }), 200
+
+            session['logged_in'] = True
+            session.pop('reset_required', None)
+            return jsonify({
+                "status": "logged_in",
+                "username": username,
+                "user_type": "admin",
+                "permissions": list(get_user_permissions(username, "admin"))
+            }), 200
         else:
             return jsonify({"error": "Invalid credentials"}), 401
 
     if user:
-        
+        user_role = user[1] if user[1] else 'user'
+        auth_type = user[2] if user[2] else 'ldap'
+        password_hash = user[3]
+        must_reset = bool(user[4])
+
+        if auth_type == 'local':
+            if not password_hash or not bcrypt.checkpw(password.encode(), password_hash):
+                return jsonify({"error": "Invalid credentials"}), 401
+
+            session.permanent = True
+            session['username'] = user[0]
+            session['user_type'] = user_role
+
+            if must_reset:
+                session['reset_required'] = True
+                session['logged_in'] = False
+                return jsonify({
+                    "status": "password_reset_required",
+                    "username": username,
+                    "user_type": user_role,
+                    "permissions": list(get_user_permissions(username, user_role))
+                }), 200
+
+            session['logged_in'] = True
+            session.pop('reset_required', None)
+            return jsonify({
+                "status": "logged_in",
+                "username": username,
+                "user_type": user_role,
+                "permissions": list(get_user_permissions(username, user_role))
+            }), 200
+
         if ldap_authenticate(username, password):
             session.permanent = True
             session['logged_in'] = True
             session['username'] = user[0]
-            session['user_type'] = user[1] if user[1] else 'user'
-            return jsonify({"status": "logged_in", "username": username, "user_type": session['user_type']}), 200
+            session['user_type'] = user_role
+            session.pop('reset_required', None)
+            return jsonify({
+                "status": "logged_in",
+                "username": username,
+                "user_type": session['user_type'],
+                "permissions": list(get_user_permissions(username, user_role))
+            }), 200
         else:
             return jsonify({"error": "Invalid credentials"}), 401
     else:
@@ -1018,9 +1625,21 @@ def session_status():
     """
     Check if the user is logged in.
     """
+    if session.get('reset_required'):
+        return jsonify({
+            "status": "password_reset_required",
+            "username": session.get("username"),
+            "user_type": session.get("user_type"),
+            "permissions": list(get_user_permissions(session.get("username"), session.get("user_type")))
+        }), 200
     if 'logged_in' in session and session['logged_in']:
         user_type = session.get('user_type')
-        return jsonify({"status": "logged_in", "username": session.get("username"), "user_type": user_type}), 200
+        return jsonify({
+            "status": "logged_in",
+            "username": session.get("username"),
+            "user_type": user_type,
+            "permissions": list(get_user_permissions(session.get("username"), user_type))
+        }), 200
     return jsonify({"status": "logged_out"}), 401
 
 @app.route('/logout', methods=['POST'])

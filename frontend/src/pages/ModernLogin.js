@@ -17,13 +17,49 @@ import {
 } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 
-const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMode = false }) => {
+const MIN_PASSWORD_LENGTH = 12;
+const MAX_PASSWORD_LENGTH = 64;
+const COMMON_PASSWORDS = new Set([
+  'password', 'password1', '123456', '12345678', '123456789',
+  'qwerty', 'qwerty123', 'letmein', 'welcome', 'admin',
+  'admin123', 'iloveyou', 'monkey', 'dragon', 'football',
+  'abc123', '111111', 'trustno1', 'sunshine', 'princess',
+  'login', 'qwertyuiop', 'passw0rd', 'master', 'shadow'
+]);
+
+const ModernLogin = ({
+  setLoggedIn,
+  setGlobalUsername,
+  setGlobalUserRole,
+  setGlobalUserPermissions,
+  setPasswordResetRequired,
+  passwordResetRequired = false,
+  resetUsername = '',
+  resetUserType = null,
+  setResetUserType = () => {},
+  darkMode = false
+}) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
   const theme = useTheme();
+
+  useEffect(() => {
+    setResetMode(passwordResetRequired);
+  }, [passwordResetRequired]);
+
+  useEffect(() => {
+    if (resetMode && resetUsername) {
+      setUsername(resetUsername);
+    }
+  }, [resetMode, resetUsername]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,9 +73,19 @@ const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMo
       });
 
       if (response.status === 200) {
-        setLoggedIn(true);
-        setGlobalUsername(username);
-        setGlobalUserRole(response.data.user_type);
+        if (response.data.status === 'password_reset_required') {
+          setResetMode(true);
+          setPasswordResetRequired(true);
+          setResetUserType(response.data.user_type || null);
+          setError('');
+        } else if (response.data.status === 'logged_in') {
+          setLoggedIn(true);
+          setPasswordResetRequired(false);
+          setResetUserType(null);
+          setGlobalUsername(username);
+          setGlobalUserRole(response.data.user_type);
+          setGlobalUserPermissions(response.data.permissions || []);
+        }
       }
     } catch (error) {
       if (error.response?.status === 401) {
@@ -49,6 +95,57 @@ const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMo
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const validatePassword = (value) => {
+    if (!value) return 'Password is required.';
+    if (value.length < MIN_PASSWORD_LENGTH) {
+      return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+    }
+    if (value.length > MAX_PASSWORD_LENGTH) {
+      return `Password must be at most ${MAX_PASSWORD_LENGTH} characters.`;
+    }
+    if (COMMON_PASSWORDS.has(value.trim().toLowerCase())) {
+      return 'Password is too common.';
+    }
+    if (username && value.toLowerCase().includes(username.toLowerCase())) {
+      return 'Password must not contain the username.';
+    }
+    return '';
+  };
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    setResetError('');
+    const validationError = validatePassword(newPassword);
+    if (validationError) {
+      setResetError(validationError);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError('Passwords do not match.');
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      const endpoint = resetUserType === 'admin' ? '/admin-reset-password' : '/user-reset-password';
+      const response = await axios.post(endpoint, {
+        new_password: newPassword
+      });
+      if (response.status === 200 && response.data.status === 'logged_in') {
+        setLoggedIn(true);
+        setPasswordResetRequired(false);
+        setResetUserType(null);
+        setGlobalUsername(response.data.username || username);
+        setGlobalUserRole(response.data.user_type || 'user');
+        setGlobalUserPermissions(response.data.permissions || []);
+      }
+    } catch (error) {
+      setResetError(error.response?.data?.error || 'Password reset failed. Please try again.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -74,9 +171,9 @@ const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMo
             width: '100%',
             maxWidth: 400,
             textAlign: 'center',
-          backgroundColor: 'background.paper',
-          border: `1px solid ${theme.palette.divider}`,
-          boxShadow: darkMode ? 'none' : '0 4px 8px rgba(0,0,0,0.1)',
+            backgroundColor: 'background.paper',
+            border: `1px solid ${theme.palette.divider}`,
+            boxShadow: darkMode ? 'none' : '0 4px 8px rgba(0,0,0,0.1)',
           }}
         >
           {/* Logo/Brand */}
@@ -253,106 +350,235 @@ const ModernLogin = ({ setLoggedIn, setGlobalUsername, setGlobalUserRole, darkMo
             </Typography>
           </Box>
 
-          {/* Login Form */}
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-            {error && (
-              <Alert 
-                severity="error" 
+          {/* Login / Reset Form */}
+          {resetMode ? (
+            <Box component="form" onSubmit={handleResetSubmit} sx={{ mt: 3 }}>
+              {resetError && (
+                <Alert 
+                  severity="error" 
+                  sx={{ 
+                    mb: 3,
+                    backgroundColor: darkMode ? '#2d1b1b' : '#ffeaa7',
+                    color: darkMode ? '#ffffff' : '#d63031',
+                    border: '1px solid #f44336',
+                    '& .MuiAlert-icon': {
+                      color: '#f44336',
+                    },
+                  }}
+                >
+                  {resetError}
+                </Alert>
+              )}
+
+              <TextField
+                fullWidth
+                label="Username"
+                variant="outlined"
+                value={username}
+                disabled
+                autoComplete="username"
                 sx={{ 
                   mb: 3,
-                backgroundColor: darkMode ? '#2d1b1b' : '#ffeaa7',
-                color: darkMode ? '#ffffff' : '#d63031',
-                  border: '1px solid #f44336',
-                  '& .MuiAlert-icon': {
-                    color: '#f44336',
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
+                    '& fieldset': {
+                      borderColor: theme.palette.divider,
+                    },
                   },
                 }}
+              />
+
+              <TextField
+                fullWidth
+                label="New Password"
+                type={showPassword ? 'text' : 'password'}
+                variant="outlined"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+                sx={{ 
+                  mb: 2,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
+                    '& fieldset': {
+                      borderColor: theme.palette.divider,
+                    },
+                    '&:hover fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                  },
+                }}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={handleTogglePasswordVisibility}
+                        edge="end"
+                        sx={{ color: 'text.secondary' }}
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              <TextField
+                fullWidth
+                label="Confirm New Password"
+                type={showPassword ? 'text' : 'password'}
+                variant="outlined"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+                sx={{ 
+                  mb: 2,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
+                    '& fieldset': {
+                      borderColor: theme.palette.divider,
+                    },
+                    '&:hover fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                  },
+                }}
+              />
+
+              <Box sx={{ textAlign: 'left', mb: 3 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                  NIST password requirements:
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  - At least {MIN_PASSWORD_LENGTH} characters (max {MAX_PASSWORD_LENGTH})
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  - Not a common password
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  - Must not contain the username
+                </Typography>
+              </Box>
+
+              <Button
+                type="submit"
+                fullWidth
+                variant="contained"
+                disabled={resetLoading || !newPassword || !confirmPassword}
+                startIcon={<LoginOutlined />}
+                sx={{ mb: 2 }}
               >
-                {error}
-              </Alert>
-            )}
+                {resetLoading ? 'Updating password...' : 'Reset Password'}
+              </Button>
+            </Box>
+          ) : (
+            <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
+              {error && (
+                <Alert 
+                  severity="error" 
+                  sx={{ 
+                    mb: 3,
+                    backgroundColor: darkMode ? '#2d1b1b' : '#ffeaa7',
+                    color: darkMode ? '#ffffff' : '#d63031',
+                    border: '1px solid #f44336',
+                    '& .MuiAlert-icon': {
+                      color: '#f44336',
+                    },
+                  }}
+                >
+                  {error}
+                </Alert>
+              )}
 
-            <TextField
-              fullWidth
-              label="Username"
-              variant="outlined"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              autoComplete="username"
-              autoFocus
-            sx={{ 
-              mb: 3,
-              '& .MuiOutlinedInput-root': {
-                backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
-                '& fieldset': {
-                  borderColor: theme.palette.divider,
-                },
-                '&:hover fieldset': {
-                  borderColor: theme.palette.primary.main,
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: theme.palette.primary.main,
-                },
-              },
-            }}
-            />
+              <TextField
+                fullWidth
+                label="Username"
+                variant="outlined"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                autoComplete="username"
+                autoFocus
+                sx={{ 
+                  mb: 3,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
+                    '& fieldset': {
+                      borderColor: theme.palette.divider,
+                    },
+                    '&:hover fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                  },
+                }}
+              />
 
-            <TextField
-              fullWidth
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              variant="outlined"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            sx={{ 
-              mb: 4,
-              '& .MuiOutlinedInput-root': {
-                backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
-                '& fieldset': {
-                  borderColor: theme.palette.divider,
-                },
-                '&:hover fieldset': {
-                  borderColor: theme.palette.primary.main,
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: theme.palette.primary.main,
-                },
-              },
-            }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={handleTogglePasswordVisibility}
-                      edge="end"
-                    sx={{ color: 'text.secondary' }}
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
+              <TextField
+                fullWidth
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                variant="outlined"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                sx={{ 
+                  mb: 4,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
+                    '& fieldset': {
+                      borderColor: theme.palette.divider,
+                    },
+                    '&:hover fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                  },
+                }}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={handleTogglePasswordVisibility}
+                        edge="end"
+                        sx={{ color: 'text.secondary' }}
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
 
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              disabled={loading || !username || !password}
-              startIcon={<LoginOutlined />}
-              sx={{ mb: 2 }}
-            >
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
-          </Box>
+              <Button
+                type="submit"
+                fullWidth
+                variant="contained"
+                disabled={loading || !username || !password}
+                startIcon={<LoginOutlined />}
+                sx={{ mb: 2 }}
+              >
+                {loading ? 'Signing in...' : 'Sign In'}
+              </Button>
+            </Box>
+          )}
 
           {/* Footer */}
           <Box mt={4}>
             <Typography variant="caption" color="text.secondary">
-              Secure authentication via LDAP
             </Typography>
           </Box>
         </Paper>
