@@ -414,6 +414,7 @@ const AdminSettings = () => {
             user.username === username ? { ...user, permissions: normalized } : user
           )
         );
+        setEditedUserPermissions((prev) => ({ ...prev, [username]: normalized }));
         showMessage('success', response.data.message);
       } else {
         showMessage('error', 'Failed to update permissions. Please try again.');
@@ -827,26 +828,13 @@ const AdminSettings = () => {
     }
   };
 
-  const handleEditedRoleChange = (username, newRole) => {
+  const handleEditedRoleChange = async (username, newRole) => {
     setEditedUserRoles((prev) => ({ ...prev, [username]: newRole }));
     setEditedUserPermissions((prev) => ({
       ...prev,
       [username]: normalizeOptionalPermissions(newRole, prev[username] || [])
     }));
-    handleSaveRole(username, newRole);
-  };
-
-  const handleEditedPermissionToggle = (user, permission) => {
-    const roleKey = editedUserRoles[user.username] || user.role;
-    const current = normalizeOptionalPermissions(
-      roleKey,
-      editedUserPermissions[user.username] ?? user.permissions ?? []
-    );
-    const next = current.includes(permission)
-      ? current.filter((perm) => perm !== permission)
-      : [...current, permission];
-    setEditedUserPermissions((prev) => ({ ...prev, [user.username]: next }));
-    handleSavePermissions(user.username, roleKey, next);
+    await handleSaveRole(username, newRole);
   };
 
   const handleSelectedRoleChange = (username, newRole) => {
@@ -899,7 +887,7 @@ const AdminSettings = () => {
                 editedUserRoles={editedUserRoles}
                 editedUserPermissions={editedUserPermissions}
                 onRoleChange={handleEditedRoleChange}
-                onTogglePermission={handleEditedPermissionToggle}
+                onSavePermissions={handleSavePermissions}
                 onDeleteUser={handleDeleteUser}
               />
             }
