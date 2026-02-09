@@ -1,0 +1,153 @@
+{
+  "key": "redis-security",
+  "name": "Redis Security Checklist",
+  "service": "redis",
+  "source": "Redis Security Best Practices + CIS guidance",
+  "auto_ports": [
+    6379,
+    6380
+  ],
+  "sections": [
+    {
+      "name": "Exposure and Transport Security",
+      "items": [
+        {
+          "id": "REDIS-001",
+          "testName": "Network binding and exposure checks",
+          "description": "Bind Redis to trusted interfaces and block public exposure.",
+          "tools": "ss, firewall review"
+        },
+        {
+          "id": "REDIS-002",
+          "testName": "AUTH/ACL enforcement validation",
+          "description": "Ensure authentication is required and ACLs are in active use.",
+          "tools": "redis-cli ACL LIST"
+        },
+        {
+          "id": "REDIS-003",
+          "testName": "TLS enablement and mode checks",
+          "description": "Use TLS for client and replication traffic where required.",
+          "tools": "redis-cli --tls, config review"
+        },
+        {
+          "id": "REDIS-004",
+          "testName": "Protected mode behavior validation",
+          "description": "Verify protected mode is enabled when applicable.",
+          "tools": "redis config check"
+        },
+        {
+          "id": "REDIS-005",
+          "testName": "Dangerous command disablement",
+          "description": "Rename/disable high-risk commands per policy.",
+          "tools": "redis.conf review"
+        },
+        {
+          "id": "REDIS-006",
+          "testName": "Sentinel and cluster channel security",
+          "description": "Secure control plane channels for Sentinel/Cluster operations.",
+          "tools": "cluster config audit"
+        },
+        {
+          "id": "REDIS-007",
+          "testName": "Version and module exposure checks",
+          "description": "Minimize fingerprinting and review exposed module metadata.",
+          "tools": "INFO output audit"
+        }
+      ]
+    },
+    {
+      "name": "Access Control and Data Protection",
+      "items": [
+        {
+          "id": "REDIS-008",
+          "testName": "Least-privilege ACL profiles",
+          "description": "Define role-specific ACL users with minimum command/key access.",
+          "tools": "ACL SETUSER review"
+        },
+        {
+          "id": "REDIS-009",
+          "testName": "Keyspace namespace isolation",
+          "description": "Apply naming and access patterns to reduce cross-app data leakage.",
+          "tools": "keyspace policy review"
+        },
+        {
+          "id": "REDIS-010",
+          "testName": "Persistence file permission controls",
+          "description": "Protect RDB/AOF files and directories from unauthorized access.",
+          "tools": "filesystem audit"
+        },
+        {
+          "id": "REDIS-011",
+          "testName": "Secrets in cache content review",
+          "description": "Identify and minimize sensitive secrets stored in Redis.",
+          "tools": "data classification scan"
+        },
+        {
+          "id": "REDIS-012",
+          "testName": "Replication auth and trust controls",
+          "description": "Enforce authenticated replication links with secure channels.",
+          "tools": "masterauth + TLS review"
+        },
+        {
+          "id": "REDIS-013",
+          "testName": "Lua/script abuse surface review",
+          "description": "Restrict untrusted script execution and monitor script usage.",
+          "tools": "SCRIPT command audit"
+        },
+        {
+          "id": "REDIS-014",
+          "testName": "Container/orchestration hardening",
+          "description": "Validate secure runtime settings when Redis runs in containers.",
+          "tools": "platform security review"
+        }
+      ]
+    },
+    {
+      "name": "Monitoring, Availability and Recovery",
+      "items": [
+        {
+          "id": "REDIS-015",
+          "testName": "Auth failure and command anomaly logging",
+          "description": "Capture failed auth and high-risk command usage telemetry.",
+          "tools": "logs + SIEM"
+        },
+        {
+          "id": "REDIS-016",
+          "testName": "Memory and eviction abuse protections",
+          "description": "Monitor for memory exhaustion patterns and abusive key churn.",
+          "tools": "Redis monitoring"
+        },
+        {
+          "id": "REDIS-017",
+          "testName": "DoS and connection flood defenses",
+          "description": "Set sensible client/output buffer limits and connection controls.",
+          "tools": "redis.conf tuning"
+        },
+        {
+          "id": "REDIS-018",
+          "testName": "Configuration drift monitoring",
+          "description": "Track unauthorized config/module changes over time.",
+          "tools": "FIM + config mgmt"
+        },
+        {
+          "id": "REDIS-019",
+          "testName": "Patch/module update governance",
+          "description": "Maintain upgrade cadence for Redis core and modules.",
+          "tools": "vuln mgmt"
+        },
+        {
+          "id": "REDIS-020",
+          "testName": "Backup encryption and restore drills",
+          "description": "Protect snapshots and test restore reliability.",
+          "tools": "backup tooling"
+        },
+        {
+          "id": "REDIS-021",
+          "testName": "Incident response runbooks",
+          "description": "Exercise response for cache poisoning, credential theft, and data exposure.",
+          "tools": "IR tabletop"
+        }
+      ]
+    }
+  ]
+}

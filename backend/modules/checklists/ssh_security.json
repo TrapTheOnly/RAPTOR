@@ -1,0 +1,152 @@
+{
+  "key": "ssh-security",
+  "name": "SSH Security Checklist",
+  "service": "ssh",
+  "source": "CIS Linux Benchmark + NIST 800-53 + OWASP Secure Configuration",
+  "auto_ports": [
+    22
+  ],
+  "sections": [
+    {
+      "name": "Authentication and Account Controls",
+      "items": [
+        {
+          "id": "SSH-001",
+          "testName": "Password authentication policy",
+          "description": "Disable password authentication where key-based auth is mandated.",
+          "tools": "sshd_config review"
+        },
+        {
+          "id": "SSH-002",
+          "testName": "Root login hardening",
+          "description": "Prohibit or tightly constrain direct root SSH access.",
+          "tools": "sshd_config review"
+        },
+        {
+          "id": "SSH-003",
+          "testName": "Key strength and algorithm policy",
+          "description": "Enforce approved key types/sizes and retire weak algorithms.",
+          "tools": "ssh-audit, config review"
+        },
+        {
+          "id": "SSH-004",
+          "testName": "MFA or bastion enforcement checks",
+          "description": "Validate additional controls for privileged and remote access.",
+          "tools": "PAM/config testing"
+        },
+        {
+          "id": "SSH-005",
+          "testName": "User/group allowlist restrictions",
+          "description": "Limit SSH access to approved accounts and groups.",
+          "tools": "AllowUsers/AllowGroups review"
+        },
+        {
+          "id": "SSH-006",
+          "testName": "Authentication retry and lockout policy",
+          "description": "Control brute-force attempts with retries, lockouts, and delays.",
+          "tools": "sshd + fail2ban tests"
+        },
+        {
+          "id": "SSH-007",
+          "testName": "Dormant key/account lifecycle checks",
+          "description": "Remove stale keys and disable unused SSH-enabled accounts.",
+          "tools": "IAM audit"
+        }
+      ]
+    },
+    {
+      "name": "Session, Channel and Cryptography Hardening",
+      "items": [
+        {
+          "id": "SSH-008",
+          "testName": "Protocol/cipher/MAC hardening",
+          "description": "Disable legacy ciphers, MACs, and key exchange algorithms.",
+          "tools": "ssh-audit"
+        },
+        {
+          "id": "SSH-009",
+          "testName": "Idle timeout and session limits",
+          "description": "Enforce session idle timeout and max concurrent sessions.",
+          "tools": "sshd_config review"
+        },
+        {
+          "id": "SSH-010",
+          "testName": "Port forwarding restrictions",
+          "description": "Restrict local/remote/X11 forwarding per policy.",
+          "tools": "sshd_config + practical test"
+        },
+        {
+          "id": "SSH-011",
+          "testName": "Agent forwarding risk controls",
+          "description": "Disable agent forwarding where not explicitly required.",
+          "tools": "client/server policy review"
+        },
+        {
+          "id": "SSH-012",
+          "testName": "Command restrictions for service accounts",
+          "description": "Use forced commands or restricted shells for automation users.",
+          "tools": "authorized_keys options"
+        },
+        {
+          "id": "SSH-013",
+          "testName": "Banner and pre-auth information disclosure",
+          "description": "Avoid disclosing sensitive environment/system details pre-auth.",
+          "tools": "banner review"
+        },
+        {
+          "id": "SSH-014",
+          "testName": "Host key protection and rotation process",
+          "description": "Protect host keys and maintain a controlled rotation workflow.",
+          "tools": "key management review"
+        }
+      ]
+    },
+    {
+      "name": "Monitoring, Operations and Recovery",
+      "items": [
+        {
+          "id": "SSH-015",
+          "testName": "Comprehensive auth/event logging",
+          "description": "Capture successful and failed logins with source and account context.",
+          "tools": "journald/syslog + SIEM"
+        },
+        {
+          "id": "SSH-016",
+          "testName": "Anomaly detection for lateral movement",
+          "description": "Alert on unusual login paths, times, and account behavior.",
+          "tools": "SIEM analytics"
+        },
+        {
+          "id": "SSH-017",
+          "testName": "Configuration drift monitoring",
+          "description": "Detect unauthorized changes to SSH daemon configs and keys.",
+          "tools": "FIM tooling"
+        },
+        {
+          "id": "SSH-018",
+          "testName": "Patch and vulnerability management",
+          "description": "Keep SSH daemon/OS packages updated against known vulnerabilities.",
+          "tools": "vuln scanner"
+        },
+        {
+          "id": "SSH-019",
+          "testName": "Bastion host hardening baseline",
+          "description": "Apply hardened baseline controls on jump hosts.",
+          "tools": "CIS audit"
+        },
+        {
+          "id": "SSH-020",
+          "testName": "Incident response playbook readiness",
+          "description": "Validate SSH compromise containment and key rotation runbooks.",
+          "tools": "tabletop exercises"
+        },
+        {
+          "id": "SSH-021",
+          "testName": "Backup and restore validation",
+          "description": "Ensure secure, tested restoration for SSH configs and keys.",
+          "tools": "backup restore tests"
+        }
+      ]
+    }
+  ]
+}

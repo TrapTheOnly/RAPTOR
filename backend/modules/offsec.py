@@ -4,12 +4,18 @@ import re
 import ftplib
 import sqlite3
 import logging
+import json
 from io import BytesIO
 from functools import wraps
 import xml.etree.ElementTree as ET
 from modules.user import login_required_json
 from modules.admin import admin_required
 from modules.permissions import permission_required, user_has_permission
+from modules.checklist_catalog import (
+    build_checklist_revision,
+    get_canonical_checklist_by_key,
+    get_canonical_checklists,
+)
 from flask import jsonify, request, send_file, session, current_app
 
 logger = logging.getLogger(__name__)
@@ -22,6 +28,123 @@ FTP_USER = os.getenv("FTP_USER")
 FTP_PASS = os.getenv("FTP_PASS")
 IMAGE_DIR = "images"
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+def get_default_service_checklists():
+    """Returns a deep-copy-safe list of seeded service checklist templates."""
+    return get_canonical_checklists()
+
+
+def _safe_json_load(raw_value, default):
+    if not raw_value:
+        return default
+    if isinstance(raw_value, (list, dict)):
+        return raw_value
+    try:
+        return json.loads(raw_value)
+    except Exception:
+        return default
+
+
+def _normalize_ports(raw_ports):
+    values = raw_ports if isinstance(raw_ports, list) else []
+    normalized = []
+    for value in values:
+        try:
+            port = int(str(value).strip())
+        except (TypeError, ValueError):
+            continue
+        if 1 <= port <= 65535 and port not in normalized:
+            normalized.append(port)
+    return normalized
+
+
+def _normalize_template_sections(raw_sections):
+    if isinstance(raw_sections, dict):
+        raw_sections = [{"name": key, "items": value} for key, value in raw_sections.items()]
+    if not isinstance(raw_sections, list):
+        return None
+
+    sections = []
+    for section in raw_sections:
+        if not isinstance(section, dict):
+            continue
+        name = str(section.get("name", "")).strip()
+        if not name:
+            continue
+        raw_items = section.get("items")
+        if not isinstance(raw_items, list):
+            continue
+        items = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id", "")).strip()
+            test_name = str(item.get("testName", item.get("title", ""))).strip()
+            if not item_id or not test_name:
+                continue
+            items.append({
+                "id": item_id,
+                "testName": test_name,
+                "description": str(item.get("description", "")).strip(),
+                "tools": str(item.get("tools", "")).strip()
+            })
+        if items:
+            sections.append({"name": name, "items": items})
+    return sections if sections else None
+
+
+def _normalize_checklist_template_payload(payload):
+    key = str(payload.get("key", "")).strip().lower()
+    if not re.match(r"^[a-z0-9][a-z0-9_-]{1,62}$", key):
+        return None, "Template key must be 2-63 chars and use only lowercase letters, numbers, '_' or '-'."
+
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        return None, "Template name is required."
+
+    service = str(payload.get("service", "")).strip().lower()
+    if not service:
+        return None, "Service name is required."
+
+    source_value = payload.get("source", "")
+    source = "" if source_value is None else str(source_value).strip()
+    raw_ports = payload.get("auto_ports", [])
+    auto_ports = _normalize_ports(raw_ports if isinstance(raw_ports, list) else [])
+    sections = _normalize_template_sections(payload.get("sections"))
+    if not sections:
+        return None, "At least one section with valid checklist items is required."
+
+    enabled = payload.get("enabled", True)
+    enabled_flag = 1 if bool(enabled) else 0
+
+    return {
+        "key": key,
+        "name": name,
+        "service": service,
+        "source": source,
+        "auto_ports": json.dumps(auto_ports),
+        "sections": json.dumps(sections),
+        "enabled": enabled_flag
+    }, None
+
+
+def _serialize_checklist_template(row):
+    return {
+        "id": row["id"],
+        "key": row["key"],
+        "name": row["name"],
+        "service": row["service"],
+        "source": row["source"] or "",
+        "auto_ports": _normalize_ports(_safe_json_load(row["auto_ports"], [])),
+        "sections": _normalize_template_sections(_safe_json_load(row["sections"], [])) or [],
+        "enabled": bool(row["enabled"]),
+        "is_system": bool(row["is_system"]) if "is_system" in row.keys() else False,
+        "is_customized": bool(row["is_customized"]) if "is_customized" in row.keys() else False,
+        "system_revision": (row["system_revision"] if "system_revision" in row.keys() else None),
+        "created_by": row["created_by"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"]
+    }
 
 def _guess_image_mimetype(extension):
     return {
@@ -112,6 +235,7 @@ def get_pentest_data_internal(record_id=None):
         'open_ports': "",
         'notes': "",
         'owasp_checklist': "",
+        'checklist_states': "",
         'vulnerabilities': ""
     }
     try:
@@ -221,6 +345,208 @@ def get_pentest_row(record_id):
         logger.error(f"Error fetching pentest data for ID {record_id}: {e}")
         return None
 
+
+@permission_required('view_pentest_page')
+def get_checklist_templates():
+    """GET /checklist-templates: List checklist templates."""
+    try:
+        include_disabled_requested = str(request.args.get('include_disabled', '')).lower() in {"1", "true", "yes"}
+        include_disabled = include_disabled_requested and session.get("user_type") == "admin"
+
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            query = """
+                SELECT id, key, name, service, source, auto_ports, sections, enabled,
+                       is_system, is_customized, system_revision,
+                       created_by, created_at, updated_at
+                FROM service_checklists
+            """
+            if not include_disabled:
+                query += " WHERE enabled = 1"
+            query += " ORDER BY name COLLATE NOCASE ASC"
+            c.execute(query)
+            rows = c.fetchall()
+        templates = [_serialize_checklist_template(row) for row in rows]
+        return jsonify({"templates": templates}), 200
+    except Exception as e:
+        logger.error(f"Error fetching checklist templates: {e}")
+        return jsonify({"error": "Failed to fetch checklist templates."}), 500
+
+
+@admin_required
+def create_checklist_template():
+    """POST /checklist-templates: Create a checklist template."""
+    payload = request.get_json(silent=True) or {}
+    normalized, validation_error = _normalize_checklist_template_payload(payload)
+    if validation_error:
+        return jsonify({"error": validation_error}), 400
+
+    created_by = session.get("username", "admin")
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO service_checklists (
+                    key, name, service, source, auto_ports, sections, enabled,
+                    is_system, is_customized, system_revision,
+                    created_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, datetime('now', '+4 hours'), datetime('now', '+4 hours'))
+            """, (
+                normalized["key"],
+                normalized["name"],
+                normalized["service"],
+                normalized["source"],
+                normalized["auto_ports"],
+                normalized["sections"],
+                normalized["enabled"],
+                created_by
+            ))
+            template_id = c.lastrowid
+            conn.commit()
+        return jsonify({"message": "Checklist template created.", "id": template_id}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Template key already exists."}), 400
+    except Exception as e:
+        logger.error(f"Error creating checklist template: {e}")
+        return jsonify({"error": "Failed to create checklist template."}), 500
+
+
+@admin_required
+def update_checklist_template(template_id):
+    """PUT /checklist-templates/<id>: Update a checklist template."""
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, key, name, service, source, auto_ports, sections, enabled,
+                       is_system, is_customized, system_revision
+                FROM service_checklists
+                WHERE id = ?
+            """, (template_id,))
+            existing = c.fetchone()
+            if not existing:
+                return jsonify({"error": "Template not found."}), 404
+
+            if payload.get("key") and bool(existing["is_system"]):
+                requested_key = str(payload.get("key", "")).strip().lower()
+                if requested_key and requested_key != existing["key"]:
+                    return jsonify({"error": "System template key cannot be changed."}), 400
+
+            merged_payload = {
+                "key": payload.get("key", existing["key"]),
+                "name": payload.get("name", existing["name"]),
+                "service": payload.get("service", existing["service"]),
+                "source": payload.get("source", existing["source"]),
+                "auto_ports": payload.get("auto_ports", _safe_json_load(existing["auto_ports"], [])),
+                "sections": payload.get("sections", _safe_json_load(existing["sections"], [])),
+                "enabled": payload.get("enabled", bool(existing["enabled"]))
+            }
+
+            normalized, validation_error = _normalize_checklist_template_payload(merged_payload)
+            if validation_error:
+                return jsonify({"error": validation_error}), 400
+
+            mark_customized = 1 if bool(existing["is_system"]) else int(bool(existing["is_customized"]))
+            c.execute("""
+                UPDATE service_checklists
+                SET key = ?, name = ?, service = ?, source = ?, auto_ports = ?, sections = ?, enabled = ?,
+                    is_customized = ?,
+                    updated_at = datetime('now', '+4 hours')
+                WHERE id = ?
+            """, (
+                normalized["key"],
+                normalized["name"],
+                normalized["service"],
+                normalized["source"],
+                normalized["auto_ports"],
+                normalized["sections"],
+                normalized["enabled"],
+                mark_customized,
+                template_id
+            ))
+            conn.commit()
+        return jsonify({"message": "Checklist template updated."}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Template key already exists."}), 400
+    except Exception as e:
+        logger.error(f"Error updating checklist template {template_id}: {e}")
+        return jsonify({"error": "Failed to update checklist template."}), 500
+
+
+@admin_required
+def delete_checklist_template(template_id):
+    """DELETE /checklist-templates/<id>: Delete a checklist template."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT is_system FROM service_checklists WHERE id = ?", (template_id,))
+            existing = c.fetchone()
+            if not existing:
+                return jsonify({"error": "Template not found."}), 404
+            if bool(existing["is_system"]):
+                return jsonify({"error": "System templates cannot be deleted. Disable or reset them instead."}), 400
+
+            c.execute("DELETE FROM service_checklists WHERE id = ?", (template_id,))
+            conn.commit()
+        return jsonify({"message": "Checklist template deleted."}), 200
+    except Exception as e:
+        logger.error(f"Error deleting checklist template {template_id}: {e}")
+        return jsonify({"error": "Failed to delete checklist template."}), 500
+
+
+@admin_required
+def reset_checklist_template_to_canonical(template_id):
+    """POST /checklist-templates/<id>/reset: Reset system template to canonical definition."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, key, is_system
+                FROM service_checklists
+                WHERE id = ?
+            """, (template_id,))
+            existing = c.fetchone()
+            if not existing:
+                return jsonify({"error": "Template not found."}), 404
+            if not bool(existing["is_system"]):
+                return jsonify({"error": "Only system templates can be reset to canonical."}), 400
+
+            canonical = get_canonical_checklist_by_key(existing["key"])
+            if not canonical:
+                return jsonify({"error": "Canonical template definition not found for this key."}), 404
+
+            normalized, validation_error = _normalize_checklist_template_payload(canonical)
+            if validation_error:
+                return jsonify({"error": f"Canonical template is invalid: {validation_error}"}), 500
+
+            system_revision = build_checklist_revision(canonical)
+            c.execute("""
+                UPDATE service_checklists
+                SET name = ?, service = ?, source = ?, auto_ports = ?, sections = ?, enabled = 1,
+                    is_customized = 0, system_revision = ?,
+                    updated_at = datetime('now', '+4 hours')
+                WHERE id = ?
+            """, (
+                normalized["name"],
+                normalized["service"],
+                normalized["source"],
+                normalized["auto_ports"],
+                normalized["sections"],
+                system_revision,
+                template_id
+            ))
+            conn.commit()
+        return jsonify({"message": "Checklist template reset to canonical successfully."}), 200
+    except Exception as e:
+        logger.error(f"Error resetting checklist template {template_id} to canonical: {e}")
+        return jsonify({"error": "Failed to reset checklist template."}), 500
+
 @permission_required('modify_pentests')
 def create_or_update_pentest_data(record_id):
     """POST /pentest/<record_id>: Create or update pentest data."""
@@ -246,7 +572,7 @@ def create_or_update_pentest_data(record_id):
         can_modify_others = user_has_permission(username, role, 'modify_others_pentests_admin')
 
         data = {}
-        for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status', 'open_ports', 'notes', 'owasp_checklist', 'vulnerabilities', 'description']:
+        for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status', 'open_ports', 'notes', 'owasp_checklist', 'checklist_states', 'vulnerabilities', 'description']:
             if (value := request.form.get(key)) is not None:
                 data[key] = value
 
@@ -254,10 +580,15 @@ def create_or_update_pentest_data(record_id):
             return jsonify({"error": "Unauthorized to change tester assignment."}), 403
 
         if not can_modify_others:
-            if existing_data and existing_data.get('tested_by') not in [username, 'Unassigned', None, '']:
+            existing_assignee = (existing_data.get('tested_by') or '').strip()
+            requested_assignee = (data.get('tested_by') or existing_assignee).strip()
+            if existing_assignee and existing_assignee != username:
                 return jsonify({"error": "You are not allowed to change the data of another user's pentest."}), 403
-            
-        if data.get('status') not in ['Not Started', 'In Progress', 'Completed']:
+            if not existing_assignee and requested_assignee != username:
+                return jsonify({"error": "Unassigned records must be assigned to your user before editing."}), 403
+
+        normalized_status = data.get('status', existing_data.get('status', 'Not Started'))
+        if normalized_status not in ['Not Started', 'In Progress', 'Completed']:
             return jsonify({"error": "Invalid status. Please select from 'Not Started', 'In Progress', 'Completed."}), 400
 
         relative_path = existing_data.get('report_file')
@@ -292,10 +623,11 @@ def create_or_update_pentest_data(record_id):
                 else int(data.get('vulnerability_fixed', existing_data.get('vulnerability_fixed', 0)))
             ),
             'service_desk_link': data.get('service_desk_link', existing_data.get('service_desk_link', '')),
-            'status': data.get('status', existing_data.get('status', 'Not Started')),
+            'status': normalized_status,
             'open_ports': data.get('open_ports', existing_data.get('open_ports', "")),
             'notes': data.get('notes', existing_data.get('notes', "")),
             'owasp_checklist': data.get('owasp_checklist', existing_data.get('owasp_checklist', "")),
+            'checklist_states': data.get('checklist_states', existing_data.get('checklist_states', "")),
             'vulnerabilities': data.get('vulnerabilities', existing_data.get('vulnerabilities', ""))
         }
 
@@ -310,10 +642,10 @@ def create_or_update_pentest_data(record_id):
                 c.execute("""
                     INSERT INTO pentest_data (record_id, dns_name, ip_address, source, report_file, vulnerable,
                                              tested_by, test_start_date, test_end_date, vulnerability_fixed, service_desk_link, status,
-                                             open_ports, notes, owasp_checklist, vulnerabilities)
+                                             open_ports, notes, owasp_checklist, checklist_states, vulnerabilities)
                     VALUES (:record_id, :dns_name, :ip_address, :source, :report_file, :vulnerable,
                                              :tested_by, :test_start_date, :test_end_date, :vulnerability_fixed, :service_desk_link, :status,
-                                             :open_ports, :notes, :owasp_checklist, :vulnerabilities)
+                                             :open_ports, :notes, :owasp_checklist, :checklist_states, :vulnerabilities)
                 """, pentest_data)
 
             # Sync description back to records table if provided
