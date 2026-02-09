@@ -370,10 +370,6 @@ const ModernLogin = ({
                 </Alert>
               )}
 
-              <Alert severity="info" sx={{ mb: 3 }}>
-                Admin password reset is required before accessing the platform.
-              </Alert>
-
               <TextField
                 fullWidth
                 label="Username"
@@ -583,7 +579,6 @@ const ModernLogin = ({
           {/* Footer */}
           <Box mt={4}>
             <Typography variant="caption" color="text.secondary">
-              {resetMode ? 'Password reset required for admin access' : ''}
             </Typography>
           </Box>
         </Paper>
