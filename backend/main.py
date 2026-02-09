@@ -14,6 +14,7 @@ import shutil
 import sqlite3
 import datetime
 import threading
+import hashlib
 from flask_cors import CORS
 from datetime import timedelta
 from modules.user import *
@@ -337,15 +338,135 @@ def init_db(db_path=DB_PATH):
             open_ports TEXT,
             notes TEXT,
             owasp_checklist TEXT,
+            checklist_states TEXT,
             vulnerabilities TEXT,
             FOREIGN KEY (record_id) REFERENCES records(id)
         )
     """)
-    # Ensure vulnerabilities column exists for legacy DBs
+    # Ensure pentest columns exist for legacy DBs
     c.execute("PRAGMA table_info(pentest_data)")
     pentest_columns = {row[1] for row in c.fetchall()}
     if "vulnerabilities" not in pentest_columns:
         c.execute("ALTER TABLE pentest_data ADD COLUMN vulnerabilities TEXT")
+    if "checklist_states" not in pentest_columns:
+        c.execute("ALTER TABLE pentest_data ADD COLUMN checklist_states TEXT")
+
+    # Service checklist templates table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS service_checklists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            service TEXT NOT NULL,
+            source TEXT,
+            auto_ports TEXT NOT NULL DEFAULT '[]',
+            sections TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            is_system INTEGER NOT NULL DEFAULT 1,
+            is_customized INTEGER NOT NULL DEFAULT 0,
+            system_revision TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    c.execute("PRAGMA table_info(service_checklists)")
+    checklist_columns = {row[1] for row in c.fetchall()}
+    if "is_system" not in checklist_columns:
+        c.execute("ALTER TABLE service_checklists ADD COLUMN is_system INTEGER NOT NULL DEFAULT 1")
+    if "is_customized" not in checklist_columns:
+        c.execute("ALTER TABLE service_checklists ADD COLUMN is_customized INTEGER NOT NULL DEFAULT 0")
+    if "system_revision" not in checklist_columns:
+        c.execute("ALTER TABLE service_checklists ADD COLUMN system_revision TEXT")
+
+    # Metadata table for one-time startup actions
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS app_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+
+    # Seed service checklist templates only once on first launch.
+    # Afterwards the application uses DB data only.
+    checklist_seed_key = "service_checklists_seeded_v2"
+    c.execute("SELECT value FROM app_meta WHERE key = ?", (checklist_seed_key,))
+    checklist_seeded = c.fetchone() is not None
+    if not checklist_seeded:
+        canonical_templates = get_default_service_checklists()
+        canonical_by_key = {template["key"]: template for template in canonical_templates}
+
+        c.execute("SELECT id, key, is_system, is_customized, system_revision FROM service_checklists")
+        existing_rows = c.fetchall()
+        existing_by_key = {row[1]: row for row in existing_rows}
+
+        for key, template in canonical_by_key.items():
+            system_revision = hashlib.sha256(
+                json.dumps(template, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            auto_ports = json.dumps(template.get("auto_ports", []))
+            sections = json.dumps(template.get("sections", []))
+            existing = existing_by_key.get(key)
+            if not existing:
+                c.execute("""
+                    INSERT INTO service_checklists (
+                        key, name, service, source, auto_ports, sections, enabled,
+                        is_system, is_customized, system_revision,
+                        created_by, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, ?, 'system', datetime('now', '+4 hours'), datetime('now', '+4 hours'))
+                """, (
+                    template["key"],
+                    template["name"],
+                    template["service"],
+                    template.get("source", ""),
+                    auto_ports,
+                    sections,
+                    system_revision
+                ))
+                continue
+
+            existing_id, _, existing_is_system, existing_is_customized, existing_revision = existing
+            if int(existing_is_customized or 0) == 0:
+                c.execute("""
+                    UPDATE service_checklists
+                    SET name = ?, service = ?, source = ?, auto_ports = ?, sections = ?, enabled = 1,
+                        is_system = 1, is_customized = 0, system_revision = ?,
+                        updated_at = datetime('now', '+4 hours')
+                    WHERE id = ?
+                """, (
+                    template["name"],
+                    template["service"],
+                    template.get("source", ""),
+                    auto_ports,
+                    sections,
+                    system_revision,
+                    existing_id
+                ))
+            else:
+                c.execute("""
+                    UPDATE service_checklists
+                    SET is_system = 1,
+                        system_revision = ?,
+                        updated_at = datetime('now', '+4 hours')
+                    WHERE id = ?
+                """, (
+                    system_revision,
+                    existing_id
+                ))
+
+        for existing_id, existing_key, existing_is_system, existing_is_customized, _ in existing_rows:
+            if int(existing_is_system or 0) == 1 and existing_key not in canonical_by_key:
+                if int(existing_is_customized or 0) == 0:
+                    c.execute("""
+                        UPDATE service_checklists
+                        SET enabled = 0, updated_at = datetime('now', '+4 hours')
+                        WHERE id = ?
+                    """, (existing_id,))
+
+        c.execute(
+            "INSERT INTO app_meta (key, value) VALUES (?, datetime('now', '+4 hours'))",
+            (checklist_seed_key,)
+        )
 
     # Vulnerability categories table
     c.execute("""
@@ -971,6 +1092,11 @@ app.add_url_rule('/pentest/<int:record_id>/report', methods=['DELETE'], view_fun
 app.add_url_rule('/pentest_users', methods=['GET'], view_func=get_pentest_users)
 app.add_url_rule('/pentest/<int:record_id>/images', methods=['POST'], view_func=upload_pentest_image)
 app.add_url_rule('/pentest/images/<string:filename>', methods=['GET'], view_func=get_pentest_image)
+app.add_url_rule('/checklist-templates', methods=['GET'], view_func=get_checklist_templates)
+app.add_url_rule('/checklist-templates', methods=['POST'], view_func=create_checklist_template)
+app.add_url_rule('/checklist-templates/<int:template_id>', methods=['PUT'], view_func=update_checklist_template)
+app.add_url_rule('/checklist-templates/<int:template_id>', methods=['DELETE'], view_func=delete_checklist_template)
+app.add_url_rule('/checklist-templates/<int:template_id>/reset', methods=['POST'], view_func=reset_checklist_template_to_canonical)
 
 # ---------------------------------------------------------
 #! Admin API Endpoints

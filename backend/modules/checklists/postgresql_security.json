@@ -1,0 +1,152 @@
+{
+  "key": "postgresql-security",
+  "name": "PostgreSQL Security Checklist",
+  "service": "postgresql",
+  "source": "CIS PostgreSQL Benchmark + OWASP Data Security",
+  "auto_ports": [
+    5432
+  ],
+  "sections": [
+    {
+      "name": "Connectivity and Encryption Controls",
+      "items": [
+        {
+          "id": "PGSQL-001",
+          "testName": "Listen address and port restriction",
+          "description": "Limit PostgreSQL exposure to approved interfaces and peers.",
+          "tools": "postgresql.conf review"
+        },
+        {
+          "id": "PGSQL-002",
+          "testName": "SSL requirement and mode validation",
+          "description": "Require SSL and validate client certificate handling where required.",
+          "tools": "psql sslmode tests"
+        },
+        {
+          "id": "PGSQL-003",
+          "testName": "pg_hba.conf hardening",
+          "description": "Enforce strict host-based access rules and avoid broad trust entries.",
+          "tools": "pg_hba.conf audit"
+        },
+        {
+          "id": "PGSQL-004",
+          "testName": "Weak auth method elimination",
+          "description": "Retire insecure authentication methods and enforce stronger options.",
+          "tools": "auth config review"
+        },
+        {
+          "id": "PGSQL-005",
+          "testName": "Certificate trust and lifecycle checks",
+          "description": "Validate cert chain, expiration, and rotation process.",
+          "tools": "openssl + PG config"
+        },
+        {
+          "id": "PGSQL-006",
+          "testName": "Replication channel protection",
+          "description": "Secure streaming replication with authenticated encrypted channels.",
+          "tools": "replication config"
+        },
+        {
+          "id": "PGSQL-007",
+          "testName": "Protocol fingerprint exposure minimization",
+          "description": "Reduce unnecessary service metadata disclosure.",
+          "tools": "network scan + config review"
+        }
+      ]
+    },
+    {
+      "name": "Role, Privilege and Data Security",
+      "items": [
+        {
+          "id": "PGSQL-008",
+          "testName": "Role hierarchy and least privilege",
+          "description": "Ensure roles are scoped to minimum required privileges.",
+          "tools": "\\du, privilege audit"
+        },
+        {
+          "id": "PGSQL-009",
+          "testName": "Superuser account minimization",
+          "description": "Constrain superuser usage and monitor privileged operations.",
+          "tools": "role audit"
+        },
+        {
+          "id": "PGSQL-010",
+          "testName": "Default/public schema privilege review",
+          "description": "Remove broad PUBLIC privileges on schemas and objects.",
+          "tools": "schema ACL review"
+        },
+        {
+          "id": "PGSQL-011",
+          "testName": "Function/procedure execution controls",
+          "description": "Restrict execution on sensitive functions to approved roles.",
+          "tools": "catalog queries"
+        },
+        {
+          "id": "PGSQL-012",
+          "testName": "Row-level and column-level security checks",
+          "description": "Validate policy controls for multi-tenant or sensitive datasets.",
+          "tools": "policy tests"
+        },
+        {
+          "id": "PGSQL-013",
+          "testName": "Sensitive data encryption strategy",
+          "description": "Review at-rest encryption and key management integration.",
+          "tools": "disk/KMS review"
+        },
+        {
+          "id": "PGSQL-014",
+          "testName": "Extension security posture",
+          "description": "Review installed extensions for risk and patch levels.",
+          "tools": "pg_extension audit"
+        }
+      ]
+    },
+    {
+      "name": "Audit, Maintenance and Recovery",
+      "items": [
+        {
+          "id": "PGSQL-015",
+          "testName": "Statement and auth logging coverage",
+          "description": "Capture sufficient telemetry for authentication and risky SQL actions.",
+          "tools": "postgres logs"
+        },
+        {
+          "id": "PGSQL-016",
+          "testName": "Anomaly detection for destructive queries",
+          "description": "Alert on bulk deletes/updates and suspicious data exfiltration.",
+          "tools": "SIEM + DB monitor"
+        },
+        {
+          "id": "PGSQL-017",
+          "testName": "Configuration drift monitoring",
+          "description": "Track unauthorized changes to critical DB settings and ACLs.",
+          "tools": "baseline tooling"
+        },
+        {
+          "id": "PGSQL-018",
+          "testName": "Patch and minor/major upgrade hygiene",
+          "description": "Maintain secure upgrade cadence and vulnerability response.",
+          "tools": "ops runbook"
+        },
+        {
+          "id": "PGSQL-019",
+          "testName": "Backup encryption and access review",
+          "description": "Protect logical/physical backups and backup credentials.",
+          "tools": "backup audit"
+        },
+        {
+          "id": "PGSQL-020",
+          "testName": "Restore and PITR validation",
+          "description": "Test restore and point-in-time recovery procedures regularly.",
+          "tools": "DR exercise"
+        },
+        {
+          "id": "PGSQL-021",
+          "testName": "Incident containment procedures",
+          "description": "Exercise response for credential compromise and data tampering.",
+          "tools": "IR tabletop"
+        }
+      ]
+    }
+  ]
+}

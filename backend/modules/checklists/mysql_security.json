@@ -1,0 +1,152 @@
+{
+  "key": "mysql-security",
+  "name": "MySQL Security Checklist",
+  "service": "mysql",
+  "source": "OWASP Database Security + CIS MySQL Benchmark",
+  "auto_ports": [
+    3306
+  ],
+  "sections": [
+    {
+      "name": "Exposure and Transport Security",
+      "items": [
+        {
+          "id": "MYSQL-001",
+          "testName": "Network exposure minimization",
+          "description": "Restrict MySQL listeners to required interfaces and trusted networks.",
+          "tools": "ss, firewall review"
+        },
+        {
+          "id": "MYSQL-002",
+          "testName": "TLS enforcement for client connections",
+          "description": "Require encrypted client-server sessions and verify cert usage.",
+          "tools": "mysql client, config review"
+        },
+        {
+          "id": "MYSQL-003",
+          "testName": "Weak TLS settings elimination",
+          "description": "Disable insecure protocol versions and weak cipher suites.",
+          "tools": "ssl scan tools"
+        },
+        {
+          "id": "MYSQL-004",
+          "testName": "Authentication plugin security review",
+          "description": "Use approved auth plugins and retire weak mechanisms.",
+          "tools": "mysql.user audit"
+        },
+        {
+          "id": "MYSQL-005",
+          "testName": "Default account and anonymous user removal",
+          "description": "Remove default or anonymous accounts from production systems.",
+          "tools": "SQL audit scripts"
+        },
+        {
+          "id": "MYSQL-006",
+          "testName": "Version and banner disclosure checks",
+          "description": "Minimize externally visible server fingerprinting details.",
+          "tools": "nmap, handshake review"
+        },
+        {
+          "id": "MYSQL-007",
+          "testName": "Replication transport security",
+          "description": "Protect replication channels with encryption and authenticated peers.",
+          "tools": "replication config audit"
+        }
+      ]
+    },
+    {
+      "name": "Identity, Privilege and Data Controls",
+      "items": [
+        {
+          "id": "MYSQL-008",
+          "testName": "Least-privilege account design",
+          "description": "Grant minimum required privileges per application/service account.",
+          "tools": "SHOW GRANTS review"
+        },
+        {
+          "id": "MYSQL-009",
+          "testName": "Separation of admin and app roles",
+          "description": "Avoid reusing privileged accounts for application workloads.",
+          "tools": "account mapping review"
+        },
+        {
+          "id": "MYSQL-010",
+          "testName": "Password policy and rotation compliance",
+          "description": "Enforce strong passwords and rotation for local DB accounts.",
+          "tools": "policy + mysql validate_password"
+        },
+        {
+          "id": "MYSQL-011",
+          "testName": "Schema/object-level privilege review",
+          "description": "Audit object-level grants to prevent over-privileged access.",
+          "tools": "information_schema queries"
+        },
+        {
+          "id": "MYSQL-012",
+          "testName": "Sensitive data encryption posture",
+          "description": "Assess at-rest encryption and key management for critical data stores.",
+          "tools": "InnoDB + KMS review"
+        },
+        {
+          "id": "MYSQL-013",
+          "testName": "Audit of dangerous global privileges",
+          "description": "Constrain FILE, SUPER, PROCESS, and related high-risk privileges.",
+          "tools": "grant audit"
+        },
+        {
+          "id": "MYSQL-014",
+          "testName": "SQL injection blast-radius controls",
+          "description": "Use restricted DB accounts and safe query patterns in integrated apps.",
+          "tools": "code + grants review"
+        }
+      ]
+    },
+    {
+      "name": "Operations, Monitoring and Recovery",
+      "items": [
+        {
+          "id": "MYSQL-015",
+          "testName": "Audit log enablement and retention",
+          "description": "Capture authentication, privilege, and schema change events.",
+          "tools": "MySQL audit logs"
+        },
+        {
+          "id": "MYSQL-016",
+          "testName": "Anomalous query activity detection",
+          "description": "Detect mass export, destructive statements, and unusual query behavior.",
+          "tools": "DB monitoring tools"
+        },
+        {
+          "id": "MYSQL-017",
+          "testName": "Configuration drift and baseline compliance",
+          "description": "Detect unauthorized changes to critical DB parameters.",
+          "tools": "config management"
+        },
+        {
+          "id": "MYSQL-018",
+          "testName": "Patch and CVE remediation cadence",
+          "description": "Maintain prompt patching for MySQL engine and plugins.",
+          "tools": "vuln management"
+        },
+        {
+          "id": "MYSQL-019",
+          "testName": "Backup encryption and access controls",
+          "description": "Protect backups with encryption and strict access governance.",
+          "tools": "backup tooling audit"
+        },
+        {
+          "id": "MYSQL-020",
+          "testName": "Restore testing and integrity verification",
+          "description": "Perform regular restore tests and consistency validation.",
+          "tools": "DR testing"
+        },
+        {
+          "id": "MYSQL-021",
+          "testName": "Incident response runbook readiness",
+          "description": "Document and test DB compromise containment procedures.",
+          "tools": "IR tabletop"
+        }
+      ]
+    }
+  ]
+}

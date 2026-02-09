@@ -1,0 +1,153 @@
+{
+  "key": "dns-security",
+  "name": "DNS Security Checklist",
+  "service": "dns",
+  "source": "NIST SP 800-81r2 + CIS Controls + OWASP Testing",
+  "auto_ports": [
+    53,
+    5353
+  ],
+  "sections": [
+    {
+      "name": "Authoritative and Resolver Exposure",
+      "items": [
+        {
+          "id": "DNS-001",
+          "testName": "Open recursion restriction checks",
+          "description": "Ensure recursion is only available to approved internal clients.",
+          "tools": "dig, dnsrecon"
+        },
+        {
+          "id": "DNS-002",
+          "testName": "Zone transfer authorization controls",
+          "description": "Validate AXFR/IXFR allowed only for approved secondary servers.",
+          "tools": "dig axfr"
+        },
+        {
+          "id": "DNS-003",
+          "testName": "Version disclosure minimization",
+          "description": "Prevent leakage of resolver/authoritative software version details.",
+          "tools": "dig chaos txt version.bind"
+        },
+        {
+          "id": "DNS-004",
+          "testName": "ANY query and amplification posture",
+          "description": "Assess susceptibility to reflection/amplification abuse patterns.",
+          "tools": "dnsperf, query flood tests"
+        },
+        {
+          "id": "DNS-005",
+          "testName": "Split-horizon data separation",
+          "description": "Confirm internal records are not exposed via external views.",
+          "tools": "dig from segmented vantage points"
+        },
+        {
+          "id": "DNS-006",
+          "testName": "Delegation hygiene validation",
+          "description": "Review NS delegations and glue records for correctness and least exposure.",
+          "tools": "dnsviz, dig"
+        },
+        {
+          "id": "DNS-007",
+          "testName": "Public zone inventory and risk review",
+          "description": "Validate exposed zones align with approved asset inventory.",
+          "tools": "zone inventory tooling"
+        }
+      ]
+    },
+    {
+      "name": "Integrity and Protocol Security",
+      "items": [
+        {
+          "id": "DNS-008",
+          "testName": "DNSSEC signing validation",
+          "description": "Verify zones are correctly signed and signatures remain valid through lifecycle.",
+          "tools": "dig +dnssec"
+        },
+        {
+          "id": "DNS-009",
+          "testName": "Resolver DNSSEC enforcement checks",
+          "description": "Confirm resolvers validate signatures and handle failures securely.",
+          "tools": "resolver tests"
+        },
+        {
+          "id": "DNS-010",
+          "testName": "Cache poisoning resistance",
+          "description": "Review source-port randomization, TXID entropy, and hardening controls.",
+          "tools": "resolver config review"
+        },
+        {
+          "id": "DNS-011",
+          "testName": "EDNS and truncation behavior",
+          "description": "Validate safe handling for oversized responses and fallback behavior.",
+          "tools": "dig +bufsize tests"
+        },
+        {
+          "id": "DNS-012",
+          "testName": "CNAME chain and dangling takeover checks",
+          "description": "Identify stale aliases and takeover-prone DNS records.",
+          "tools": "subdomain takeover scanners"
+        },
+        {
+          "id": "DNS-013",
+          "testName": "Wildcard and catch-all risk checks",
+          "description": "Review wildcard records for unintended exposure and misuse.",
+          "tools": "dns enumeration"
+        },
+        {
+          "id": "DNS-014",
+          "testName": "Dynamic update authorization controls",
+          "description": "Ensure DDNS updates require strict authentication and ACLs.",
+          "tools": "nsupdate tests"
+        }
+      ]
+    },
+    {
+      "name": "Operations, Monitoring & Governance",
+      "items": [
+        {
+          "id": "DNS-015",
+          "testName": "Change management and approval flow",
+          "description": "Ensure DNS changes are reviewed, approved, and traceable.",
+          "tools": "change records"
+        },
+        {
+          "id": "DNS-016",
+          "testName": "Query logging and retention policy",
+          "description": "Capture sufficient DNS telemetry for incident response use-cases.",
+          "tools": "SIEM, DNS logs"
+        },
+        {
+          "id": "DNS-017",
+          "testName": "DDoS mitigation readiness",
+          "description": "Validate upstream and local mitigations for DNS flood scenarios.",
+          "tools": "runbook + tabletop"
+        },
+        {
+          "id": "DNS-018",
+          "testName": "Secondary server hardening",
+          "description": "Review transfer keys, ACLs, and patching posture across secondaries.",
+          "tools": "config audit"
+        },
+        {
+          "id": "DNS-019",
+          "testName": "Registrar account security posture",
+          "description": "Verify MFA, role-based access, and alerting at registrar level.",
+          "tools": "account review"
+        },
+        {
+          "id": "DNS-020",
+          "testName": "Disaster recovery and failover tests",
+          "description": "Exercise DNS failover and restoration procedures regularly.",
+          "tools": "DR drill"
+        },
+        {
+          "id": "DNS-021",
+          "testName": "Asset decommission DNS cleanup",
+          "description": "Confirm stale records are retired during asset decommissioning.",
+          "tools": "CMDB reconciliation"
+        }
+      ]
+    }
+  ]
+}
