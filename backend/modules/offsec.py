@@ -28,6 +28,11 @@ FTP_USER = os.getenv("FTP_USER")
 FTP_PASS = os.getenv("FTP_PASS")
 IMAGE_DIR = "images"
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+IMAGE_FILENAME_PATTERN = r"[a-f0-9]{32}\.(?:png|jpg|jpeg|gif|webp)"
+IMAGE_REFERENCE_PATTERN = re.compile(
+    rf"(?:https?://[^)\s]+)?/pentest/images/({IMAGE_FILENAME_PATTERN})",
+    re.IGNORECASE
+)
 
 def get_default_service_checklists():
     """Returns a deep-copy-safe list of seeded service checklist templates."""
@@ -194,6 +199,71 @@ def fetch_image(filename):
     ftp.quit()
     file_data.seek(0)
     return file_data
+
+def delete_image(filename):
+    """Deletes an uploaded pentest image from FTP storage."""
+    ftp = ftp_connect()
+    ftp.delete(f"{IMAGE_DIR}/{filename}")
+    ftp.quit()
+
+def _extract_image_filenames(raw_value):
+    text = str(raw_value or "")
+    return {match.lower() for match in IMAGE_REFERENCE_PATTERN.findall(text)}
+
+def _extract_image_filenames_from_vulnerabilities(raw_value):
+    filenames = set()
+    parsed = []
+
+    if isinstance(raw_value, list):
+        parsed = raw_value
+    elif isinstance(raw_value, str) and raw_value.strip():
+        try:
+            parsed = json.loads(raw_value)
+        except Exception:
+            parsed = []
+
+    if not isinstance(parsed, list):
+        return filenames
+
+    for vulnerability in parsed:
+        if not isinstance(vulnerability, dict):
+            continue
+        filenames.update(_extract_image_filenames(vulnerability.get("description", "")))
+    return filenames
+
+def _collect_referenced_image_filenames(description, notes, vulnerabilities):
+    filenames = set()
+    filenames.update(_extract_image_filenames(description))
+    filenames.update(_extract_image_filenames(notes))
+    filenames.update(_extract_image_filenames_from_vulnerabilities(vulnerabilities))
+    return filenames
+
+def _is_image_referenced_anywhere(filename):
+    like_value = f"%{filename}%"
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM records WHERE description LIKE ? LIMIT 1", (like_value,))
+        if c.fetchone():
+            return True
+
+        c.execute("""
+            SELECT 1
+            FROM pentest_data
+            WHERE notes LIKE ? OR vulnerabilities LIKE ?
+            LIMIT 1
+        """, (like_value, like_value))
+        return c.fetchone() is not None
+
+def _cleanup_unreferenced_images(filenames):
+    for filename in sorted(set(filenames)):
+        if _is_image_referenced_anywhere(filename):
+            continue
+        try:
+            delete_image(filename)
+            logger.info(f"Deleted unreferenced image from FTP: {filename}")
+        except Exception as e:
+            logger.warning(f"Failed to delete unreferenced image '{filename}': {e}")
 
 def save_report(record_id, file_data):
     """Saves a report file to the FTP server."""
@@ -571,6 +641,15 @@ def create_or_update_pentest_data(record_id):
         can_reassign = user_has_permission(username, role, 'reassign_pentests_admin')
         can_modify_others = user_has_permission(username, role, 'modify_others_pentests_admin')
 
+        existing_description = (record['description'] or '')
+        existing_notes = existing_data.get('notes', "")
+        existing_vulnerabilities = existing_data.get('vulnerabilities', "")
+        old_image_filenames = _collect_referenced_image_filenames(
+            existing_description,
+            existing_notes,
+            existing_vulnerabilities
+        )
+
         data = {}
         for key in ['vulnerable', 'tested_by', 'test_start_date', 'test_end_date', 'vulnerability_fixed', 'service_desk_link', 'status', 'open_ports', 'notes', 'owasp_checklist', 'checklist_states', 'vulnerabilities', 'description']:
             if (value := request.form.get(key)) is not None:
@@ -630,6 +709,13 @@ def create_or_update_pentest_data(record_id):
             'checklist_states': data.get('checklist_states', existing_data.get('checklist_states', "")),
             'vulnerabilities': data.get('vulnerabilities', existing_data.get('vulnerabilities', ""))
         }
+        updated_description = data.get('description', existing_description)
+        new_image_filenames = _collect_referenced_image_filenames(
+            updated_description,
+            pentest_data['notes'],
+            pentest_data['vulnerabilities']
+        )
+        removed_image_filenames = old_image_filenames - new_image_filenames
 
         with sqlite3.connect(DB_PATH) as conn:
             c = conn.cursor()
@@ -658,6 +744,8 @@ def create_or_update_pentest_data(record_id):
                 """, (data.get('description', ''), record_id))
 
             conn.commit()
+        if removed_image_filenames:
+            _cleanup_unreferenced_images(removed_image_filenames)
 
         return jsonify({"message": "Pentest data updated successfully."}), 200
 
