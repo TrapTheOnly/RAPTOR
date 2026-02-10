@@ -6,7 +6,6 @@ import sqlite3
 import logging
 import json
 from io import BytesIO
-from functools import wraps
 import xml.etree.ElementTree as ET
 from modules.user import login_required_json
 from modules.admin import admin_required
@@ -16,6 +15,12 @@ from modules.checklist_catalog import (
     get_canonical_checklist_by_key,
     get_canonical_checklists,
 )
+from modules.report_template_catalog import (
+    build_report_template_revision,
+    get_canonical_report_template_by_key,
+    get_canonical_report_templates,
+)
+from modules.report_pdf import render_pentest_report_pdf
 from flask import jsonify, request, send_file, session, current_app
 
 logger = logging.getLogger(__name__)
@@ -47,6 +52,13 @@ def _safe_json_load(raw_value, default):
     try:
         return json.loads(raw_value)
     except Exception:
+        return default
+
+
+def _to_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
         return default
 
 
@@ -150,6 +162,94 @@ def _serialize_checklist_template(row):
         "created_at": row["created_at"],
         "updated_at": row["updated_at"]
     }
+
+
+def get_default_report_templates():
+    """Returns a deep-copy-safe list of seeded report templates."""
+    return get_canonical_report_templates()
+
+
+def _normalize_report_template_definition(raw_definition):
+    if not isinstance(raw_definition, dict):
+        return None, "Template definition must be a JSON object."
+
+    blocks = raw_definition.get("blocks")
+    if not isinstance(blocks, list) or len(blocks) == 0:
+        return None, "Template definition must include a non-empty 'blocks' array."
+
+    normalized_blocks = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get("type", "")).strip().lower()
+        if not block_type:
+            continue
+        normalized_block = {"type": block_type}
+        for key, value in block.items():
+            if key == "type":
+                continue
+            normalized_block[key] = value
+        normalized_blocks.append(normalized_block)
+
+    if not normalized_blocks:
+        return None, "Template definition must contain at least one valid block object."
+
+    branding = raw_definition.get("branding", {})
+    placeholders = raw_definition.get("placeholders", {})
+
+    normalized = {
+        "version": _to_int(raw_definition.get("version"), 1),
+        "branding": branding if isinstance(branding, dict) else {},
+        "placeholders": placeholders if isinstance(placeholders, dict) else {},
+        "blocks": normalized_blocks
+    }
+    return normalized, None
+
+
+def _normalize_report_template_payload(payload):
+    key = str(payload.get("key", "")).strip().lower()
+    if not re.match(r"^[a-z0-9][a-z0-9_-]{1,62}$", key):
+        return None, "Template key must be 2-63 chars and use only lowercase letters, numbers, '_' or '-'."
+
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        return None, "Template name is required."
+
+    description = str(payload.get("description", "") or "").strip()
+    enabled = 1 if bool(payload.get("enabled", True)) else 0
+
+    normalized_definition, definition_error = _normalize_report_template_definition(
+        payload.get("template")
+    )
+    if definition_error:
+        return None, definition_error
+
+    return {
+        "key": key,
+        "name": name,
+        "description": description,
+        "template_json": json.dumps(normalized_definition),
+        "enabled": enabled
+    }, None
+
+
+def _serialize_report_template(row):
+    definition = _safe_json_load(row["template_json"], {})
+    return {
+        "id": row["id"],
+        "key": row["key"],
+        "name": row["name"],
+        "description": row["description"] or "",
+        "template": definition if isinstance(definition, dict) else {},
+        "enabled": bool(row["enabled"]),
+        "is_system": bool(row["is_system"]) if "is_system" in row.keys() else False,
+        "is_customized": bool(row["is_customized"]) if "is_customized" in row.keys() else False,
+        "system_revision": (row["system_revision"] if "system_revision" in row.keys() else None),
+        "created_by": row["created_by"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"]
+    }
+
 
 def _guess_image_mimetype(extension):
     return {
@@ -295,6 +395,9 @@ def get_pentest_data_internal(record_id=None):
     """Internal function to fetch pentest data (all records or a single record)."""
     default_pentest = {
         'report_file': None,
+        'generated_report_file': None,
+        'generated_report_template_id': None,
+        'generated_report_generated_at': None,
         'vulnerable': 0,
         'tested_by': None,
         'test_start_date': None,
@@ -617,6 +720,206 @@ def reset_checklist_template_to_canonical(template_id):
         logger.error(f"Error resetting checklist template {template_id} to canonical: {e}")
         return jsonify({"error": "Failed to reset checklist template."}), 500
 
+
+@permission_required('view_pentest_page')
+def get_report_templates():
+    """GET /report-templates: List report templates."""
+    try:
+        include_disabled_requested = str(request.args.get('include_disabled', '')).lower() in {"1", "true", "yes"}
+        include_disabled = include_disabled_requested and session.get("user_type") == "admin"
+
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            query = """
+                SELECT id, key, name, description, template_json, enabled,
+                       is_system, is_customized, system_revision,
+                       created_by, created_at, updated_at
+                FROM report_templates
+            """
+            if not include_disabled:
+                query += " WHERE enabled = 1"
+            query += " ORDER BY name COLLATE NOCASE ASC"
+            c.execute(query)
+            rows = c.fetchall()
+
+        templates = [_serialize_report_template(row) for row in rows]
+        return jsonify({"templates": templates}), 200
+    except Exception as e:
+        logger.error(f"Error fetching report templates: {e}")
+        return jsonify({"error": "Failed to fetch report templates."}), 500
+
+
+@admin_required
+def create_report_template():
+    """POST /report-templates: Create a report template."""
+    payload = request.get_json(silent=True) or {}
+    normalized, validation_error = _normalize_report_template_payload(payload)
+    if validation_error:
+        return jsonify({"error": validation_error}), 400
+
+    created_by = session.get("username", "admin")
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO report_templates (
+                    key, name, description, template_json, enabled,
+                    is_system, is_customized, system_revision,
+                    created_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, ?, datetime('now', '+4 hours'), datetime('now', '+4 hours'))
+            """, (
+                normalized["key"],
+                normalized["name"],
+                normalized["description"],
+                normalized["template_json"],
+                normalized["enabled"],
+                created_by
+            ))
+            template_id = c.lastrowid
+            conn.commit()
+        return jsonify({"message": "Report template created.", "id": template_id}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Template key already exists."}), 400
+    except Exception as e:
+        logger.error(f"Error creating report template: {e}")
+        return jsonify({"error": "Failed to create report template."}), 500
+
+
+@admin_required
+def update_report_template(template_id):
+    """PUT /report-templates/<id>: Update a report template."""
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, key, name, description, template_json, enabled,
+                       is_system, is_customized
+                FROM report_templates
+                WHERE id = ?
+            """, (template_id,))
+            existing = c.fetchone()
+            if not existing:
+                return jsonify({"error": "Template not found."}), 404
+
+            if payload.get("key") and bool(existing["is_system"]):
+                requested_key = str(payload.get("key", "")).strip().lower()
+                if requested_key and requested_key != existing["key"]:
+                    return jsonify({"error": "System template key cannot be changed."}), 400
+
+            merged_payload = {
+                "key": payload.get("key", existing["key"]),
+                "name": payload.get("name", existing["name"]),
+                "description": payload.get("description", existing["description"]),
+                "template": payload.get("template", _safe_json_load(existing["template_json"], {})),
+                "enabled": payload.get("enabled", bool(existing["enabled"]))
+            }
+            normalized, validation_error = _normalize_report_template_payload(merged_payload)
+            if validation_error:
+                return jsonify({"error": validation_error}), 400
+
+            mark_customized = 1 if bool(existing["is_system"]) else int(bool(existing["is_customized"]))
+            c.execute("""
+                UPDATE report_templates
+                SET key = ?, name = ?, description = ?, template_json = ?, enabled = ?,
+                    is_customized = ?,
+                    updated_at = datetime('now', '+4 hours')
+                WHERE id = ?
+            """, (
+                normalized["key"],
+                normalized["name"],
+                normalized["description"],
+                normalized["template_json"],
+                normalized["enabled"],
+                mark_customized,
+                template_id
+            ))
+            conn.commit()
+        return jsonify({"message": "Report template updated."}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Template key already exists."}), 400
+    except Exception as e:
+        logger.error(f"Error updating report template {template_id}: {e}")
+        return jsonify({"error": "Failed to update report template."}), 500
+
+
+@admin_required
+def delete_report_template(template_id):
+    """DELETE /report-templates/<id>: Delete a report template."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT is_system FROM report_templates WHERE id = ?", (template_id,))
+            existing = c.fetchone()
+            if not existing:
+                return jsonify({"error": "Template not found."}), 404
+            if bool(existing["is_system"]):
+                return jsonify({"error": "System templates cannot be deleted. Disable or reset them instead."}), 400
+
+            c.execute("DELETE FROM report_templates WHERE id = ?", (template_id,))
+            conn.commit()
+        return jsonify({"message": "Report template deleted."}), 200
+    except Exception as e:
+        logger.error(f"Error deleting report template {template_id}: {e}")
+        return jsonify({"error": "Failed to delete report template."}), 500
+
+
+@admin_required
+def reset_report_template_to_canonical(template_id):
+    """POST /report-templates/<id>/reset: Reset system template to canonical definition."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, key, is_system
+                FROM report_templates
+                WHERE id = ?
+            """, (template_id,))
+            existing = c.fetchone()
+            if not existing:
+                return jsonify({"error": "Template not found."}), 404
+            if not bool(existing["is_system"]):
+                return jsonify({"error": "Only system templates can be reset to canonical."}), 400
+
+            canonical = get_canonical_report_template_by_key(existing["key"])
+            if not canonical:
+                return jsonify({"error": "Canonical template definition not found for this key."}), 404
+
+            payload = {
+                "key": canonical.get("key"),
+                "name": canonical.get("name"),
+                "description": canonical.get("description", ""),
+                "template": canonical
+            }
+            normalized, validation_error = _normalize_report_template_payload(payload)
+            if validation_error:
+                return jsonify({"error": f"Canonical template is invalid: {validation_error}"}), 500
+
+            system_revision = build_report_template_revision(canonical)
+            c.execute("""
+                UPDATE report_templates
+                SET name = ?, description = ?, template_json = ?, enabled = 1,
+                    is_customized = 0, system_revision = ?,
+                    updated_at = datetime('now', '+4 hours')
+                WHERE id = ?
+            """, (
+                normalized["name"],
+                normalized["description"],
+                normalized["template_json"],
+                system_revision,
+                template_id
+            ))
+            conn.commit()
+        return jsonify({"message": "Report template reset to canonical successfully."}), 200
+    except Exception as e:
+        logger.error(f"Error resetting report template {template_id} to canonical: {e}")
+        return jsonify({"error": "Failed to reset report template."}), 500
+
 @permission_required('modify_pentests')
 def create_or_update_pentest_data(record_id):
     """POST /pentest/<record_id>: Create or update pentest data."""
@@ -820,15 +1123,26 @@ def delete_pentest_data(record_id):
     try:
         with sqlite3.connect(DB_PATH) as conn:
             c = conn.cursor()
-            c.execute("SELECT report_file FROM pentest_data WHERE record_id = ?", (record_id,))
+            c.execute("""
+                SELECT report_file, generated_report_file
+                FROM pentest_data
+                WHERE record_id = ?
+            """, (record_id,))
             result = c.fetchone()
 
             if result:
-                if report_file := result[0]:
+                report_file = result[0]
+                generated_report_file = result[1]
+                if report_file:
                     try:
                         delete_report(report_file)
                     except Exception as e:
                         return jsonify({"error": f"Failed to delete report: {e}"}), 500
+                if generated_report_file:
+                    try:
+                        delete_report(generated_report_file)
+                    except Exception as e:
+                        return jsonify({"error": f"Failed to delete generated report: {e}"}), 500
                 c.execute("DELETE FROM pentest_data WHERE record_id = ?", (record_id,))
                 conn.commit()
                 return jsonify({"message": "Pentest data deleted successfully."}), 200
@@ -874,3 +1188,189 @@ def delete_report_route(record_id):
         return jsonify({"message": "Report Deleted"}), 200
     except Exception as e:
         return jsonify({"error": f"Error deleting report: {e}"}), 500
+
+
+def _load_enabled_checklist_templates():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, key, name, service, source, auto_ports, sections, enabled,
+                   is_system, is_customized, system_revision,
+                   created_by, created_at, updated_at
+            FROM service_checklists
+            WHERE enabled = 1
+            ORDER BY name COLLATE NOCASE ASC
+        """)
+        return [_serialize_checklist_template(row) for row in c.fetchall()]
+
+
+@permission_required('export_pentests')
+def generate_report(record_id):
+    """POST /pentest/<record_id>/generate-report: Generate and store a PDF report from template."""
+    record = get_record_details_internal(record_id)
+    if not record:
+        return jsonify({"error": "Record not found"}), 404
+
+    username = session.get('username')
+    role = session.get('user_type')
+    can_modify_others = user_has_permission(username, role, 'modify_others_pentests_admin')
+    pentest_row = get_pentest_row(record_id)
+    existing_assignee = (pentest_row['tested_by'] if pentest_row and pentest_row['tested_by'] else '').strip()
+    if not can_modify_others:
+        if existing_assignee and existing_assignee != username:
+            return jsonify({"error": "You are not allowed to generate reports for another user's pentest."}), 403
+        if not existing_assignee:
+            return jsonify({"error": "Unassigned records must be assigned before report generation."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    template_id = payload.get("template_id")
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+
+            template_row = None
+            if template_id is not None:
+                try:
+                    numeric_template_id = int(template_id)
+                except (TypeError, ValueError):
+                    return jsonify({"error": "Template id must be an integer."}), 400
+                c.execute("""
+                    SELECT id, key, name, description, template_json, enabled
+                    FROM report_templates
+                    WHERE id = ?
+                """, (numeric_template_id,))
+                template_row = c.fetchone()
+                if not template_row:
+                    return jsonify({"error": "Report template not found."}), 404
+                if int(template_row["enabled"] or 0) != 1 and session.get("user_type") != "admin":
+                    return jsonify({"error": "Selected report template is disabled."}), 400
+            else:
+                c.execute("""
+                    SELECT id, key, name, description, template_json, enabled
+                    FROM report_templates
+                    WHERE enabled = 1
+                    ORDER BY name COLLATE NOCASE ASC
+                    LIMIT 1
+                """)
+                template_row = c.fetchone()
+                if not template_row:
+                    return jsonify({"error": "No enabled report template available."}), 404
+
+            template_definition = _safe_json_load(template_row["template_json"], {})
+            if not isinstance(template_definition, dict):
+                return jsonify({"error": "Report template definition is invalid."}), 500
+
+            checklist_templates = _load_enabled_checklist_templates()
+            pentest_data = get_pentest_data_internal(record_id)
+            if not pentest_data:
+                return jsonify({"error": "Pentest data not found."}), 404
+
+            pdf_content = render_pentest_report_pdf(
+                pentest_data,
+                template_definition,
+                checklist_templates=checklist_templates,
+                image_fetcher=fetch_image
+            )
+            generated_relative_path = save_report(record_id, pdf_content)
+
+            c.execute("""
+                SELECT generated_report_file
+                FROM pentest_data
+                WHERE record_id = ?
+            """, (record_id,))
+            existing_generated = c.fetchone()
+            previous_generated_path = existing_generated["generated_report_file"] if existing_generated else None
+
+            if existing_generated:
+                c.execute("""
+                    UPDATE pentest_data
+                    SET generated_report_file = ?,
+                        generated_report_template_id = ?,
+                        generated_report_generated_at = datetime('now', '+4 hours')
+                    WHERE record_id = ?
+                """, (generated_relative_path, template_row["id"], record_id))
+            else:
+                c.execute("""
+                    INSERT INTO pentest_data (
+                        record_id, dns_name, ip_address, source,
+                        generated_report_file, generated_report_template_id, generated_report_generated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+4 hours'))
+                """, (
+                    record_id,
+                    record['name'],
+                    record['ip_address'],
+                    record['source'],
+                    generated_relative_path,
+                    template_row["id"]
+                ))
+            conn.commit()
+
+        if previous_generated_path and previous_generated_path != generated_relative_path:
+            try:
+                delete_report(previous_generated_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete previous generated report '{previous_generated_path}': {e}")
+
+        return jsonify({
+            "message": "Report generated successfully.",
+            "report_file": generated_relative_path,
+            "template_id": template_row["id"],
+            "template_key": template_row["key"],
+            "template_name": template_row["name"]
+        }), 200
+    except Exception as e:
+        logger.error(f"Error generating report for record {record_id}: {e}")
+        return jsonify({"error": "Failed to generate report."}), 500
+
+
+@permission_required('export_pentests')
+def get_generated_report(record_id):
+    """GET /pentest/<record_id>/generated-report: Serve generated PDF report."""
+    pentest_data = get_pentest_data_internal(record_id)
+    if not pentest_data or not pentest_data.get('generated_report_file'):
+        return jsonify({"error": "Generated report not found"}), 404
+
+    try:
+        ftp = ftp_connect()
+        file_data = BytesIO()
+        ftp.retrbinary(f'RETR {pentest_data["generated_report_file"]}', file_data.write)
+        ftp.quit()
+        file_data.seek(0)
+        return send_file(
+            file_data,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f"generated_report_{record_id}.pdf"
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving generated report for record {record_id}: {e}")
+        return jsonify({"error": "Failed to retrieve generated report."}), 500
+
+
+@permission_required('modify_pentests')
+def delete_generated_report_route(record_id):
+    """DELETE /pentest/<record_id>/generated-report: Delete generated report file."""
+    pentest_data = get_pentest_data_internal(record_id)
+    if not pentest_data or not pentest_data.get('generated_report_file'):
+        return jsonify({"error": "Generated report not found"}), 404
+
+    try:
+        delete_report(pentest_data["generated_report_file"])
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("""
+                UPDATE pentest_data
+                SET generated_report_file = NULL,
+                    generated_report_template_id = NULL,
+                    generated_report_generated_at = NULL
+                WHERE record_id = ?
+            """, (record_id,))
+            if c.rowcount == 0:
+                return jsonify({"error": f"Pentest data not found for record {record_id}"}), 404
+            conn.commit()
+        return jsonify({"message": "Generated report deleted."}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error deleting generated report: {e}"}), 500

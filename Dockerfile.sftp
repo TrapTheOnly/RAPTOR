@@ -1,15 +1,28 @@
 # --- Base Image and Environment Setup ---
 FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
 ARG http_proxy
-ENV http_proxy=$http_proxy
-ENV https_proxy=$http_proxy
-RUN echo "Acquire::HTTP::Proxy \"$http_proxy\";" > /etc/apt/apt.conf.d/99proxy \
-    && echo "Acquire::HTTPS::Proxy \"$http_proxy\";" >> /etc/apt/apt.conf.d/99proxy \
-    && apt-get update \
+ARG https_proxy
+RUN set -eux; \
+    proxy_http="${HTTP_PROXY:-${http_proxy:-}}"; \
+    proxy_https="${HTTPS_PROXY:-${https_proxy:-$proxy_http}}"; \
+    if [ -n "$proxy_http" ]; then \
+      echo "Acquire::HTTP::Proxy \"$proxy_http\";" > /etc/apt/apt.conf.d/99proxy; \
+    fi; \
+    if [ -n "$proxy_https" ]; then \
+      if [ -f /etc/apt/apt.conf.d/99proxy ]; then \
+        echo "Acquire::HTTPS::Proxy \"$proxy_https\";" >> /etc/apt/apt.conf.d/99proxy; \
+      else \
+        echo "Acquire::HTTPS::Proxy \"$proxy_https\";" > /etc/apt/apt.conf.d/99proxy; \
+      fi; \
+    fi; \
+    apt-get update \
     && apt-get install -y --no-install-recommends \
         openssh-server \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /etc/apt/apt.conf.d/99proxy
 RUN mkdir -p /run/sshd
 
 # --- User and SSH Configuration ---
@@ -34,7 +47,8 @@ RUN mkdir -p /chroot/upload && \
 # --- Final Setup and Start ---
 EXPOSE 22
 ARG DNS_SERVER_SSH_PUBKEY
-RUN echo "$DNS_SERVER_SSH_PUBKEY" >> /home/sftpuser/.ssh/authorized_keys && \
+RUN touch /home/sftpuser/.ssh/authorized_keys && \
+    if [ -n "$DNS_SERVER_SSH_PUBKEY" ]; then echo "$DNS_SERVER_SSH_PUBKEY" >> /home/sftpuser/.ssh/authorized_keys; fi && \
     chown sftpuser:sftpusers /home/sftpuser/.ssh/authorized_keys && \
     chmod 600 /home/sftpuser/.ssh/authorized_keys
 CMD ["/usr/sbin/sshd", "-D"]

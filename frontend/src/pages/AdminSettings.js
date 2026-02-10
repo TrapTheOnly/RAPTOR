@@ -11,6 +11,7 @@ import {
   useTheme
 } from '@mui/material';
 import {
+  Article as ArticleIcon,
   BugReport as BugReportIcon,
   Build as BuildIcon,
   FactCheck as FactCheckIcon,
@@ -35,6 +36,7 @@ import MaintenanceSection from './admin-settings/components/MaintenanceSection';
 import ResetPentestDialog from './admin-settings/components/ResetPentestDialog';
 import SecuritySection from './admin-settings/components/SecuritySection';
 import ChecklistTemplatesSection from './admin-settings/components/ChecklistTemplatesSection';
+import ReportTemplatesSection from './admin-settings/components/ReportTemplatesSection';
 import VulnCategoriesSection from './admin-settings/components/VulnCategoriesSection';
 import DomainUsersPanel from './admin-settings/components/users/DomainUsersPanel';
 import ExistingUsersPanel from './admin-settings/components/users/ExistingUsersPanel';
@@ -49,6 +51,43 @@ const EMPTY_CHECKLIST_TEMPLATE_FORM = {
   source: '',
   autoPortsText: '',
   sectionsJson: '[]',
+  enabled: true
+};
+const EMPTY_REPORT_TEMPLATE_FORM = {
+  key: '',
+  name: '',
+  description: '',
+  templateJson: JSON.stringify(
+    {
+      version: 1,
+      branding: {
+        company_name: 'Security Operations',
+        primary_color: '#0B5CAD',
+        accent_color: '#1E293B',
+        logo_url: ''
+      },
+      placeholders: {
+        report_title: 'Penetration Testing Report',
+        report_subtitle: 'Comprehensive assessment and remediation overview'
+      },
+      blocks: [
+        { type: 'cover', title: '{{report_title}}', subtitle: '{{report_subtitle}}', show_logo: true },
+        { type: 'engagement_overview', title: 'Engagement Overview' },
+        { type: 'key_metrics', title: 'Risk Snapshot' },
+        { type: 'chart', title: 'Vulnerability Severity Distribution', chart: 'vulnerability_severity' },
+        { type: 'chart', title: 'Checklist Completion Status', chart: 'checklist_completion' },
+        { type: 'chart', title: 'Open vs Remediated Findings', chart: 'vulnerability_fix_status' },
+        { type: 'open_ports', title: 'Open Ports' },
+        { type: 'markdown', title: 'Asset Description', field: 'description' },
+        { type: 'markdown', title: 'Security Details', field: 'notes' },
+        { type: 'checklists', title: 'Checklist Coverage' },
+        { type: 'vulnerabilities', title: 'Detailed Findings', include_descriptions: true },
+        { type: 'text', title: 'Conclusion', content: 'Generated on {{generated_at}}.' }
+      ]
+    },
+    null,
+    2
+  ),
   enabled: true
 };
 
@@ -89,6 +128,9 @@ const AdminSettings = () => {
   const [checklistTemplateForm, setChecklistTemplateForm] = useState(
     EMPTY_CHECKLIST_TEMPLATE_FORM
   );
+  const [reportTemplates, setReportTemplates] = useState([]);
+  const [selectedReportTemplateId, setSelectedReportTemplateId] = useState(null);
+  const [reportTemplateForm, setReportTemplateForm] = useState(EMPTY_REPORT_TEMPLATE_FORM);
 
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetPhrase, setResetPhrase] = useState('');
@@ -137,6 +179,12 @@ const AdminSettings = () => {
         icon: FactCheckIcon
       },
       {
+        key: 'report-templates',
+        label: 'Report Templates',
+        description: 'Design and maintain PDF report templates used by pentest records.',
+        icon: ArticleIcon
+      },
+      {
         key: 'maintenance',
         label: 'Maintenance',
         description: 'Run manual updates and manage pentest resets.',
@@ -154,6 +202,11 @@ const AdminSettings = () => {
         (template) => template.id === selectedChecklistTemplateId
       ) || null,
     [checklistTemplates, selectedChecklistTemplateId]
+  );
+  const selectedReportTemplate = useMemo(
+    () =>
+      reportTemplates.find((template) => template.id === selectedReportTemplateId) || null,
+    [reportTemplates, selectedReportTemplateId]
   );
 
   const showMessage = useCallback((type, text) => {
@@ -229,12 +282,28 @@ const AdminSettings = () => {
     return [];
   }, [showMessage]);
 
+  const fetchReportTemplates = useCallback(async () => {
+    try {
+      const response = await axios.get('/report-templates?include_disabled=true');
+      if (response.status === 200) {
+        const templates = response.data.templates || [];
+        setReportTemplates(templates);
+        return templates;
+      }
+    } catch (error) {
+      showMessage('error', 'Failed to fetch report templates.');
+    }
+    return [];
+  }, [showMessage]);
+
   useEffect(() => {
     fetchIpSources();
     fetchExistingUsers();
     fetchVulnCategories();
     fetchChecklistTemplates();
+    fetchReportTemplates();
   }, [
+    fetchReportTemplates,
     fetchChecklistTemplates,
     fetchExistingUsers,
     fetchIpSources,
@@ -695,6 +764,154 @@ const AdminSettings = () => {
     }
   };
 
+  const handleCreateNewReportTemplate = () => {
+    setSelectedReportTemplateId(null);
+    setReportTemplateForm({ ...EMPTY_REPORT_TEMPLATE_FORM });
+  };
+
+  const handleSelectReportTemplate = (template) => {
+    setSelectedReportTemplateId(template.id);
+    setReportTemplateForm({
+      key: template.key || '',
+      name: template.name || '',
+      description: template.description || '',
+      templateJson: JSON.stringify(template.template || {}, null, 2),
+      enabled: Boolean(template.enabled)
+    });
+  };
+
+  const handleReportTemplateFormChange = (field, value) => {
+    setReportTemplateForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveReportTemplate = async () => {
+    const key = selectedReportTemplate?.is_system
+      ? (selectedReportTemplate.key || '').trim().toLowerCase()
+      : reportTemplateForm.key.trim().toLowerCase();
+    const name = reportTemplateForm.name.trim();
+    if (!key || !name) {
+      showMessage('error', 'Template key and name are required.');
+      return;
+    }
+
+    let parsedTemplate = {};
+    try {
+      parsedTemplate = JSON.parse(reportTemplateForm.templateJson || '{}');
+      if (!parsedTemplate || typeof parsedTemplate !== 'object' || Array.isArray(parsedTemplate)) {
+        showMessage('error', 'Template JSON must be an object.');
+        return;
+      }
+    } catch (error) {
+      showMessage('error', 'Template JSON is invalid.');
+      return;
+    }
+
+    const payload = {
+      key,
+      name,
+      description: reportTemplateForm.description.trim(),
+      template: parsedTemplate,
+      enabled: Boolean(reportTemplateForm.enabled)
+    };
+
+    setLoading(true);
+    try {
+      if (selectedReportTemplateId) {
+        const response = await axios.put(`/report-templates/${selectedReportTemplateId}`, payload);
+        if (response.status === 200) {
+          showMessage('success', 'Report template updated.');
+        }
+      } else {
+        const response = await axios.post('/report-templates', payload);
+        if (response.status === 200) {
+          showMessage('success', 'Report template created.');
+          setSelectedReportTemplateId(response.data.id || null);
+        }
+      }
+
+      const refreshedTemplates = await fetchReportTemplates();
+      const refreshedSelectionId = selectedReportTemplateId || payload.key;
+      const refreshedTemplate = refreshedTemplates.find(
+        (template) =>
+          template.id === refreshedSelectionId || template.key === refreshedSelectionId
+      );
+      if (refreshedTemplate) {
+        handleSelectReportTemplate(refreshedTemplate);
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to save report template.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteReportTemplate = async (templateId, templateName) => {
+    const template = reportTemplates.find((item) => item.id === templateId);
+    if (template?.is_system) {
+      showMessage(
+        'error',
+        'System templates cannot be deleted. Disable or reset them instead.'
+      );
+      return;
+    }
+    if (!window.confirm(`Delete report template "${templateName}"?`)) return;
+    setLoading(true);
+    try {
+      const response = await axios.delete(`/report-templates/${templateId}`);
+      if (response.status === 200) {
+        showMessage('success', 'Report template deleted.');
+        if (selectedReportTemplateId === templateId) {
+          handleCreateNewReportTemplate();
+        }
+        fetchReportTemplates();
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to delete report template.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetReportTemplate = async (template) => {
+    if (!template?.id || !template?.is_system) {
+      showMessage('error', 'Only system templates can be reset to canonical.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Reset "${template.name}" to canonical defaults? This clears admin edits for this template.`
+      )
+    ) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.post(`/report-templates/${template.id}/reset`);
+      if (response.status === 200) {
+        showMessage('success', 'Report template reset to canonical.');
+      }
+      const refreshedTemplates = await fetchReportTemplates();
+      const refreshedTemplate = refreshedTemplates.find((item) => item.id === template.id);
+      if (refreshedTemplate) {
+        handleSelectReportTemplate(refreshedTemplate);
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to reset report template.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleChangePassword = async () => {
     const validationError = validatePassword(newPassword);
     if (validationError) {
@@ -980,6 +1197,22 @@ const AdminSettings = () => {
             onSaveTemplate={handleSaveChecklistTemplate}
             onDeleteTemplate={handleDeleteChecklistTemplate}
             onResetTemplate={handleResetChecklistTemplate}
+          />
+        );
+      case 'report-templates':
+        return (
+          <ReportTemplatesSection
+            loading={loading}
+            templates={reportTemplates}
+            selectedTemplateId={selectedReportTemplateId}
+            selectedTemplate={selectedReportTemplate}
+            templateForm={reportTemplateForm}
+            onCreateNewTemplate={handleCreateNewReportTemplate}
+            onSelectTemplate={handleSelectReportTemplate}
+            onChangeTemplateForm={handleReportTemplateFormChange}
+            onSaveTemplate={handleSaveReportTemplate}
+            onDeleteTemplate={handleDeleteReportTemplate}
+            onResetTemplate={handleResetReportTemplate}
           />
         );
       case 'maintenance':
