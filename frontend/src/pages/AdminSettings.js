@@ -30,6 +30,11 @@ import {
   buildResetSummary,
   normalizeOptionalPermissions
 } from './admin-settings/utils';
+import {
+  createEmptyReportTemplateForm,
+  createReportTemplateFormFromApi,
+  toReportTemplateDefinition
+} from './admin-settings/report-template-utils';
 import AdminSettingsNavDrawer from './admin-settings/components/AdminSettingsNavDrawer';
 import IpSourcesSection from './admin-settings/components/IpSourcesSection';
 import MaintenanceSection from './admin-settings/components/MaintenanceSection';
@@ -51,43 +56,6 @@ const EMPTY_CHECKLIST_TEMPLATE_FORM = {
   source: '',
   autoPortsText: '',
   sectionsJson: '[]',
-  enabled: true
-};
-const EMPTY_REPORT_TEMPLATE_FORM = {
-  key: '',
-  name: '',
-  description: '',
-  templateJson: JSON.stringify(
-    {
-      version: 1,
-      branding: {
-        company_name: 'Security Operations',
-        primary_color: '#0B5CAD',
-        accent_color: '#1E293B',
-        logo_url: ''
-      },
-      placeholders: {
-        report_title: 'Penetration Testing Report',
-        report_subtitle: 'Comprehensive assessment and remediation overview'
-      },
-      blocks: [
-        { type: 'cover', title: '{{report_title}}', subtitle: '{{report_subtitle}}', show_logo: true },
-        { type: 'engagement_overview', title: 'Engagement Overview' },
-        { type: 'key_metrics', title: 'Risk Snapshot' },
-        { type: 'chart', title: 'Vulnerability Severity Distribution', chart: 'vulnerability_severity' },
-        { type: 'chart', title: 'Checklist Completion Status', chart: 'checklist_completion' },
-        { type: 'chart', title: 'Open vs Remediated Findings', chart: 'vulnerability_fix_status' },
-        { type: 'open_ports', title: 'Open Ports' },
-        { type: 'markdown', title: 'Asset Description', field: 'description' },
-        { type: 'markdown', title: 'Security Details', field: 'notes' },
-        { type: 'checklists', title: 'Checklist Coverage' },
-        { type: 'vulnerabilities', title: 'Detailed Findings', include_descriptions: true },
-        { type: 'text', title: 'Conclusion', content: 'Generated on {{generated_at}}.' }
-      ]
-    },
-    null,
-    2
-  ),
   enabled: true
 };
 
@@ -130,7 +98,9 @@ const AdminSettings = () => {
   );
   const [reportTemplates, setReportTemplates] = useState([]);
   const [selectedReportTemplateId, setSelectedReportTemplateId] = useState(null);
-  const [reportTemplateForm, setReportTemplateForm] = useState(EMPTY_REPORT_TEMPLATE_FORM);
+  const [reportTemplateForm, setReportTemplateForm] = useState(() =>
+    createEmptyReportTemplateForm()
+  );
 
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetPhrase, setResetPhrase] = useState('');
@@ -766,18 +736,12 @@ const AdminSettings = () => {
 
   const handleCreateNewReportTemplate = () => {
     setSelectedReportTemplateId(null);
-    setReportTemplateForm({ ...EMPTY_REPORT_TEMPLATE_FORM });
+    setReportTemplateForm(createEmptyReportTemplateForm());
   };
 
   const handleSelectReportTemplate = (template) => {
     setSelectedReportTemplateId(template.id);
-    setReportTemplateForm({
-      key: template.key || '',
-      name: template.name || '',
-      description: template.description || '',
-      templateJson: JSON.stringify(template.template || {}, null, 2),
-      enabled: Boolean(template.enabled)
-    });
+    setReportTemplateForm(createReportTemplateFormFromApi(template));
   };
 
   const handleReportTemplateFormChange = (field, value) => {
@@ -794,15 +758,8 @@ const AdminSettings = () => {
       return;
     }
 
-    let parsedTemplate = {};
-    try {
-      parsedTemplate = JSON.parse(reportTemplateForm.templateJson || '{}');
-      if (!parsedTemplate || typeof parsedTemplate !== 'object' || Array.isArray(parsedTemplate)) {
-        showMessage('error', 'Template JSON must be an object.');
-        return;
-      }
-    } catch (error) {
-      showMessage('error', 'Template JSON is invalid.');
+    if (!Array.isArray(reportTemplateForm.blocks) || reportTemplateForm.blocks.length === 0) {
+      showMessage('error', 'At least one report block is required.');
       return;
     }
 
@@ -810,7 +767,7 @@ const AdminSettings = () => {
       key,
       name,
       description: reportTemplateForm.description.trim(),
-      template: parsedTemplate,
+      template: toReportTemplateDefinition(reportTemplateForm),
       enabled: Boolean(reportTemplateForm.enabled)
     };
 
