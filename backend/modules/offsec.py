@@ -365,6 +365,38 @@ def _cleanup_unreferenced_images(filenames):
         except Exception as e:
             logger.warning(f"Failed to delete unreferenced image '{filename}': {e}")
 
+def _can_user_access_image(filename):
+    username = session.get('username')
+    role = session.get('user_type')
+    if user_has_permission(username, role, 'modify_others_pentests_admin'):
+        return True
+    if not username:
+        return False
+
+    like_value = f"%{filename}%"
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("""
+            SELECT 1
+            FROM pentest_data
+            WHERE tested_by = ?
+              AND (notes LIKE ? OR vulnerabilities LIKE ?)
+            LIMIT 1
+        """, (username, like_value, like_value))
+        if c.fetchone():
+            return True
+
+        c.execute("""
+            SELECT 1
+            FROM records r
+            JOIN pentest_data p ON p.record_id = r.id
+            WHERE p.tested_by = ?
+              AND r.description LIKE ?
+            LIMIT 1
+        """, (username, like_value))
+        return c.fetchone() is not None
+
 def save_report(record_id, file_data):
     """Saves a report file to the FTP server."""
     try:
@@ -541,6 +573,27 @@ def get_pentest_row(record_id):
     except Exception as e:
         logger.error(f"Error fetching pentest data for ID {record_id}: {e}")
         return None
+
+def enforce_pentest_record_access(record_id, action_verb="access"):
+    """
+    Enforce record-level access for pentest resources.
+    - Admin/manager users with 'modify_others_pentests_admin' can access any record.
+    - Others can access only records assigned to their username.
+    - Unassigned records are blocked for non-privileged users.
+    """
+    username = session.get('username')
+    role = session.get('user_type')
+    can_modify_others = user_has_permission(username, role, 'modify_others_pentests_admin')
+    if can_modify_others:
+        return True, None
+
+    pentest_row = get_pentest_row(record_id)
+    assigned_user = (pentest_row['tested_by'] if pentest_row and pentest_row['tested_by'] else '').strip()
+    if not assigned_user:
+        return False, f"Unassigned pentest records must be assigned before {action_verb}."
+    if assigned_user != (username or '').strip():
+        return False, f"You are not allowed to {action_verb} another user's pentest."
+    return True, None
 
 
 @permission_required('view_pentest_page')
@@ -750,7 +803,12 @@ def get_report_templates():
     """GET /report-templates: List report templates."""
     try:
         include_disabled_requested = str(request.args.get('include_disabled', '')).lower() in {"1", "true", "yes"}
-        include_disabled = include_disabled_requested and session.get("user_type") == "admin"
+        can_manage_templates = user_has_permission(
+            session.get("username"),
+            session.get("user_type"),
+            "manage_report_templates"
+        )
+        include_disabled = include_disabled_requested and can_manage_templates
 
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
@@ -774,7 +832,7 @@ def get_report_templates():
         return jsonify({"error": "Failed to fetch report templates."}), 500
 
 
-@admin_required
+@permission_required('manage_report_templates')
 def create_report_template():
     """POST /report-templates: Create a report template."""
     payload = request.get_json(silent=True) or {}
@@ -810,7 +868,7 @@ def create_report_template():
         return jsonify({"error": "Failed to create report template."}), 500
 
 
-@admin_required
+@permission_required('manage_report_templates')
 def update_report_template(template_id):
     """PUT /report-templates/<id>: Update a report template."""
     payload = request.get_json(silent=True) or {}
@@ -870,7 +928,7 @@ def update_report_template(template_id):
         return jsonify({"error": "Failed to update report template."}), 500
 
 
-@admin_required
+@permission_required('manage_report_templates')
 def delete_report_template(template_id):
     """DELETE /report-templates/<id>: Delete a report template."""
     try:
@@ -892,7 +950,7 @@ def delete_report_template(template_id):
         return jsonify({"error": "Failed to delete report template."}), 500
 
 
-@admin_required
+@permission_required('manage_report_templates')
 def reset_report_template_to_canonical(template_id):
     """POST /report-templates/<id>/reset: Reset system template to canonical definition."""
     try:
@@ -955,13 +1013,9 @@ def create_or_update_pentest_data(record_id):
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        c.execute("SELECT * FROM pentest_data")
-        rows = c.fetchall()
-        existing_data = [dict(ix) for ix in rows if ix['record_id'] == record_id]
-        if len(existing_data) > 0:
-            existing_data = existing_data[0]
-        else:
-            existing_data = {}
+        c.execute("SELECT * FROM pentest_data WHERE record_id = ?", (record_id,))
+        row = c.fetchone()
+        existing_data = dict(row) if row else {}
         
         username = session.get('username')
         role = session.get('user_type')
@@ -1117,6 +1171,8 @@ def get_pentest_image(filename):
     """GET /pentest/images/<filename>: Serve image by filename."""
     if not re.match(r'^[a-f0-9]{32}\.(png|jpg|jpeg|gif|webp)$', filename):
         return jsonify({"error": "Invalid filename."}), 400
+    if not _can_user_access_image(filename):
+        return jsonify({"error": "Unauthorized access"}), 403
 
     extension = filename.rsplit('.', 1)[-1].lower()
     try:
@@ -1179,6 +1235,10 @@ def delete_pentest_data(record_id):
 @permission_required('view_pentest_page')
 def get_report(record_id):
     """GET /pentest/<record_id>/report: Serve the PDF report."""
+    allowed, denial_reason = enforce_pentest_record_access(record_id, action_verb="access report files for")
+    if not allowed:
+        return jsonify({"error": denial_reason}), 403
+
     pentest_data = get_pentest_data_internal(record_id)
     if not pentest_data or not pentest_data['report_file']:
         return jsonify({"error": "Pentest data or report file not found"}), 404
@@ -1197,6 +1257,10 @@ def get_report(record_id):
 @permission_required('modify_pentests')
 def delete_report_route(record_id):
     """DELETE /pentest/<record_id>/report: Deletes report file."""
+    allowed, denial_reason = enforce_pentest_record_access(record_id, action_verb="delete report files for")
+    if not allowed:
+        return jsonify({"error": denial_reason}), 403
+
     pentest_data = get_pentest_data_internal(record_id)
     if not pentest_data or not pentest_data['report_file']:
         return jsonify({"error": "Pentest data or report file not found"}), 404
@@ -1236,16 +1300,9 @@ def generate_report(record_id):
     if not record:
         return jsonify({"error": "Record not found"}), 404
 
-    username = session.get('username')
-    role = session.get('user_type')
-    can_modify_others = user_has_permission(username, role, 'modify_others_pentests_admin')
-    pentest_row = get_pentest_row(record_id)
-    existing_assignee = (pentest_row['tested_by'] if pentest_row and pentest_row['tested_by'] else '').strip()
-    if not can_modify_others:
-        if existing_assignee and existing_assignee != username:
-            return jsonify({"error": "You are not allowed to generate reports for another user's pentest."}), 403
-        if not existing_assignee:
-            return jsonify({"error": "Unassigned records must be assigned before report generation."}), 403
+    allowed, denial_reason = enforce_pentest_record_access(record_id, action_verb="generate reports for")
+    if not allowed:
+        return jsonify({"error": denial_reason}), 403
 
     payload = request.get_json(silent=True) or {}
     template_id = payload.get("template_id")
@@ -1353,6 +1410,10 @@ def generate_report(record_id):
 @permission_required('export_pentests')
 def get_generated_report(record_id):
     """GET /pentest/<record_id>/generated-report: Serve generated PDF report."""
+    allowed, denial_reason = enforce_pentest_record_access(record_id, action_verb="access generated reports for")
+    if not allowed:
+        return jsonify({"error": denial_reason}), 403
+
     pentest_data = get_pentest_data_internal(record_id)
     if not pentest_data or not pentest_data.get('generated_report_file'):
         return jsonify({"error": "Generated report not found"}), 404
@@ -1377,6 +1438,10 @@ def get_generated_report(record_id):
 @permission_required('modify_pentests')
 def delete_generated_report_route(record_id):
     """DELETE /pentest/<record_id>/generated-report: Delete generated report file."""
+    allowed, denial_reason = enforce_pentest_record_access(record_id, action_verb="delete generated reports for")
+    if not allowed:
+        return jsonify({"error": denial_reason}), 403
+
     pentest_data = get_pentest_data_internal(record_id)
     if not pentest_data or not pentest_data.get('generated_report_file'):
         return jsonify({"error": "Generated report not found"}), 404

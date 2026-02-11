@@ -59,7 +59,7 @@ const EMPTY_CHECKLIST_TEMPLATE_FORM = {
   enabled: true
 };
 
-const AdminSettings = () => {
+const AdminSettings = ({ userRole, userPermissions = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
@@ -109,12 +109,25 @@ const AdminSettings = () => {
   const [resetSummary, setResetSummary] = useState(null);
   const [resetCsv, setResetCsv] = useState('');
 
-  const [selectedSection, setSelectedSection] = useState('users');
+  const [selectedSection, setSelectedSection] = useState('');
   const [userManagementPage, setUserManagementPage] = useState('existing');
   const [navOpen, setNavOpen] = useState(false);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const hasPermission = useCallback(
+    (permission) => userRole === 'admin' || (userPermissions || []).includes(permission),
+    [userPermissions, userRole]
+  );
+
+  const canManageUsers = userRole === 'admin';
+  const canManageSecurity = userRole === 'admin';
+  const canManageChecklistTemplates = userRole === 'admin';
+  const canRunMaintenance = userRole === 'admin';
+  const canManageIpSources = hasPermission('manage_ip_sources');
+  const canManageVulnCategories = hasPermission('manage_vuln_categories');
+  const canManageReportTemplates = hasPermission('manage_report_templates');
 
   const sections = useMemo(
     () => [
@@ -122,50 +135,70 @@ const AdminSettings = () => {
         key: 'users',
         label: 'User Management',
         description: 'Manage existing users, roles, and access types.',
-        icon: PeopleIcon
+        icon: PeopleIcon,
+        visible: canManageUsers
       },
       {
         key: 'security',
         label: 'Security',
-        description: 'Update the admin password and security settings.',
-        icon: SecurityIcon
+        description: 'Update privileged account password and security settings.',
+        icon: SecurityIcon,
+        visible: canManageSecurity
       },
       {
         key: 'ip-sources',
         label: 'IP Sources',
         description: 'Map IP addresses to source groups used in asset tracking.',
-        icon: StorageIcon
+        icon: StorageIcon,
+        visible: canManageIpSources
       },
       {
         key: 'vuln-categories',
         label: 'Vulnerability Categories',
         description: 'Manage the vulnerability taxonomy used in pentest reports.',
-        icon: BugReportIcon
+        icon: BugReportIcon,
+        visible: canManageVulnCategories
       },
       {
         key: 'checklist-templates',
         label: 'Checklist Templates',
         description: 'Manage service checklists used by pentest records.',
-        icon: FactCheckIcon
+        icon: FactCheckIcon,
+        visible: canManageChecklistTemplates
       },
       {
         key: 'report-templates',
         label: 'Report Templates',
         description: 'Design and maintain PDF report templates used by pentest records.',
-        icon: ArticleIcon
+        icon: ArticleIcon,
+        visible: canManageReportTemplates
       },
       {
         key: 'maintenance',
         label: 'Maintenance',
         description: 'Run manual updates and manage pentest resets.',
-        icon: BuildIcon
+        icon: BuildIcon,
+        visible: canRunMaintenance
       }
     ],
-    []
+    [
+      canManageUsers,
+      canManageSecurity,
+      canManageIpSources,
+      canManageVulnCategories,
+      canManageChecklistTemplates,
+      canManageReportTemplates,
+      canRunMaintenance
+    ]
+  );
+
+  const visibleSections = useMemo(
+    () => sections.filter((section) => section.visible),
+    [sections]
   );
 
   const activeSection =
-    sections.find((section) => section.key === selectedSection) || sections[0];
+    visibleSections.find((section) => section.key === selectedSection) || visibleSections[0] || null;
   const selectedChecklistTemplate = useMemo(
     () =>
       checklistTemplates.find(
@@ -267,18 +300,30 @@ const AdminSettings = () => {
   }, [showMessage]);
 
   useEffect(() => {
-    fetchIpSources();
-    fetchExistingUsers();
-    fetchVulnCategories();
-    fetchChecklistTemplates();
-    fetchReportTemplates();
+    if (canManageIpSources) fetchIpSources();
+    if (canManageUsers) fetchExistingUsers();
+    if (canManageVulnCategories) fetchVulnCategories();
+    if (canManageChecklistTemplates) fetchChecklistTemplates();
+    if (canManageReportTemplates) fetchReportTemplates();
   }, [
+    canManageChecklistTemplates,
+    canManageIpSources,
+    canManageReportTemplates,
+    canManageUsers,
+    canManageVulnCategories,
     fetchReportTemplates,
     fetchChecklistTemplates,
     fetchExistingUsers,
     fetchIpSources,
     fetchVulnCategories
   ]);
+
+  useEffect(() => {
+    if (!visibleSections.length) return;
+    if (!selectedSection || !visibleSections.some((section) => section.key === selectedSection)) {
+      setSelectedSection(visibleSections[0].key);
+    }
+  }, [selectedSection, visibleSections]);
 
   useEffect(() => {
     if (message) {
@@ -1194,7 +1239,7 @@ const AdminSettings = () => {
         isMobile={isMobile}
         navOpen={navOpen}
         onClose={() => setNavOpen(false)}
-        sections={sections}
+        sections={visibleSections}
         selectedSection={selectedSection}
         onSelectSection={handleSelectSection}
         userManagementPage={userManagementPage}
@@ -1214,10 +1259,10 @@ const AdminSettings = () => {
           )}
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 600 }}>
-              {activeSection.label}
+              {activeSection?.label || 'Settings'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {activeSection.description}
+              {activeSection?.description || 'Manage platform settings available for your role.'}
             </Typography>
           </Box>
         </Box>
@@ -1234,7 +1279,9 @@ const AdminSettings = () => {
           </Alert>
         </Collapse>
 
-        {renderSection()}
+        {activeSection ? renderSection() : (
+          <Alert severity="warning">No settings sections are available for your account.</Alert>
+        )}
       </Box>
 
       <ResetPentestDialog

@@ -343,7 +343,7 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
       onSave={saveRecord}
       onCancelEditing={cancelEditing}
       onDelete={deleteRecord}
-      onOpenHistory={(targetRecord) => navigate(`/records/${targetRecord.name}`)}
+      onOpenHistory={(targetRecord) => navigate(`/records/record/${targetRecord.id}`)}
       onOpenPentest={(targetRecord) => navigate(`/pentest/record/${targetRecord.id}`)}
       theme={theme}
     />

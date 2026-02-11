@@ -1200,6 +1200,40 @@ def get_record_history(record_id):
     history = [dict(ix) for ix in rows]
     return jsonify(history)
 
+@app.route('/api/records/<int:record_id>', methods=['GET'])
+@permission_required('view_record_details')
+def get_record_by_id(record_id):
+    """Return one record (with open_ports and application_name) by numeric ID."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""
+        SELECT
+            r.id,
+            r.name,
+            r.ip_address,
+            r.source,
+            r.status,
+            r.creation_date,
+            r.last_modification_date,
+            r.application_owner,
+            r.maintainer,
+            r.description,
+            r.application_id,
+            p.open_ports,
+            a.name AS application_name
+        FROM records r
+        LEFT JOIN pentest_data p ON r.id = p.record_id
+        LEFT JOIN applications a ON r.application_id = a.id
+        WHERE r.id = ?
+    """, (record_id,))
+    row = c.fetchone()
+    conn.close()
+
+    if row:
+        return jsonify(dict(row))
+    return jsonify({"error": "Record not found"}), 404
+
 @app.route('/api/records/<string:domain>', methods=['GET'])
 @permission_required('view_record_details')
 def get_record_by_domain(domain):
@@ -1618,7 +1652,7 @@ def reset_keep_open_vulnerabilities():
         return jsonify({"error": "Failed to reset pentest progress."}), 500
     
 @app.route('/ip-sources', methods=['GET'])
-@admin_required
+@permission_required('manage_ip_sources')
 def get_ip_sources():
     """
     Returns the full list of IP→Source mappings.
@@ -1639,7 +1673,7 @@ def get_ip_sources():
         return jsonify({"error": str(e)}), 500
     
 @app.route('/ip-sources', methods=['POST'])
-@admin_required
+@permission_required('manage_ip_sources')
 def add_ip_source():
     """
     Adds a new IP→Source mapping.
@@ -1687,7 +1721,7 @@ def add_ip_source():
         return jsonify({"error": str(e)}), 500
     
 @app.route('/ip-sources', methods=['DELETE'])
-@admin_required
+@permission_required('manage_ip_sources')
 def delete_ip_source():
     """
     Deletes an IP→Source mapping by ip_address.
@@ -1741,7 +1775,7 @@ def delete_ip_source():
 #! Vulnerability Categories API Endpoints
 # ---------------------------------------------------------
 @app.route('/vuln-categories', methods=['GET'])
-@login_required_json
+@permission_required('view_pentest_page')
 def get_vuln_categories():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -1756,7 +1790,7 @@ def get_vuln_categories():
         return jsonify({"error": "Failed to fetch categories."}), 500
 
 @app.route('/vuln-categories', methods=['POST'])
-@login_required_json
+@permission_required('manage_vuln_categories')
 def add_vuln_category():
     data = request.get_json() or {}
     name = (data.get('name') or '').strip()
@@ -1781,7 +1815,7 @@ def add_vuln_category():
         return jsonify({"error": "Failed to add category."}), 500
 
 @app.route('/vuln-categories/<int:category_id>', methods=['DELETE'])
-@admin_required
+@permission_required('manage_vuln_categories')
 def delete_vuln_category(category_id):
     try:
         conn = sqlite3.connect(DB_PATH)

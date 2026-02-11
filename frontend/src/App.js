@@ -12,6 +12,39 @@ import Record from './pages/Record';
 import PentestRecord from './pages/PentestRecord';
 import Error from './pages/Error';
 
+const ROLE_DEFAULT_PERMISSIONS = {
+  user: ['view_records', 'modify_records', 'view_record_details', 'export_records'],
+  pentester: [
+    'view_records',
+    'view_security_dashboard',
+    'view_record_details',
+    'export_records',
+    'view_pentest_page',
+    'modify_pentests',
+    'export_pentests'
+  ],
+  manager: [
+    'view_settings',
+    'view_dashboard',
+    'view_records',
+    'view_security_dashboard',
+    'modify_records',
+    'view_record_details',
+    'export_records',
+    'manage_ip_sources',
+    'manage_vuln_categories',
+    'manage_report_templates',
+    'manage_apps',
+    'view_pentest_page',
+    'modify_pentests',
+    'export_pentests',
+    'reassign_pentests_admin',
+    'delete_records',
+    'modify_others_pentests_admin'
+  ],
+  admin: ['*']
+};
+
 const App = () => {
   const [loggedIn, setLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
@@ -22,6 +55,24 @@ const App = () => {
   const [resetUserType, setResetUserType] = useState(null);
   const storedTheme = localStorage.getItem('theme') || 'light';
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
+
+  const hasPermission = (permission) => {
+    if (userRole === 'admin') return true;
+    const normalizedRole = String(userRole || '').trim().toLowerCase();
+    const roleDefaults = ROLE_DEFAULT_PERMISSIONS[normalizedRole] || [];
+    if (roleDefaults.includes('*') || roleDefaults.includes(permission)) return true;
+    return userPermissions?.includes(permission);
+  };
+
+  const getDefaultRoute = () => {
+    if (!loggedIn) return '/login';
+
+    // Strict role-first routing (requested behavior).
+    const normalizedRole = String(userRole || '').trim().toLowerCase();
+    if (normalizedRole === 'admin' || normalizedRole === 'manager') return '/dashboard';
+    if (normalizedRole === 'pentester') return '/pentest';
+    return '/records';
+  };
 
   // Global theme for the entire application
   const globalTheme = createTheme({
@@ -129,13 +180,17 @@ const App = () => {
       <Routes>
         <Route
           path="/"
-            element={loggedIn && userPermissions.includes('view_dashboard') ? 
+          element={loggedIn ? <Navigate to={getDefaultRoute()} replace /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/dashboard"
+          element={loggedIn && hasPermission('view_dashboard') ? 
             <Dashboard userRole={userRole} userPermissions={userPermissions} /> : 
-              loggedIn ? <Navigate to="/records" /> : <Navigate to="/login" />}
+              <Navigate to={loggedIn ? getDefaultRoute() : "/login"} replace />}
         />
         <Route
           path="/records"
-          element={loggedIn && userPermissions.includes('view_records') ? 
+          element={loggedIn && hasPermission('view_records') ? 
             <RecordsTable userRole={userRole} userPermissions={userPermissions} darkMode={darkMode}/> : 
               <Navigate to="/login" />}
         />
@@ -153,20 +208,24 @@ const App = () => {
               resetUserType={resetUserType}
               setResetUserType={setResetUserType}
               darkMode={darkMode}
-            /> : <Navigate to="/" />
+            /> : <Navigate to={getDefaultRoute()} replace />
           }
         />
         <Route
           path="/settings"
           element={
-            loggedIn && userRole === "admin" ? 
-              <AdminSettings darkMode={darkMode}/> : 
-                <Navigate to="/" />
+            loggedIn && hasPermission('view_settings') ? 
+              <AdminSettings
+                darkMode={darkMode}
+                userRole={userRole}
+                userPermissions={userPermissions}
+              /> : 
+                <Navigate to={loggedIn ? getDefaultRoute() : "/login"} />
           }
         />
         <Route
             path="/pentest"
-            element={loggedIn && userPermissions.includes('view_security_dashboard') ?
+            element={loggedIn && hasPermission('view_security_dashboard') ?
                 <PentestDashboard
                   darkMode={darkMode}
                   isAdmin={userRole === 'admin'}
@@ -179,14 +238,18 @@ const App = () => {
         <Route
           path="/pentest/record/:recordId"
           element={
-            loggedIn && userPermissions.includes('view_pentest_page') ?
+            loggedIn && hasPermission('view_pentest_page') ?
               <PentestRecord darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} username={username} /> :
               <Navigate to={loggedIn ? "/pentest" : "/login"} />
           }
         />
         <Route
+          path="/records/record/:recordId"
+          element={loggedIn && hasPermission('view_record_details') ? <Record darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} /> : <Navigate to="/login" />}
+        />
+        <Route
           path="/records/:domain"
-          element={loggedIn && userPermissions.includes('view_record_details') ? <Record darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} /> : <Navigate to="/login" />}
+          element={loggedIn && hasPermission('view_record_details') ? <Record darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} /> : <Navigate to="/login" />}
         />
         <Route path="/records/*" element={<Navigate to="/" />} />
         <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />

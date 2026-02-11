@@ -111,7 +111,7 @@ const AdminSettingsNavDrawer = ({
         <Box sx={theme.mixins.toolbar} />
         <Box sx={{ px: 2.5, py: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            Admin Settings
+            Settings
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Select a section to manage
