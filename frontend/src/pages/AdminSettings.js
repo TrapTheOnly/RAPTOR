@@ -1199,6 +1199,10 @@ const AdminSettings = () => {
         onSelectSection={handleSelectSection}
         userManagementPage={userManagementPage}
         onSelectUserManagementPage={setUserManagementPage}
+        reportTemplates={reportTemplates}
+        selectedReportTemplateId={selectedReportTemplateId}
+        onCreateReportTemplate={handleCreateNewReportTemplate}
+        onSelectReportTemplate={handleSelectReportTemplate}
       />
 
       <Box component="main" sx={{ flexGrow: 1, p: 3 }}>

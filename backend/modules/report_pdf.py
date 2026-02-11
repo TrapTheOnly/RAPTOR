@@ -292,7 +292,7 @@ def render_pentest_report_pdf(
     checklist_templates=None,
     image_fetcher=None
 ):
-    """Builds a PDF report from pentest data and template definition."""
+    """Build a polished PDF report from pentest data and template definition."""
     try:
         from io import BytesIO
         from reportlab.graphics.charts.barcharts import VerticalBarChart
@@ -350,27 +350,30 @@ def render_pentest_report_pdf(
     primary = safe_color(primary_color, "#0B5CAD")
     accent = safe_color(accent_color, "#1E293B")
     muted = colors.HexColor("#64748B")
+    text_primary = colors.HexColor("#111827")
+    border_color = colors.HexColor("#CBD5E1")
+    surface_light = colors.HexColor("#F8FAFC")
+    severity_color_hex = {
+        "Critical": "#991B1B",
+        "High": "#B45309",
+        "Medium": "#0E7490",
+        "Low": "#166534",
+        "Informational": "#475569"
+    }
+    severity_colors = {
+        key: colors.HexColor(value) for key, value in severity_color_hex.items()
+    }
 
     styles = getSampleStyleSheet()
     styles.add(
         ParagraphStyle(
-            name="ReportH1",
-            parent=styles["Heading1"],
-            fontSize=22,
-            leading=26,
-            textColor=accent,
-            spaceAfter=8
-        )
-    )
-    styles.add(
-        ParagraphStyle(
-            name="ReportH2",
+            name="ReportSectionTitle",
             parent=styles["Heading2"],
-            fontSize=15,
-            leading=19,
+            fontSize=14.5,
+            leading=18,
             textColor=accent,
-            spaceBefore=10,
-            spaceAfter=6
+            spaceBefore=0,
+            spaceAfter=0
         )
     )
     styles.add(
@@ -378,58 +381,110 @@ def render_pentest_report_pdf(
             name="ReportBody",
             parent=styles["BodyText"],
             fontSize=10.2,
-            leading=14,
-            textColor=colors.HexColor("#111827")
+            leading=14.3,
+            textColor=text_primary
         )
     )
     styles.add(
         ParagraphStyle(
             name="ReportMuted",
             parent=styles["BodyText"],
-            fontSize=9.4,
-            leading=13,
+            fontSize=9.1,
+            leading=12.4,
             textColor=muted
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportMutedCenter",
+            parent=styles["ReportMuted"],
+            alignment=TA_CENTER
         )
     )
     styles.add(
         ParagraphStyle(
             name="ReportCoverTitle",
             parent=styles["Heading1"],
-            fontSize=28,
-            leading=32,
+            fontSize=32,
+            leading=36,
             alignment=TA_CENTER,
             textColor=accent,
-            spaceAfter=12
+            spaceAfter=8
         )
     )
     styles.add(
         ParagraphStyle(
             name="ReportCoverSub",
             parent=styles["BodyText"],
-            fontSize=12.5,
-            leading=17,
+            fontSize=12.8,
+            leading=18,
             alignment=TA_CENTER,
             textColor=muted
         )
     )
     styles.add(
         ParagraphStyle(
+            name="ReportCoverMetaLabel",
+            parent=styles["BodyText"],
+            fontSize=9.2,
+            leading=12,
+            textColor=muted
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportCoverMetaValue",
+            parent=styles["BodyText"],
+            fontSize=10.3,
+            leading=13.5,
+            textColor=text_primary
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportMetricLabel",
+            parent=styles["BodyText"],
+            fontSize=8.5,
+            leading=11.3,
+            textColor=muted,
+            alignment=TA_CENTER
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportMetricValue",
+            parent=styles["BodyText"],
+            fontSize=16,
+            leading=18,
+            textColor=accent,
+            alignment=TA_CENTER
+        )
+    )
+    styles.add(
+        ParagraphStyle(
             name="ReportBullet",
             parent=styles["BodyText"],
-            fontSize=10.2,
+            fontSize=10,
             leading=13.5,
+            textColor=text_primary,
             leftIndent=12,
             bulletIndent=0
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportFindingTitle",
+            parent=styles["BodyText"],
+            fontSize=11.2,
+            leading=14.5,
+            textColor=accent
         )
     )
 
     def resolve(value):
         return _resolve_placeholders(value, flat_context)
 
-    def make_heading(text):
-        return Paragraph(_replace_inline_markdown(resolve(text or "")), styles["ReportH2"])
-
-    def get_embedded_image(url):
+    def get_embedded_image(url, max_width_mm=170, max_height_mm=90, centered=False):
         if not url or not image_fetcher:
             return None
         match = IMAGE_REFERENCE_PATTERN.search(str(url))
@@ -439,19 +494,26 @@ def render_pentest_report_pdf(
         try:
             file_obj = image_fetcher(filename)
             image = RLImage(file_obj)
-            max_width = 170 * mm
+            max_width = max_width_mm * mm
+            max_height = max_height_mm * mm
             if image.drawWidth > max_width:
                 ratio = max_width / float(image.drawWidth)
                 image.drawWidth *= ratio
                 image.drawHeight *= ratio
+            if image.drawHeight > max_height:
+                ratio = max_height / float(image.drawHeight)
+                image.drawWidth *= ratio
+                image.drawHeight *= ratio
+            if centered:
+                image.hAlign = "CENTER"
             return image
         except Exception:
             return None
 
-    def markdown_to_flowables(raw_text):
+    def markdown_to_flowables(raw_text, empty_message="No content provided."):
         text = str(raw_text or "")
         if not text.strip():
-            return [Paragraph("No content provided.", styles["ReportMuted"])]
+            return [Paragraph(empty_message, styles["ReportMuted"])]
 
         flowables = []
         for line in text.splitlines():
@@ -466,24 +528,15 @@ def render_pentest_report_pdf(
             if text_without_images:
                 if text_without_images.startswith("### "):
                     flowables.append(
-                        Paragraph(
-                            _replace_inline_markdown(text_without_images[4:]),
-                            styles["ReportH2"]
-                        )
+                        Paragraph(_replace_inline_markdown(text_without_images[4:]), styles["ReportSectionTitle"])
                     )
                 elif text_without_images.startswith("## "):
                     flowables.append(
-                        Paragraph(
-                            _replace_inline_markdown(text_without_images[3:]),
-                            styles["ReportH2"]
-                        )
+                        Paragraph(_replace_inline_markdown(text_without_images[3:]), styles["ReportSectionTitle"])
                     )
                 elif text_without_images.startswith("# "):
                     flowables.append(
-                        Paragraph(
-                            _replace_inline_markdown(text_without_images[2:]),
-                            styles["ReportH2"]
-                        )
+                        Paragraph(_replace_inline_markdown(text_without_images[2:]), styles["ReportSectionTitle"])
                     )
                 elif text_without_images.startswith("- ") or text_without_images.startswith("* "):
                     flowables.append(
@@ -500,7 +553,7 @@ def render_pentest_report_pdf(
 
             for match in image_matches:
                 image_url = match.group(2)
-                image = get_embedded_image(image_url)
+                image = get_embedded_image(image_url, centered=True)
                 if image:
                     flowables.append(Spacer(1, 6))
                     flowables.append(image)
@@ -523,15 +576,15 @@ def render_pentest_report_pdf(
             labels = ["No Data"]
             values = [1]
 
-        drawing = Drawing(400, 220)
+        drawing = Drawing(420, 220)
         pie = Pie()
-        pie.x = 110
-        pie.y = 26
+        pie.x = 112
+        pie.y = 24
         pie.width = 170
         pie.height = 170
         pie.data = values
         pie.labels = [f"{labels[idx]} ({values[idx]})" for idx in range(len(labels))]
-        pie.slices.strokeWidth = 0.5
+        pie.slices.strokeWidth = 0.6
         pie.slices.strokeColor = colors.white
         palette = [
             primary,
@@ -550,12 +603,12 @@ def render_pentest_report_pdf(
         keys = list(data_map.keys()) or ["No Data"]
         values = [_to_int(data_map.get(key, 0), 0) for key in keys] or [0]
 
-        drawing = Drawing(440, 220)
+        drawing = Drawing(450, 220)
         chart = VerticalBarChart()
-        chart.x = 40
-        chart.y = 42
+        chart.x = 38
+        chart.y = 46
         chart.height = 140
-        chart.width = 330
+        chart.width = 342
         chart.data = [values]
         chart.barWidth = 20
         chart.groupSpacing = 14
@@ -563,49 +616,131 @@ def render_pentest_report_pdf(
         chart.bars[0].fillColor = primary
         chart.bars[0].strokeColor = primary
         chart.categoryAxis.categoryNames = keys
-        chart.categoryAxis.labels.angle = 20
+        chart.categoryAxis.labels.angle = 18
         chart.categoryAxis.labels.dy = -12
         chart.categoryAxis.labels.fontSize = 8
+        chart.categoryAxis.strokeColor = colors.HexColor("#94A3B8")
         chart.valueAxis.valueMin = 0
         chart.valueAxis.valueMax = max(values + [1]) + 1
         chart.valueAxis.valueStep = max(1, int(chart.valueAxis.valueMax / 5))
+        chart.valueAxis.strokeColor = colors.HexColor("#94A3B8")
+        chart.valueAxis.gridStrokeColor = colors.HexColor("#E2E8F0")
+        chart.valueAxis.gridStrokeWidth = 0.4
         drawing.add(chart)
         return drawing
 
-    def draw_page_number(canvas, doc):
-        canvas.saveState()
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(muted)
-        canvas.drawString(18 * mm, 10 * mm, resolve("{{record.name}}") or "Pentest Record")
-        canvas.drawRightString(200 * mm, 10 * mm, f"Page {doc.page}")
-        canvas.restoreState()
+    def section_title(text):
+        heading = Paragraph(_replace_inline_markdown(resolve(text or "")), styles["ReportSectionTitle"])
+        title_table = Table([[heading]], colWidths=[178 * mm], hAlign="LEFT")
+        title_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), surface_light),
+                    ("BOX", (0, 0), (-1, -1), 0.7, border_color),
+                    ("LINEBEFORE", (0, 0), (0, 0), 4, primary),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            )
+        )
+        return title_table
 
     def table_with_style(rows, col_widths):
         table = Table(rows, colWidths=col_widths, hAlign="LEFT")
         table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), primary),
+                    ("BACKGROUND", (0, 0), (-1, 0), accent),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+                    ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                    ("GRID", (0, 0), (-1, -1), 0.55, border_color),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, surface_light]),
                     ("LEFTPADDING", (0, 0), (-1, -1), 6),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ]
             )
         )
         return table
+
+    def metric_tiles(items, columns=3):
+        if not items:
+            return Paragraph("No metrics available.", styles["ReportMuted"])
+        col_width = (178 * mm) / max(columns, 1)
+        rows = []
+        row = []
+        for label, value in items:
+            content = [
+                Paragraph(_replace_inline_markdown(str(label)), styles["ReportMetricLabel"]),
+                Spacer(1, 3),
+                Paragraph(f"<b>{_replace_inline_markdown(str(value))}</b>", styles["ReportMetricValue"])
+            ]
+            row.append(content)
+            if len(row) == columns:
+                rows.append(row)
+                row = []
+        if row:
+            while len(row) < columns:
+                row.append("")
+            rows.append(row)
+
+        table = Table(rows, colWidths=[col_width] * columns, hAlign="LEFT")
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                    ("BOX", (0, 0), (-1, -1), 0.7, border_color),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.5, border_color),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        return table
+
+    def draw_cover_page(canvas, doc):
+        canvas.saveState()
+        page_width, page_height = A4
+        canvas.setFillColor(primary)
+        canvas.rect(0, page_height - (24 * mm), page_width, 24 * mm, fill=1, stroke=0)
+        canvas.setFillColor(accent)
+        canvas.rect(0, 0, page_width, 7 * mm, fill=1, stroke=0)
+        canvas.setFillColor(colors.white)
+        canvas.setFont("Helvetica-Bold", 11)
+        canvas.drawString(14 * mm, page_height - (14 * mm), company_name)
+        canvas.restoreState()
+
+    def draw_body_page(canvas, doc):
+        canvas.saveState()
+        page_width, page_height = A4
+        canvas.setFillColor(surface_light)
+        canvas.rect(0, page_height - (15 * mm), page_width, 15 * mm, fill=1, stroke=0)
+        canvas.setStrokeColor(border_color)
+        canvas.setLineWidth(0.5)
+        canvas.line(12 * mm, page_height - (15 * mm), page_width - (12 * mm), page_height - (15 * mm))
+        canvas.setFont("Helvetica", 8.4)
+        canvas.setFillColor(muted)
+        canvas.drawString(14 * mm, page_height - (10 * mm), company_name)
+        canvas.drawRightString(page_width - (14 * mm), page_height - (10 * mm), resolve("{{record.name}}") or "Pentest")
+        canvas.drawString(14 * mm, 10 * mm, f"Generated {context['generated_date']}")
+        canvas.drawRightString(page_width - (14 * mm), 10 * mm, f"Page {doc.page}")
+        canvas.restoreState()
 
     story = []
 
     for raw_block in blocks:
         if not isinstance(raw_block, dict):
             continue
+
         block_type = str(raw_block.get("type", "")).strip().lower()
         title = resolve(raw_block.get("title", ""))
 
@@ -614,73 +749,113 @@ def render_pentest_report_pdf(
             continue
 
         if block_type == "cover":
-            if raw_block.get("show_logo") and logo_url:
-                logo_image = get_embedded_image(resolve(logo_url))
-                if logo_image:
-                    logo_image.hAlign = "CENTER"
-                    story.append(Spacer(1, 16))
-                    story.append(logo_image)
-                    story.append(Spacer(1, 14))
+            story.append(Spacer(1, 44 * mm))
 
-            story.append(Spacer(1, 40))
-            story.append(Paragraph(_replace_inline_markdown(title or "Penetration Test Report"), styles["ReportCoverTitle"]))
+            if raw_block.get("show_logo") and logo_url:
+                logo_image = get_embedded_image(resolve(logo_url), max_width_mm=52, max_height_mm=52, centered=True)
+                if logo_image:
+                    story.append(logo_image)
+                    story.append(Spacer(1, 12 * mm))
+
+            story.append(
+                Paragraph(
+                    _replace_inline_markdown(title or "Penetration Test Report"),
+                    styles["ReportCoverTitle"]
+                )
+            )
             subtitle = resolve(raw_block.get("subtitle", ""))
             if subtitle:
                 story.append(Paragraph(_replace_inline_markdown(subtitle), styles["ReportCoverSub"]))
-                story.append(Spacer(1, 10))
+                story.append(Spacer(1, 8 * mm))
 
             prepared_for = resolve(context.get("placeholders", {}).get("prepared_for", "{{record.name}}"))
             prepared_by = resolve(context.get("placeholders", {}).get("prepared_by", "{{pentest.tested_by}}"))
-            story.append(Spacer(1, 20))
-            story.append(Paragraph(f"<b>Prepared For:</b> {_replace_inline_markdown(prepared_for)}", styles["ReportBody"]))
-            story.append(Paragraph(f"<b>Prepared By:</b> {_replace_inline_markdown(prepared_by)}", styles["ReportBody"]))
-            story.append(Paragraph(f"<b>Company:</b> {_replace_inline_markdown(company_name)}", styles["ReportBody"]))
-            story.append(Paragraph(f"<b>Generated:</b> {_replace_inline_markdown(context['generated_at'])}", styles["ReportBody"]))
+            meta_rows = [
+                [
+                    Paragraph("Prepared For", styles["ReportCoverMetaLabel"]),
+                    Paragraph(_replace_inline_markdown(prepared_for or "N/A"), styles["ReportCoverMetaValue"]),
+                ],
+                [
+                    Paragraph("Prepared By", styles["ReportCoverMetaLabel"]),
+                    Paragraph(_replace_inline_markdown(prepared_by or "N/A"), styles["ReportCoverMetaValue"]),
+                ],
+                [
+                    Paragraph("Application", styles["ReportCoverMetaLabel"]),
+                    Paragraph(_replace_inline_markdown(resolve("{{record.application_name}}") or "N/A"), styles["ReportCoverMetaValue"]),
+                ],
+                [
+                    Paragraph("Generated", styles["ReportCoverMetaLabel"]),
+                    Paragraph(_replace_inline_markdown(context["generated_at"]), styles["ReportCoverMetaValue"]),
+                ],
+            ]
+            meta_table = Table(meta_rows, colWidths=[42 * mm, 92 * mm], hAlign="CENTER")
+            meta_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                        ("BOX", (0, 0), (-1, -1), 0.7, border_color),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.4, border_color),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                )
+            )
+            story.append(Spacer(1, 9 * mm))
+            story.append(meta_table)
+            story.append(Spacer(1, 8 * mm))
+            story.append(
+                Paragraph(
+                    "Confidential. Distribution limited to approved stakeholders.",
+                    styles["ReportMutedCenter"]
+                )
+            )
             story.append(PageBreak())
             continue
 
         if title:
-            story.append(make_heading(title))
+            story.append(section_title(title))
+            story.append(Spacer(1, 4))
 
         if block_type == "engagement_overview":
             rows = [
                 ["Field", "Value"],
-                ["Target", resolve("{{record.name}}")],
-                ["IP Address", resolve("{{record.ip_address}}")],
-                ["Source", resolve("{{record.source}}")],
+                ["Target", resolve("{{record.name}}") or "N/A"],
+                ["IP Address", resolve("{{record.ip_address}}") or "N/A"],
+                ["Source", resolve("{{record.source}}") or "N/A"],
                 ["Application", resolve("{{record.application_name}}") or "N/A"],
                 ["Assigned Tester", resolve("{{pentest.tested_by}}") or "Unassigned"],
-                ["Status", resolve("{{pentest.status}}")],
+                ["Status", resolve("{{pentest.status}}") or "Not Started"],
                 ["Start Date", resolve("{{pentest.test_start_date}}") or "N/A"],
                 ["End Date", resolve("{{pentest.test_end_date}}") or "N/A"],
                 ["Service Desk Link", resolve("{{pentest.service_desk_link}}") or "N/A"]
             ]
-            story.append(table_with_style(rows, [55 * mm, 125 * mm]))
-            story.append(Spacer(1, 10))
+            story.append(table_with_style(rows, [55 * mm, 123 * mm]))
+            story.append(Spacer(1, 8))
             continue
 
         if block_type == "key_metrics":
-            rows = [
-                ["Metric", "Value"],
-                ["Total Findings", resolve("{{metrics.vulnerability_count}}")],
-                ["Critical Findings", resolve("{{metrics.critical_count}}")],
-                ["High Findings", resolve("{{metrics.high_count}}")],
-                ["Open Findings", resolve("{{metrics.open_findings}}")],
-                ["Fixed Findings", resolve("{{metrics.fixed_findings}}")],
-                ["Open Ports", resolve("{{metrics.open_ports_count}}")],
-                [
-                    "Checklist Completion",
-                    f"{resolve('{{metrics.checklist_completed}}')}/{resolve('{{metrics.checklist_total}}')} ({resolve('{{metrics.checklist_percentage}}')}%)"
-                ]
+            metrics = [
+                ("Total Findings", resolve("{{metrics.vulnerability_count}}")),
+                ("Critical Findings", resolve("{{metrics.critical_count}}")),
+                ("High Findings", resolve("{{metrics.high_count}}")),
+                ("Open Findings", resolve("{{metrics.open_findings}}")),
+                ("Fixed Findings", resolve("{{metrics.fixed_findings}}")),
+                ("Open Ports", resolve("{{metrics.open_ports_count}}")),
+                ("Checklist Completed", resolve("{{metrics.checklist_completed}}")),
+                ("Checklist Coverage", f"{resolve('{{metrics.checklist_percentage}}')}%")
             ]
-            story.append(table_with_style(rows, [70 * mm, 110 * mm]))
-            story.append(Spacer(1, 10))
+            story.append(metric_tiles(metrics, columns=4))
+            story.append(Spacer(1, 8))
             continue
 
         if block_type == "chart":
             chart_type = str(raw_block.get("chart", "")).strip().lower()
             if chart_type == "vulnerability_severity":
                 chart = build_bar_chart(model["severity_counts"])
+                chart_caption = "Distribution of findings by severity."
             elif chart_type == "checklist_completion":
                 chart = build_pie_chart(
                     {
@@ -689,6 +864,7 @@ def render_pentest_report_pdf(
                         "Unstarted": context["metrics"]["checklist_unstarted"]
                     }
                 )
+                chart_caption = "Checklist completion breakdown."
             elif chart_type == "vulnerability_fix_status":
                 chart = build_pie_chart(
                     {
@@ -696,10 +872,28 @@ def render_pentest_report_pdf(
                         "Fixed": context["metrics"]["fixed_findings"]
                     }
                 )
+                chart_caption = "Open versus remediated findings."
             else:
                 chart = build_pie_chart({"Unsupported": 1})
-            story.append(chart)
-            story.append(Spacer(1, 10))
+                chart_caption = "Unsupported chart configuration."
+
+            chart_card = Table([[chart]], colWidths=[178 * mm], hAlign="LEFT")
+            chart_card.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                        ("BOX", (0, 0), (-1, -1), 0.7, border_color),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ]
+                )
+            )
+            story.append(chart_card)
+            story.append(Spacer(1, 3))
+            story.append(Paragraph(chart_caption, styles["ReportMutedCenter"]))
+            story.append(Spacer(1, 8))
             continue
 
         if block_type == "open_ports":
@@ -707,10 +901,10 @@ def render_pentest_report_pdf(
                 rows = [["Port", "Likely Service"]]
                 for port in model["open_ports"]:
                     rows.append([str(port), _build_service_name(port)])
-                story.append(table_with_style(rows, [40 * mm, 140 * mm]))
+                story.append(table_with_style(rows, [36 * mm, 142 * mm]))
             else:
                 story.append(Paragraph("No open ports recorded.", styles["ReportMuted"]))
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
             continue
 
         if block_type == "markdown":
@@ -725,7 +919,7 @@ def render_pentest_report_pdf(
             elif field in {"open_ports"}:
                 field_value = context["pentest"]["open_ports"]
             story.extend(markdown_to_flowables(resolve(field_value)))
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
             continue
 
         if block_type == "checklists":
@@ -740,48 +934,54 @@ def render_pentest_report_pdf(
                     str(item["total"]),
                     f"{item['percentage']}%"
                 ])
+
             if len(rows) == 1:
                 story.append(Paragraph("No checklist coverage recorded.", styles["ReportMuted"]))
             else:
                 story.append(
                     table_with_style(
                         rows,
-                        [56 * mm, 20 * mm, 18 * mm, 20 * mm, 20 * mm, 14 * mm, 26 * mm]
+                        [56 * mm, 19 * mm, 18 * mm, 20 * mm, 20 * mm, 14 * mm, 31 * mm]
                     )
                 )
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
             continue
 
         if block_type == "vulnerabilities":
             include_descriptions = bool(raw_block.get("include_descriptions", True))
             if not model["vulnerabilities"]:
                 story.append(Paragraph("No vulnerabilities recorded.", styles["ReportMuted"]))
-                story.append(Spacer(1, 10))
+                story.append(Spacer(1, 8))
                 continue
 
             for index, vuln in enumerate(model["vulnerabilities"], start=1):
-                category_name = (
-                    str(vuln.get("categoryName", "")).strip()
-                    or f"Finding {index}"
-                )
+                category_name = str(vuln.get("categoryName", "")).strip() or f"Finding {index}"
                 base_score = _to_float(vuln.get("baseScore"), 0.0)
                 severity = _severity_from_score(base_score)
+                severity_color = severity_colors.get(severity, muted)
 
-                story.append(
-                    Paragraph(
-                        f"<b>{index}. {_replace_inline_markdown(category_name)}</b> "
-                        f"(CVSS {base_score:.1f} - {severity})",
-                        styles["ReportBody"]
-                    )
+                finding_header = Paragraph(
+                    f"<b>{index}. {_replace_inline_markdown(category_name)}</b>",
+                    styles["ReportFindingTitle"]
                 )
+                severity_label = Paragraph(
+                    f"<b><font color='{severity_color_hex.get(severity, '#475569')}'>"
+                    f"{severity} | CVSS {base_score:.1f}</font></b>",
+                    styles["ReportMutedCenter"]
+                )
+
+                card_content = [finding_header, Spacer(1, 3), severity_label]
                 metrics = vuln.get("metrics")
                 if isinstance(metrics, dict) and metrics:
                     ordered = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"]
                     metric_parts = [
-                        f"{metric}:{metrics.get(metric, '')}" for metric in ordered if metrics.get(metric) is not None
+                        f"{metric}:{metrics.get(metric, '')}"
+                        for metric in ordered
+                        if metrics.get(metric) is not None and metrics.get(metric) != ""
                     ]
                     if metric_parts:
-                        story.append(
+                        card_content.append(Spacer(1, 2))
+                        card_content.append(
                             Paragraph(
                                 f"CVSS Vector: {_replace_inline_markdown('/'.join(metric_parts))}",
                                 styles["ReportMuted"]
@@ -790,15 +990,31 @@ def render_pentest_report_pdf(
 
                 if include_descriptions:
                     description = vuln.get("description", "")
-                    story.extend(markdown_to_flowables(description))
+                    card_content.append(Spacer(1, 4))
+                    card_content.extend(markdown_to_flowables(description))
+
+                finding_table = Table([[card_content]], colWidths=[178 * mm], hAlign="LEFT")
+                finding_table.setStyle(
+                    TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                            ("BOX", (0, 0), (-1, -1), 0.7, border_color),
+                            ("LINEBEFORE", (0, 0), (0, 0), 3, severity_color),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                            ("TOPPADDING", (0, 0), (-1, -1), 8),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                        ]
+                    )
+                )
+                story.append(finding_table)
                 story.append(Spacer(1, 7))
-            story.append(Spacer(1, 8))
             continue
 
         if block_type == "text":
             body = resolve(raw_block.get("content", ""))
             story.extend(markdown_to_flowables(body))
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
             continue
 
         story.append(
@@ -813,12 +1029,13 @@ def render_pentest_report_pdf(
     doc = SimpleDocTemplate(
         pdf_buffer,
         pagesize=A4,
-        leftMargin=14 * mm,
-        rightMargin=14 * mm,
-        topMargin=12 * mm,
-        bottomMargin=14 * mm,
-        title=str(resolve("{{placeholders.report_title}}") or "Pentest Report")
+        leftMargin=16 * mm,
+        rightMargin=16 * mm,
+        topMargin=18 * mm,
+        bottomMargin=16 * mm,
+        title=str(resolve("{{placeholders.report_title}}") or "Pentest Report"),
+        author=company_name
     )
-    doc.build(story, onFirstPage=draw_page_number, onLaterPages=draw_page_number)
+    doc.build(story, onFirstPage=draw_cover_page, onLaterPages=draw_body_page)
     pdf_buffer.seek(0)
     return pdf_buffer.read()

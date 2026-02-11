@@ -418,7 +418,19 @@ def get_pentest_data_internal(record_id=None):
 
             if record_id is not None:
                 c.execute("""
-                    SELECT r.*, a.name AS application_name
+                    SELECT
+                        r.id,
+                        r.name,
+                        r.ip_address,
+                        r.source,
+                        r.status,
+                        r.creation_date,
+                        r.last_modification_date,
+                        r.application_owner,
+                        r.maintainer,
+                        r.description,
+                        r.application_id,
+                        a.name AS application_name
                     FROM records r
                     LEFT JOIN applications a ON r.application_id = a.id
                     WHERE r.id = ?
@@ -444,7 +456,19 @@ def get_pentest_data_internal(record_id=None):
                 }
 
             c.execute("""
-                SELECT r.*, a.name AS application_name
+                SELECT
+                    r.id,
+                    r.name,
+                    r.ip_address,
+                    r.source,
+                    r.status,
+                    r.creation_date,
+                    r.last_modification_date,
+                    r.application_owner,
+                    r.maintainer,
+                    r.description,
+                    r.application_id,
+                    a.name AS application_name
                 FROM records r
                 LEFT JOIN applications a ON r.application_id = a.id
             """)

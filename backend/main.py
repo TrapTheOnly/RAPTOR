@@ -924,7 +924,20 @@ def get_records():
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("""
-        SELECT r.*, p.open_ports, a.name AS application_name
+        SELECT
+            r.id,
+            r.name,
+            r.ip_address,
+            r.source,
+            r.status,
+            r.creation_date,
+            r.last_modification_date,
+            r.application_owner,
+            r.maintainer,
+            r.description,
+            r.application_id,
+            p.open_ports,
+            a.name AS application_name
         FROM records r
         LEFT JOIN pentest_data p ON r.id = p.record_id
         LEFT JOIN applications a ON r.application_id = a.id
@@ -1089,11 +1102,22 @@ def update_application(app_id):
 
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
             if not c.fetchone():
                 return jsonify({"error": "Application not found."}), 404
             c.execute("UPDATE applications SET name = ? WHERE id = ?", (sanitized, app_id))
+
+            # Keep legacy denormalized schemas consistent (older DBs may still have this column).
+            c.execute("PRAGMA table_info(records)")
+            record_columns = {row["name"] for row in c.fetchall()}
+            if "application_name" in record_columns:
+                c.execute(
+                    "UPDATE records SET application_name = ? WHERE application_id = ?",
+                    (sanitized, app_id)
+                )
+
             conn.commit()
         return jsonify({"message": "Application updated.", "name": sanitized}), 200
     except sqlite3.IntegrityError:
