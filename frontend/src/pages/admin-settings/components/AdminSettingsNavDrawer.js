@@ -25,10 +25,17 @@ const AdminSettingsNavDrawer = ({
   selectedSection,
   onSelectSection,
   userManagementPage,
-  onSelectUserManagementPage
+  onSelectUserManagementPage,
+  reportTemplates,
+  selectedReportTemplateId,
+  onCreateReportTemplate,
+  onSelectReportTemplate
 }) => {
   const theme = useTheme();
   const [usersNavOpen, setUsersNavOpen] = useState(selectedSection === 'users');
+  const [reportTemplatesNavOpen, setReportTemplatesNavOpen] = useState(
+    selectedSection === 'report-templates'
+  );
 
   const userSubSections = useMemo(
     () => [
@@ -45,6 +52,12 @@ const AdminSettingsNavDrawer = ({
     }
   }, [selectedSection]);
 
+  useEffect(() => {
+    if (selectedSection === 'report-templates') {
+      setReportTemplatesNavOpen(true);
+    }
+  }, [selectedSection]);
+
   const handleUsersSectionClick = () => {
     if (selectedSection !== 'users') {
       onSelectSection('users');
@@ -57,6 +70,25 @@ const AdminSettingsNavDrawer = ({
   const handleUsersSubSectionClick = (subSectionKey) => {
     onSelectUserManagementPage(subSectionKey);
     onSelectSection('users');
+  };
+
+  const handleReportTemplatesSectionClick = () => {
+    if (selectedSection !== 'report-templates') {
+      onSelectSection('report-templates');
+      setReportTemplatesNavOpen(true);
+      return;
+    }
+    setReportTemplatesNavOpen((prev) => !prev);
+  };
+
+  const handleCreateTemplateClick = () => {
+    onCreateReportTemplate();
+    onSelectSection('report-templates');
+  };
+
+  const handleSelectTemplateClick = (template) => {
+    onSelectReportTemplate(template);
+    onSelectSection('report-templates');
   };
 
   return (
@@ -79,7 +111,7 @@ const AdminSettingsNavDrawer = ({
         <Box sx={theme.mixins.toolbar} />
         <Box sx={{ px: 2.5, py: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            Admin Settings
+            Settings
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Select a section to manage
@@ -89,6 +121,7 @@ const AdminSettingsNavDrawer = ({
         <List sx={{ px: 1 }}>
           {sections.map((section) => {
             const isUsersSection = section.key === 'users';
+            const isReportTemplatesSection = section.key === 'report-templates';
             const isSelected = selectedSection === section.key;
 
             return (
@@ -98,6 +131,8 @@ const AdminSettingsNavDrawer = ({
                   onClick={
                     isUsersSection
                       ? handleUsersSectionClick
+                      : isReportTemplatesSection
+                      ? handleReportTemplatesSectionClick
                       : () => onSelectSection(section.key)
                   }
                   sx={{
@@ -120,6 +155,12 @@ const AdminSettingsNavDrawer = ({
                   />
                   {isUsersSection &&
                     (usersNavOpen ? (
+                      <ExpandLessIcon fontSize="small" />
+                    ) : (
+                      <ExpandMoreIcon fontSize="small" />
+                    ))}
+                  {isReportTemplatesSection &&
+                    (reportTemplatesNavOpen ? (
                       <ExpandLessIcon fontSize="small" />
                     ) : (
                       <ExpandMoreIcon fontSize="small" />
@@ -154,6 +195,84 @@ const AdminSettingsNavDrawer = ({
                             primaryTypographyProps={{
                               fontSize: '0.85rem',
                               fontWeight: 500
+                            }}
+                          />
+                        </ListItemButton>
+                      ))}
+                    </List>
+                  </Collapse>
+                )}
+
+                {isReportTemplatesSection && (
+                  <Collapse in={reportTemplatesNavOpen} timeout="auto" unmountOnExit>
+                    <List
+                      dense
+                      disablePadding
+                      sx={{
+                        pl: 5,
+                        pr: 0.5,
+                        pb: 0.5,
+                        maxHeight: 280,
+                        overflowY: 'auto'
+                      }}
+                    >
+                      <ListItemButton
+                        selected={
+                          selectedSection === 'report-templates' &&
+                          !selectedReportTemplateId
+                        }
+                        onClick={handleCreateTemplateClick}
+                        sx={{
+                          borderRadius: 1,
+                          minHeight: 34,
+                          mb: 0.25,
+                          '&.Mui-selected': {
+                            backgroundColor: alpha(theme.palette.primary.main, 0.16)
+                          },
+                          '&.Mui-selected:hover': {
+                            backgroundColor: alpha(theme.palette.primary.main, 0.2)
+                          }
+                        }}
+                      >
+                        <ListItemText
+                          primary="New Template"
+                          primaryTypographyProps={{
+                            fontSize: '0.84rem',
+                            fontWeight: 600
+                          }}
+                        />
+                      </ListItemButton>
+
+                      {(reportTemplates || []).map((template) => (
+                        <ListItemButton
+                          key={template.id}
+                          selected={
+                            selectedSection === 'report-templates' &&
+                            selectedReportTemplateId === template.id
+                          }
+                          onClick={() => handleSelectTemplateClick(template)}
+                          sx={{
+                            borderRadius: 1,
+                            minHeight: 34,
+                            mb: 0.25,
+                            '&.Mui-selected': {
+                              backgroundColor: alpha(theme.palette.primary.main, 0.16)
+                            },
+                            '&.Mui-selected:hover': {
+                              backgroundColor: alpha(theme.palette.primary.main, 0.2)
+                            }
+                          }}
+                        >
+                          <ListItemText
+                            primary={template.name}
+                            secondary={template.enabled ? null : 'Disabled'}
+                            primaryTypographyProps={{
+                              fontSize: '0.82rem',
+                              fontWeight: 500,
+                              noWrap: true
+                            }}
+                            secondaryTypographyProps={{
+                              fontSize: '0.72rem'
                             }}
                           />
                         </ListItemButton>

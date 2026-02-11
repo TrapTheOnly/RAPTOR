@@ -12,6 +12,7 @@ DATA_PATH = os.getenv("DATA_PATH", os.path.join(BASE_DIR, "data"))
 DB_PATH = os.path.join(DATA_PATH, "database.db")
 
 PERMISSIONS = {
+    "view_settings",
     "view_dashboard",
     "view_records",
     "view_security_dashboard",
@@ -22,6 +23,9 @@ PERMISSIONS = {
     "view_pentest_page",
     "modify_pentests",
     "export_pentests",
+    "manage_ip_sources",
+    "manage_vuln_categories",
+    "manage_report_templates",
     "reassign_pentests_admin",
     "delete_records",
     "modify_others_pentests_admin"
@@ -44,12 +48,16 @@ ROLE_DEFAULTS = {
         "export_pentests"
     },
     "manager": {
+        "view_settings",
         "view_dashboard",
         "view_records",
         "view_security_dashboard",
         "modify_records",
         "view_record_details",
         "export_records",
+        "manage_ip_sources",
+        "manage_vuln_categories",
+        "manage_report_templates",
         "manage_apps",
         "view_pentest_page",
         "modify_pentests",

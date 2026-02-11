@@ -20,13 +20,10 @@ import {
   useTheme,
   alpha,
   Chip,
-  IconButton,
-  Tooltip,
   Stack,
   Divider,
   Alert,
-  LinearProgress,
-  InputAdornment
+  LinearProgress
 } from '@mui/material';
 import {
   Computer as ComputerIcon,
@@ -51,7 +48,7 @@ const Record = ({ darkMode, userPermissions }) => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { domain } = useParams();
+  const { domain, recordId } = useParams();
   const navigate = useNavigate();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -66,11 +63,17 @@ const Record = ({ darkMode, userPermissions }) => {
       setLoading(true);
       setError('');
       try {
-        const recordResponse = await axios.get(`/api/records/${domain}`);
+        const endpoint = recordId
+          ? `/api/records/${recordId}`
+          : `/api/records/${encodeURIComponent(domain)}`;
+        const recordResponse = await axios.get(endpoint);
         setRecord(recordResponse.data);
         setEditedDescription(recordResponse.data.description || '');
         const historyResponse = await axios.get(`/api/records/${recordResponse.data.id}/history`);
         setHistory(historyResponse.data);
+        if (!recordId && domain && recordResponse.data?.id) {
+          navigate(`/records/record/${recordResponse.data.id}`, { replace: true });
+        }
       } catch (err) {
         setError('Failed to load record details.');
         console.error(err);
@@ -79,23 +82,8 @@ const Record = ({ darkMode, userPermissions }) => {
       }
     };
 
-    const checkSession = async () => {
-      try {
-        const response = await axios.get('/session-status');
-        if (response.status !== 200) {
-          navigate('/login');
-        }
-      } catch (error) {
-        console.error("Session expired:", error);
-        navigate('/login');
-      }
-    };
-
     fetchData();
-    checkSession();
-    const interval = setInterval(checkSession, 60000);
-    return () => clearInterval(interval);
-  }, [domain, navigate]);
+  }, [domain, navigate, recordId]);
 
   const formatDateTime = (datetime) => 
     !datetime ? 'N/A' : new Intl.DateTimeFormat('en-UK', { 
@@ -151,7 +139,7 @@ const Record = ({ darkMode, userPermissions }) => {
     if (!canModifyRecords || !record) return;
     try {
       await axios.post(`/api/records/${record.id}`, { ...record, description: editedDescription });
-      setRecord((await axios.get(`/api/records/${domain}`)).data);
+      setRecord((await axios.get(`/api/records/${record.id}`)).data);
       setEditingDescription(false);
     } catch (error) {
       console.error('Error updating description:', error);

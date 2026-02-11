@@ -22,10 +22,42 @@ import {
   Security,
   Settings,
   Logout,
-  Person,
   Brightness4,
   Brightness7
 } from '@mui/icons-material';
+
+const ROLE_DEFAULT_PERMISSIONS = {
+  user: ['view_records', 'modify_records', 'view_record_details', 'export_records'],
+  pentester: [
+    'view_records',
+    'view_security_dashboard',
+    'view_record_details',
+    'export_records',
+    'view_pentest_page',
+    'modify_pentests',
+    'export_pentests'
+  ],
+  manager: [
+    'view_settings',
+    'view_dashboard',
+    'view_records',
+    'view_security_dashboard',
+    'modify_records',
+    'view_record_details',
+    'export_records',
+    'manage_ip_sources',
+    'manage_vuln_categories',
+    'manage_report_templates',
+    'manage_apps',
+    'view_pentest_page',
+    'modify_pentests',
+    'export_pentests',
+    'reassign_pentests_admin',
+    'delete_records',
+    'modify_others_pentests_admin'
+  ],
+  admin: ['*']
+};
 
 const ModernHeader = ({ 
   username, 
@@ -67,22 +99,32 @@ const ModernHeader = ({
 
   const hasPermission = (permission) => {
     if (userRole === 'admin') return true;
+    const normalizedRole = String(userRole || '').trim().toLowerCase();
+    const roleDefaults = ROLE_DEFAULT_PERMISSIONS[normalizedRole] || [];
+    if (roleDefaults.includes('*') || roleDefaults.includes(permission)) return true;
     return userPermissions?.includes(permission);
   };
 
   const canViewDashboard = hasPermission('view_dashboard');
 
+  const getDefaultRoute = () => {
+    const normalizedRole = String(userRole || '').trim().toLowerCase();
+    if (normalizedRole === 'admin' || normalizedRole === 'manager') return '/dashboard';
+    if (normalizedRole === 'pentester') return '/pentest';
+    return '/records';
+  };
+
   const navigationItems = [
-    { label: 'Dashboard', path: '/', icon: Dashboard, visible: canViewDashboard },
+    { label: 'Dashboard', path: '/dashboard', icon: Dashboard, visible: canViewDashboard },
     { label: 'Records', path: '/records', icon: TableView, visible: hasPermission('view_records') },
     { label: 'Security', path: '/pentest', icon: Security, visible: hasPermission('view_security_dashboard') },
-    { label: 'Settings', path: '/settings', icon: Settings, visible: userRole === 'admin' },
+    { label: 'Settings', path: '/settings', icon: Settings, visible: hasPermission('view_settings') },
   ];
 
   const visibleNavItems = navigationItems.filter(item => item.visible);
 
   const isActive = (path) => {
-    if (path === '/' && location.pathname === '/') return true;
+    if (path === '/dashboard' && (location.pathname === '/' || location.pathname === '/dashboard')) return true;
     if (path !== '/' && location.pathname.startsWith(path)) return true;
     return false;
   };
@@ -113,7 +155,7 @@ const ModernHeader = ({
         <Box display="flex" alignItems="center">
           <Typography 
             variant="h6" 
-            onClick={() => navigate('/')}
+            onClick={() => navigate(getDefaultRoute())}
             sx={{ 
               cursor: 'pointer',
               fontWeight: 700,

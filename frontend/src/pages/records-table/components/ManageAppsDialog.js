@@ -82,6 +82,7 @@ const ManageAppsDialog = ({
         </Box>
       </DialogTitle>
       <DialogContent sx={{ pt: 2.5 }}>
+        <br></br>
         <Paper
           sx={{
             p: 2,

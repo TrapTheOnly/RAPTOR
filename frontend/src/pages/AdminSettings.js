@@ -11,6 +11,7 @@ import {
   useTheme
 } from '@mui/material';
 import {
+  Article as ArticleIcon,
   BugReport as BugReportIcon,
   Build as BuildIcon,
   FactCheck as FactCheckIcon,
@@ -29,12 +30,18 @@ import {
   buildResetSummary,
   normalizeOptionalPermissions
 } from './admin-settings/utils';
+import {
+  createEmptyReportTemplateForm,
+  createReportTemplateFormFromApi,
+  toReportTemplateDefinition
+} from './admin-settings/report-template-utils';
 import AdminSettingsNavDrawer from './admin-settings/components/AdminSettingsNavDrawer';
 import IpSourcesSection from './admin-settings/components/IpSourcesSection';
 import MaintenanceSection from './admin-settings/components/MaintenanceSection';
 import ResetPentestDialog from './admin-settings/components/ResetPentestDialog';
 import SecuritySection from './admin-settings/components/SecuritySection';
 import ChecklistTemplatesSection from './admin-settings/components/ChecklistTemplatesSection';
+import ReportTemplatesSection from './admin-settings/components/ReportTemplatesSection';
 import VulnCategoriesSection from './admin-settings/components/VulnCategoriesSection';
 import DomainUsersPanel from './admin-settings/components/users/DomainUsersPanel';
 import ExistingUsersPanel from './admin-settings/components/users/ExistingUsersPanel';
@@ -52,7 +59,7 @@ const EMPTY_CHECKLIST_TEMPLATE_FORM = {
   enabled: true
 };
 
-const AdminSettings = () => {
+const AdminSettings = ({ userRole, userPermissions = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
@@ -89,6 +96,11 @@ const AdminSettings = () => {
   const [checklistTemplateForm, setChecklistTemplateForm] = useState(
     EMPTY_CHECKLIST_TEMPLATE_FORM
   );
+  const [reportTemplates, setReportTemplates] = useState([]);
+  const [selectedReportTemplateId, setSelectedReportTemplateId] = useState(null);
+  const [reportTemplateForm, setReportTemplateForm] = useState(() =>
+    createEmptyReportTemplateForm()
+  );
 
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetPhrase, setResetPhrase] = useState('');
@@ -97,12 +109,25 @@ const AdminSettings = () => {
   const [resetSummary, setResetSummary] = useState(null);
   const [resetCsv, setResetCsv] = useState('');
 
-  const [selectedSection, setSelectedSection] = useState('users');
+  const [selectedSection, setSelectedSection] = useState('');
   const [userManagementPage, setUserManagementPage] = useState('existing');
   const [navOpen, setNavOpen] = useState(false);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const hasPermission = useCallback(
+    (permission) => userRole === 'admin' || (userPermissions || []).includes(permission),
+    [userPermissions, userRole]
+  );
+
+  const canManageUsers = userRole === 'admin';
+  const canManageSecurity = userRole === 'admin';
+  const canManageChecklistTemplates = userRole === 'admin';
+  const canRunMaintenance = userRole === 'admin';
+  const canManageIpSources = hasPermission('manage_ip_sources');
+  const canManageVulnCategories = hasPermission('manage_vuln_categories');
+  const canManageReportTemplates = hasPermission('manage_report_templates');
 
   const sections = useMemo(
     () => [
@@ -110,50 +135,81 @@ const AdminSettings = () => {
         key: 'users',
         label: 'User Management',
         description: 'Manage existing users, roles, and access types.',
-        icon: PeopleIcon
+        icon: PeopleIcon,
+        visible: canManageUsers
       },
       {
         key: 'security',
         label: 'Security',
-        description: 'Update the admin password and security settings.',
-        icon: SecurityIcon
+        description: 'Update privileged account password and security settings.',
+        icon: SecurityIcon,
+        visible: canManageSecurity
       },
       {
         key: 'ip-sources',
         label: 'IP Sources',
         description: 'Map IP addresses to source groups used in asset tracking.',
-        icon: StorageIcon
+        icon: StorageIcon,
+        visible: canManageIpSources
       },
       {
         key: 'vuln-categories',
         label: 'Vulnerability Categories',
         description: 'Manage the vulnerability taxonomy used in pentest reports.',
-        icon: BugReportIcon
+        icon: BugReportIcon,
+        visible: canManageVulnCategories
       },
       {
         key: 'checklist-templates',
         label: 'Checklist Templates',
         description: 'Manage service checklists used by pentest records.',
-        icon: FactCheckIcon
+        icon: FactCheckIcon,
+        visible: canManageChecklistTemplates
+      },
+      {
+        key: 'report-templates',
+        label: 'Report Templates',
+        description: 'Design and maintain PDF report templates used by pentest records.',
+        icon: ArticleIcon,
+        visible: canManageReportTemplates
       },
       {
         key: 'maintenance',
         label: 'Maintenance',
         description: 'Run manual updates and manage pentest resets.',
-        icon: BuildIcon
+        icon: BuildIcon,
+        visible: canRunMaintenance
       }
     ],
-    []
+    [
+      canManageUsers,
+      canManageSecurity,
+      canManageIpSources,
+      canManageVulnCategories,
+      canManageChecklistTemplates,
+      canManageReportTemplates,
+      canRunMaintenance
+    ]
+  );
+
+  const visibleSections = useMemo(
+    () => sections.filter((section) => section.visible),
+    [sections]
   );
 
   const activeSection =
-    sections.find((section) => section.key === selectedSection) || sections[0];
+    visibleSections.find((section) => section.key === selectedSection) || visibleSections[0] || null;
   const selectedChecklistTemplate = useMemo(
     () =>
       checklistTemplates.find(
         (template) => template.id === selectedChecklistTemplateId
       ) || null,
     [checklistTemplates, selectedChecklistTemplateId]
+  );
+  const selectedReportTemplate = useMemo(
+    () =>
+      reportTemplates.find((template) => template.id === selectedReportTemplateId) || null,
+    [reportTemplates, selectedReportTemplateId]
   );
 
   const showMessage = useCallback((type, text) => {
@@ -229,17 +285,45 @@ const AdminSettings = () => {
     return [];
   }, [showMessage]);
 
+  const fetchReportTemplates = useCallback(async () => {
+    try {
+      const response = await axios.get('/report-templates?include_disabled=true');
+      if (response.status === 200) {
+        const templates = response.data.templates || [];
+        setReportTemplates(templates);
+        return templates;
+      }
+    } catch (error) {
+      showMessage('error', 'Failed to fetch report templates.');
+    }
+    return [];
+  }, [showMessage]);
+
   useEffect(() => {
-    fetchIpSources();
-    fetchExistingUsers();
-    fetchVulnCategories();
-    fetchChecklistTemplates();
+    if (canManageIpSources) fetchIpSources();
+    if (canManageUsers) fetchExistingUsers();
+    if (canManageVulnCategories) fetchVulnCategories();
+    if (canManageChecklistTemplates) fetchChecklistTemplates();
+    if (canManageReportTemplates) fetchReportTemplates();
   }, [
+    canManageChecklistTemplates,
+    canManageIpSources,
+    canManageReportTemplates,
+    canManageUsers,
+    canManageVulnCategories,
+    fetchReportTemplates,
     fetchChecklistTemplates,
     fetchExistingUsers,
     fetchIpSources,
     fetchVulnCategories
   ]);
+
+  useEffect(() => {
+    if (!visibleSections.length) return;
+    if (!selectedSection || !visibleSections.some((section) => section.key === selectedSection)) {
+      setSelectedSection(visibleSections[0].key);
+    }
+  }, [selectedSection, visibleSections]);
 
   useEffect(() => {
     if (message) {
@@ -695,6 +779,141 @@ const AdminSettings = () => {
     }
   };
 
+  const handleCreateNewReportTemplate = () => {
+    setSelectedReportTemplateId(null);
+    setReportTemplateForm(createEmptyReportTemplateForm());
+  };
+
+  const handleSelectReportTemplate = (template) => {
+    setSelectedReportTemplateId(template.id);
+    setReportTemplateForm(createReportTemplateFormFromApi(template));
+  };
+
+  const handleReportTemplateFormChange = (field, value) => {
+    setReportTemplateForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveReportTemplate = async () => {
+    const key = selectedReportTemplate?.is_system
+      ? (selectedReportTemplate.key || '').trim().toLowerCase()
+      : reportTemplateForm.key.trim().toLowerCase();
+    const name = reportTemplateForm.name.trim();
+    if (!key || !name) {
+      showMessage('error', 'Template key and name are required.');
+      return;
+    }
+
+    if (!Array.isArray(reportTemplateForm.blocks) || reportTemplateForm.blocks.length === 0) {
+      showMessage('error', 'At least one report block is required.');
+      return;
+    }
+
+    const payload = {
+      key,
+      name,
+      description: reportTemplateForm.description.trim(),
+      template: toReportTemplateDefinition(reportTemplateForm),
+      enabled: Boolean(reportTemplateForm.enabled)
+    };
+
+    setLoading(true);
+    try {
+      if (selectedReportTemplateId) {
+        const response = await axios.put(`/report-templates/${selectedReportTemplateId}`, payload);
+        if (response.status === 200) {
+          showMessage('success', 'Report template updated.');
+        }
+      } else {
+        const response = await axios.post('/report-templates', payload);
+        if (response.status === 200) {
+          showMessage('success', 'Report template created.');
+          setSelectedReportTemplateId(response.data.id || null);
+        }
+      }
+
+      const refreshedTemplates = await fetchReportTemplates();
+      const refreshedSelectionId = selectedReportTemplateId || payload.key;
+      const refreshedTemplate = refreshedTemplates.find(
+        (template) =>
+          template.id === refreshedSelectionId || template.key === refreshedSelectionId
+      );
+      if (refreshedTemplate) {
+        handleSelectReportTemplate(refreshedTemplate);
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to save report template.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteReportTemplate = async (templateId, templateName) => {
+    const template = reportTemplates.find((item) => item.id === templateId);
+    if (template?.is_system) {
+      showMessage(
+        'error',
+        'System templates cannot be deleted. Disable or reset them instead.'
+      );
+      return;
+    }
+    if (!window.confirm(`Delete report template "${templateName}"?`)) return;
+    setLoading(true);
+    try {
+      const response = await axios.delete(`/report-templates/${templateId}`);
+      if (response.status === 200) {
+        showMessage('success', 'Report template deleted.');
+        if (selectedReportTemplateId === templateId) {
+          handleCreateNewReportTemplate();
+        }
+        fetchReportTemplates();
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to delete report template.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetReportTemplate = async (template) => {
+    if (!template?.id || !template?.is_system) {
+      showMessage('error', 'Only system templates can be reset to canonical.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Reset "${template.name}" to canonical defaults? This clears admin edits for this template.`
+      )
+    ) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.post(`/report-templates/${template.id}/reset`);
+      if (response.status === 200) {
+        showMessage('success', 'Report template reset to canonical.');
+      }
+      const refreshedTemplates = await fetchReportTemplates();
+      const refreshedTemplate = refreshedTemplates.find((item) => item.id === template.id);
+      if (refreshedTemplate) {
+        handleSelectReportTemplate(refreshedTemplate);
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to reset report template.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleChangePassword = async () => {
     const validationError = validatePassword(newPassword);
     if (validationError) {
@@ -982,6 +1201,22 @@ const AdminSettings = () => {
             onResetTemplate={handleResetChecklistTemplate}
           />
         );
+      case 'report-templates':
+        return (
+          <ReportTemplatesSection
+            loading={loading}
+            templates={reportTemplates}
+            selectedTemplateId={selectedReportTemplateId}
+            selectedTemplate={selectedReportTemplate}
+            templateForm={reportTemplateForm}
+            onCreateNewTemplate={handleCreateNewReportTemplate}
+            onSelectTemplate={handleSelectReportTemplate}
+            onChangeTemplateForm={handleReportTemplateFormChange}
+            onSaveTemplate={handleSaveReportTemplate}
+            onDeleteTemplate={handleDeleteReportTemplate}
+            onResetTemplate={handleResetReportTemplate}
+          />
+        );
       case 'maintenance':
         return (
           <MaintenanceSection
@@ -1004,11 +1239,15 @@ const AdminSettings = () => {
         isMobile={isMobile}
         navOpen={navOpen}
         onClose={() => setNavOpen(false)}
-        sections={sections}
+        sections={visibleSections}
         selectedSection={selectedSection}
         onSelectSection={handleSelectSection}
         userManagementPage={userManagementPage}
         onSelectUserManagementPage={setUserManagementPage}
+        reportTemplates={reportTemplates}
+        selectedReportTemplateId={selectedReportTemplateId}
+        onCreateReportTemplate={handleCreateNewReportTemplate}
+        onSelectReportTemplate={handleSelectReportTemplate}
       />
 
       <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
@@ -1020,10 +1259,10 @@ const AdminSettings = () => {
           )}
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 600 }}>
-              {activeSection.label}
+              {activeSection?.label || 'Settings'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {activeSection.description}
+              {activeSection?.description || 'Manage platform settings available for your role.'}
             </Typography>
           </Box>
         </Box>
@@ -1040,7 +1279,9 @@ const AdminSettings = () => {
           </Alert>
         </Collapse>
 
-        {renderSection()}
+        {activeSection ? renderSection() : (
+          <Alert severity="warning">No settings sections are available for your account.</Alert>
+        )}
       </Box>
 
       <ResetPentestDialog

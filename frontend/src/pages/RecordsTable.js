@@ -148,8 +148,19 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
     setAppsBusy(true);
     try {
       await renameApp(appId, name);
-      fetchApps();
-      fetchRecords();
+
+      // Instant UI propagation for all records assigned to this application.
+      setApps((prev) => prev.map((app) => (app.id === appId ? { ...app, name } : app)));
+      setRecords((prev) =>
+        prev.map((record) =>
+          Number(record.application_id) === Number(appId)
+            ? { ...record, application_name: name }
+            : record
+        )
+      );
+      setAppEdits((prev) => ({ ...prev, [appId]: name }));
+
+      await Promise.all([fetchApps(), fetchRecords()]);
     } catch (error) {
       console.error('Error renaming application:', error);
     } finally {
@@ -332,7 +343,7 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
       onSave={saveRecord}
       onCancelEditing={cancelEditing}
       onDelete={deleteRecord}
-      onOpenHistory={(targetRecord) => navigate(`/records/${targetRecord.name}`)}
+      onOpenHistory={(targetRecord) => navigate(`/records/record/${targetRecord.id}`)}
       onOpenPentest={(targetRecord) => navigate(`/pentest/record/${targetRecord.id}`)}
       theme={theme}
     />
@@ -353,10 +364,10 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
     <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" gutterBottom>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
             Records
           </Typography>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Existing internet-facing DNS records
           </Typography>
         </Box>

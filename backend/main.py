@@ -350,6 +350,12 @@ def init_db(db_path=DB_PATH):
         c.execute("ALTER TABLE pentest_data ADD COLUMN vulnerabilities TEXT")
     if "checklist_states" not in pentest_columns:
         c.execute("ALTER TABLE pentest_data ADD COLUMN checklist_states TEXT")
+    if "generated_report_file" not in pentest_columns:
+        c.execute("ALTER TABLE pentest_data ADD COLUMN generated_report_file TEXT")
+    if "generated_report_template_id" not in pentest_columns:
+        c.execute("ALTER TABLE pentest_data ADD COLUMN generated_report_template_id INTEGER")
+    if "generated_report_generated_at" not in pentest_columns:
+        c.execute("ALTER TABLE pentest_data ADD COLUMN generated_report_generated_at TEXT")
 
     # Service checklist templates table
     c.execute("""
@@ -378,6 +384,34 @@ def init_db(db_path=DB_PATH):
         c.execute("ALTER TABLE service_checklists ADD COLUMN is_customized INTEGER NOT NULL DEFAULT 0")
     if "system_revision" not in checklist_columns:
         c.execute("ALTER TABLE service_checklists ADD COLUMN system_revision TEXT")
+
+    # Report templates table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS report_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT,
+            template_json TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            is_system INTEGER NOT NULL DEFAULT 1,
+            is_customized INTEGER NOT NULL DEFAULT 0,
+            system_revision TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    c.execute("PRAGMA table_info(report_templates)")
+    report_template_columns = {row[1] for row in c.fetchall()}
+    if "description" not in report_template_columns:
+        c.execute("ALTER TABLE report_templates ADD COLUMN description TEXT")
+    if "is_system" not in report_template_columns:
+        c.execute("ALTER TABLE report_templates ADD COLUMN is_system INTEGER NOT NULL DEFAULT 1")
+    if "is_customized" not in report_template_columns:
+        c.execute("ALTER TABLE report_templates ADD COLUMN is_customized INTEGER NOT NULL DEFAULT 0")
+    if "system_revision" not in report_template_columns:
+        c.execute("ALTER TABLE report_templates ADD COLUMN system_revision TEXT")
 
     # Metadata table for one-time startup actions
     c.execute("""
@@ -466,6 +500,88 @@ def init_db(db_path=DB_PATH):
         c.execute(
             "INSERT INTO app_meta (key, value) VALUES (?, datetime('now', '+4 hours'))",
             (checklist_seed_key,)
+        )
+
+    # Seed report templates only once on first launch.
+    # Afterwards the application uses DB data only.
+    report_seed_key = "report_templates_seeded_v1"
+    c.execute("SELECT value FROM app_meta WHERE key = ?", (report_seed_key,))
+    report_seeded = c.fetchone() is not None
+    if not report_seeded:
+        canonical_templates = get_default_report_templates()
+        canonical_by_key = {template["key"]: template for template in canonical_templates}
+
+        c.execute("SELECT id, key, is_system, is_customized FROM report_templates")
+        existing_rows = c.fetchall()
+        existing_by_key = {row[1]: row for row in existing_rows}
+
+        for key, template in canonical_by_key.items():
+            template_key = str(template.get("key", "")).strip().lower()
+            template_name = str(template.get("name", "")).strip()
+            template_description = str(template.get("description", "") or "").strip()
+            blocks = template.get("blocks")
+            if not template_key or not template_name or not isinstance(blocks, list) or len(blocks) == 0:
+                logger.warning(f"Skipping invalid canonical report template '{key}'.")
+                continue
+
+            template_json = json.dumps(template)
+            system_revision = build_report_template_revision(template)
+            existing = existing_by_key.get(key)
+            if not existing:
+                c.execute("""
+                    INSERT INTO report_templates (
+                        key, name, description, template_json, enabled,
+                        is_system, is_customized, system_revision,
+                        created_by, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, 1, 1, 0, ?, 'system', datetime('now', '+4 hours'), datetime('now', '+4 hours'))
+                """, (
+                    template_key,
+                    template_name,
+                    template_description,
+                    template_json,
+                    system_revision
+                ))
+                continue
+
+            existing_id, _, existing_is_system, existing_is_customized = existing
+            if int(existing_is_customized or 0) == 0:
+                c.execute("""
+                    UPDATE report_templates
+                    SET name = ?, description = ?, template_json = ?, enabled = 1,
+                        is_system = 1, is_customized = 0, system_revision = ?,
+                        updated_at = datetime('now', '+4 hours')
+                    WHERE id = ?
+                """, (
+                    template_name,
+                    template_description,
+                    template_json,
+                    system_revision,
+                    existing_id
+                ))
+            else:
+                c.execute("""
+                    UPDATE report_templates
+                    SET is_system = 1,
+                        system_revision = ?,
+                        updated_at = datetime('now', '+4 hours')
+                    WHERE id = ?
+                """, (
+                    system_revision,
+                    existing_id
+                ))
+
+        for existing_id, existing_key, existing_is_system, existing_is_customized in existing_rows:
+            if int(existing_is_system or 0) == 1 and existing_key not in canonical_by_key:
+                if int(existing_is_customized or 0) == 0:
+                    c.execute("""
+                        UPDATE report_templates
+                        SET enabled = 0, updated_at = datetime('now', '+4 hours')
+                        WHERE id = ?
+                    """, (existing_id,))
+
+        c.execute(
+            "INSERT INTO app_meta (key, value) VALUES (?, datetime('now', '+4 hours'))",
+            (report_seed_key,)
         )
 
     # Vulnerability categories table
@@ -808,7 +924,20 @@ def get_records():
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("""
-        SELECT r.*, p.open_ports, a.name AS application_name
+        SELECT
+            r.id,
+            r.name,
+            r.ip_address,
+            r.source,
+            r.status,
+            r.creation_date,
+            r.last_modification_date,
+            r.application_owner,
+            r.maintainer,
+            r.description,
+            r.application_id,
+            p.open_ports,
+            a.name AS application_name
         FROM records r
         LEFT JOIN pentest_data p ON r.id = p.record_id
         LEFT JOIN applications a ON r.application_id = a.id
@@ -973,11 +1102,22 @@ def update_application(app_id):
 
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
             if not c.fetchone():
                 return jsonify({"error": "Application not found."}), 404
             c.execute("UPDATE applications SET name = ? WHERE id = ?", (sanitized, app_id))
+
+            # Keep legacy denormalized schemas consistent (older DBs may still have this column).
+            c.execute("PRAGMA table_info(records)")
+            record_columns = {row["name"] for row in c.fetchall()}
+            if "application_name" in record_columns:
+                c.execute(
+                    "UPDATE records SET application_name = ? WHERE application_id = ?",
+                    (sanitized, app_id)
+                )
+
             conn.commit()
         return jsonify({"message": "Application updated.", "name": sanitized}), 200
     except sqlite3.IntegrityError:
@@ -1060,6 +1200,40 @@ def get_record_history(record_id):
     history = [dict(ix) for ix in rows]
     return jsonify(history)
 
+@app.route('/api/records/<int:record_id>', methods=['GET'])
+@permission_required('view_record_details')
+def get_record_by_id(record_id):
+    """Return one record (with open_ports and application_name) by numeric ID."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""
+        SELECT
+            r.id,
+            r.name,
+            r.ip_address,
+            r.source,
+            r.status,
+            r.creation_date,
+            r.last_modification_date,
+            r.application_owner,
+            r.maintainer,
+            r.description,
+            r.application_id,
+            p.open_ports,
+            a.name AS application_name
+        FROM records r
+        LEFT JOIN pentest_data p ON r.id = p.record_id
+        LEFT JOIN applications a ON r.application_id = a.id
+        WHERE r.id = ?
+    """, (record_id,))
+    row = c.fetchone()
+    conn.close()
+
+    if row:
+        return jsonify(dict(row))
+    return jsonify({"error": "Record not found"}), 404
+
 @app.route('/api/records/<string:domain>', methods=['GET'])
 @permission_required('view_record_details')
 def get_record_by_domain(domain):
@@ -1089,6 +1263,9 @@ app.add_url_rule('/pentest/records', methods=['GET'], view_func=get_pentest_data
 app.add_url_rule('/pentest/<int:record_id>', methods=['DELETE'], view_func=delete_pentest_data)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['GET'], view_func=get_report)
 app.add_url_rule('/pentest/<int:record_id>/report', methods=['DELETE'], view_func=delete_report_route)
+app.add_url_rule('/pentest/<int:record_id>/generate-report', methods=['POST'], view_func=generate_report)
+app.add_url_rule('/pentest/<int:record_id>/generated-report', methods=['GET'], view_func=get_generated_report)
+app.add_url_rule('/pentest/<int:record_id>/generated-report', methods=['DELETE'], view_func=delete_generated_report_route)
 app.add_url_rule('/pentest_users', methods=['GET'], view_func=get_pentest_users)
 app.add_url_rule('/pentest/<int:record_id>/images', methods=['POST'], view_func=upload_pentest_image)
 app.add_url_rule('/pentest/images/<string:filename>', methods=['GET'], view_func=get_pentest_image)
@@ -1097,6 +1274,11 @@ app.add_url_rule('/checklist-templates', methods=['POST'], view_func=create_chec
 app.add_url_rule('/checklist-templates/<int:template_id>', methods=['PUT'], view_func=update_checklist_template)
 app.add_url_rule('/checklist-templates/<int:template_id>', methods=['DELETE'], view_func=delete_checklist_template)
 app.add_url_rule('/checklist-templates/<int:template_id>/reset', methods=['POST'], view_func=reset_checklist_template_to_canonical)
+app.add_url_rule('/report-templates', methods=['GET'], view_func=get_report_templates)
+app.add_url_rule('/report-templates', methods=['POST'], view_func=create_report_template)
+app.add_url_rule('/report-templates/<int:template_id>', methods=['PUT'], view_func=update_report_template)
+app.add_url_rule('/report-templates/<int:template_id>', methods=['DELETE'], view_func=delete_report_template)
+app.add_url_rule('/report-templates/<int:template_id>/reset', methods=['POST'], view_func=reset_report_template_to_canonical)
 
 # ---------------------------------------------------------
 #! Admin API Endpoints
@@ -1418,6 +1600,8 @@ def reset_keep_open_vulnerabilities():
 
         report_deleted = 0
         report_delete_errors = 0
+        generated_report_deleted = 0
+        generated_report_delete_errors = 0
 
         for row in rows:
             if row["report_file"]:
@@ -1426,6 +1610,12 @@ def reset_keep_open_vulnerabilities():
                     report_deleted += 1
                 except Exception:
                     report_delete_errors += 1
+            if "generated_report_file" in row.keys() and row["generated_report_file"]:
+                try:
+                    delete_report(row["generated_report_file"])
+                    generated_report_deleted += 1
+                except Exception:
+                    generated_report_delete_errors += 1
 
         c.execute("""
             DELETE FROM pentest_data
@@ -1448,7 +1638,9 @@ def reset_keep_open_vulnerabilities():
             "total_reset": deleted_count,
             "remaining_open": remaining_open,
             "reports_deleted": report_deleted,
-            "report_delete_errors": report_delete_errors
+            "report_delete_errors": report_delete_errors,
+            "generated_reports_deleted": generated_report_deleted,
+            "generated_report_delete_errors": generated_report_delete_errors
         }
 
         return jsonify({
@@ -1460,7 +1652,7 @@ def reset_keep_open_vulnerabilities():
         return jsonify({"error": "Failed to reset pentest progress."}), 500
     
 @app.route('/ip-sources', methods=['GET'])
-@admin_required
+@permission_required('manage_ip_sources')
 def get_ip_sources():
     """
     Returns the full list of IP→Source mappings.
@@ -1481,7 +1673,7 @@ def get_ip_sources():
         return jsonify({"error": str(e)}), 500
     
 @app.route('/ip-sources', methods=['POST'])
-@admin_required
+@permission_required('manage_ip_sources')
 def add_ip_source():
     """
     Adds a new IP→Source mapping.
@@ -1529,7 +1721,7 @@ def add_ip_source():
         return jsonify({"error": str(e)}), 500
     
 @app.route('/ip-sources', methods=['DELETE'])
-@admin_required
+@permission_required('manage_ip_sources')
 def delete_ip_source():
     """
     Deletes an IP→Source mapping by ip_address.
@@ -1583,7 +1775,7 @@ def delete_ip_source():
 #! Vulnerability Categories API Endpoints
 # ---------------------------------------------------------
 @app.route('/vuln-categories', methods=['GET'])
-@login_required_json
+@permission_required('view_pentest_page')
 def get_vuln_categories():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -1598,7 +1790,7 @@ def get_vuln_categories():
         return jsonify({"error": "Failed to fetch categories."}), 500
 
 @app.route('/vuln-categories', methods=['POST'])
-@login_required_json
+@permission_required('manage_vuln_categories')
 def add_vuln_category():
     data = request.get_json() or {}
     name = (data.get('name') or '').strip()
@@ -1623,7 +1815,7 @@ def add_vuln_category():
         return jsonify({"error": "Failed to add category."}), 500
 
 @app.route('/vuln-categories/<int:category_id>', methods=['DELETE'])
-@admin_required
+@permission_required('manage_vuln_categories')
 def delete_vuln_category(category_id):
     try:
         conn = sqlite3.connect(DB_PATH)
