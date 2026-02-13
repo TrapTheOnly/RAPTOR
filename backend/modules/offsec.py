@@ -1059,7 +1059,8 @@ def create_or_update_pentest_data(record_id):
                     relative_path = save_report(record_id, report_file.read())
                     logger.debug(f"Saved report file: {relative_path}")
                 except Exception as e:
-                    return jsonify({"error": f"Failed to upload report: {e}"}), 500
+                    logger.error(f"Failed to upload report for record {record_id}: {e}")
+                    return jsonify({"error": "Failed to upload report."}), 500
             else:
                 return jsonify({"error": "Invalid file. Please upload a PDF file."}), 400
             
@@ -1132,7 +1133,7 @@ def create_or_update_pentest_data(record_id):
 
     except Exception as e:
         logger.error(f"Error creating/updating pentest data for record {record_id}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to update pentest data."}), 500
 
 @permission_required('modify_pentests')
 def upload_pentest_image(record_id):
@@ -1217,12 +1218,14 @@ def delete_pentest_data(record_id):
                     try:
                         delete_report(report_file)
                     except Exception as e:
-                        return jsonify({"error": f"Failed to delete report: {e}"}), 500
+                        logger.error(f"Failed to delete report file for record {record_id}: {e}")
+                        return jsonify({"error": "Failed to delete report file."}), 500
                 if generated_report_file:
                     try:
                         delete_report(generated_report_file)
                     except Exception as e:
-                        return jsonify({"error": f"Failed to delete generated report: {e}"}), 500
+                        logger.error(f"Failed to delete generated report file for record {record_id}: {e}")
+                        return jsonify({"error": "Failed to delete generated report file."}), 500
                 c.execute("DELETE FROM pentest_data WHERE record_id = ?", (record_id,))
                 conn.commit()
                 return jsonify({"message": "Pentest data deleted successfully."}), 200
@@ -1230,7 +1233,7 @@ def delete_pentest_data(record_id):
                 return jsonify({"error": "Pentest data not found"}), 404
     except Exception as e:
         logger.error(f"Error deleting pentest data for record {record_id}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to delete pentest data."}), 500
 
 @permission_required('view_pentest_page')
 def get_report(record_id):
@@ -1252,7 +1255,7 @@ def get_report(record_id):
         return send_file(file_data, mimetype='application/pdf', as_attachment=True, download_name=f"report_{record_id}.pdf")
     except Exception as e:
         logger.error(f"Error retrieving report for record {record_id}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to retrieve report."}), 500
 
 @permission_required('modify_pentests')
 def delete_report_route(record_id):
@@ -1275,7 +1278,8 @@ def delete_report_route(record_id):
             conn.commit()
         return jsonify({"message": "Report Deleted"}), 200
     except Exception as e:
-        return jsonify({"error": f"Error deleting report: {e}"}), 500
+        logger.error(f"Error deleting report for record {record_id}: {e}")
+        return jsonify({"error": "Failed to delete report."}), 500
 
 
 def _load_enabled_checklist_templates():
@@ -1462,4 +1466,5 @@ def delete_generated_report_route(record_id):
             conn.commit()
         return jsonify({"message": "Generated report deleted."}), 200
     except Exception as e:
-        return jsonify({"error": f"Error deleting generated report: {e}"}), 500
+        logger.error(f"Error deleting generated report for record {record_id}: {e}")
+        return jsonify({"error": "Failed to delete generated report."}), 500

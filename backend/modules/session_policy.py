@@ -40,6 +40,11 @@ SESSION_EXTENSION_SECONDS = _parse_seconds(
     "SESSION_EXTENSION_SECONDS",
     1
 )
+SESSION_MAX_EXTENSION_SECONDS = _parse_seconds(
+    "SESSION_MAX_EXTENSION_HOURS",
+    "SESSION_MAX_EXTENSION_SECONDS",
+    4
+)
 
 
 def initialize_session_tracking():
@@ -111,13 +116,18 @@ def extend_session(extra_seconds=SESSION_EXTENSION_SECONDS):
 
     now_epoch = int(time.time())
     extra = max(0, _to_int(extra_seconds, 0))
-    session["active_extension_seconds"] = max(
-        0, _to_int(session.get("active_extension_seconds"), 0)
-    ) + extra
-    session["idle_extension_seconds"] = max(
-        0, _to_int(session.get("idle_extension_seconds"), 0)
-    ) + extra
-    session["last_activity_epoch"] = now_epoch
+    current_active_extension = max(0, _to_int(session.get("active_extension_seconds"), 0))
+    current_idle_extension = max(0, _to_int(session.get("idle_extension_seconds"), 0))
+
+    extension_cap = max(0, SESSION_MAX_EXTENSION_SECONDS)
+    remaining_active_budget = max(0, extension_cap - current_active_extension)
+    remaining_idle_budget = max(0, extension_cap - current_idle_extension)
+    grant = min(extra, remaining_active_budget, remaining_idle_budget)
+
+    session["active_extension_seconds"] = current_active_extension + grant
+    session["idle_extension_seconds"] = current_idle_extension + grant
+    if grant > 0:
+        session["last_activity_epoch"] = now_epoch
     return get_session_timing(update_activity=False)
 
 

@@ -5,6 +5,7 @@ from flask import session, jsonify, redirect
 from modules.admin import admin_login, ADMIN_USERNAME
 from modules.session_policy import session_has_expired
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE
+from ldap3.utils.conv import escape_filter_chars
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,8 @@ def search_ldap_users(query, page_size=500):
         server = Server(LDAP_SERVER, get_info=ALL, use_ssl=True)
         with Connection(server, user=LDAP_USER, password=LDAP_PASS, auto_bind=True) as conn:
             logger.info(f"LDAP connection successful. Search query: {query}")
-            search_filter, attributes = f"(|(sAMAccountName=*{query}*)(mail=*{query}*))", ['name', 'sAMAccountName', 'distinguishedName', 'mail']
+            escaped_query = escape_filter_chars(str(query))
+            search_filter, attributes = f"(|(sAMAccountName=*{escaped_query}*)(mail=*{escaped_query}*))", ['name', 'sAMAccountName', 'distinguishedName', 'mail']
             total_entries, entry_count, cookie = [], 0, None
             while True:
                 conn.search(search_base=LDAP_BASE_DN, search_filter=search_filter, search_scope=SUBTREE, attributes=attributes, paged_size=page_size, paged_cookie=cookie)
