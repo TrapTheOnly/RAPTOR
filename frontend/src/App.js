@@ -1,6 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import {
+  ThemeProvider,
+  createTheme,
+  CssBaseline,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle
+} from '@mui/material';
 import axios from 'axios';
 import ModernHeader from './components/ModernHeader';
 import ModernLogin from './pages/ModernLogin';
@@ -11,6 +21,9 @@ import PentestDashboard from './pages/PentestDashboard';
 import Record from './pages/Record';
 import PentestRecord from './pages/PentestRecord';
 import Error from './pages/Error';
+
+const SESSION_HEARTBEAT_MS = 5000;
+const SESSION_WARNING_SECONDS = 60;
 
 const ROLE_DEFAULT_PERMISSIONS = {
   user: ['view_records', 'modify_records', 'view_record_details', 'export_records'],
@@ -55,6 +68,21 @@ const App = () => {
   const [resetUserType, setResetUserType] = useState(null);
   const storedTheme = localStorage.getItem('theme') || 'light';
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
+  const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState(null);
+  const [extendingSession, setExtendingSession] = useState(false);
+
+  const resetAuthState = useCallback(() => {
+    setLoggedIn(false);
+    setPasswordResetRequired(false);
+    setResetUserType(null);
+    setUsername('');
+    setUserRole(null);
+    setUserPermissions([]);
+    setSessionRemainingSeconds(null);
+    setShowSessionWarning(false);
+    setExtendingSession(false);
+  }, []);
 
   const hasPermission = (permission) => {
     if (userRole === 'admin') return true;
@@ -129,23 +157,84 @@ const App = () => {
             setUserRole(response.data.user_type);
             setResetUserType(null);
             setUserPermissions(response.data.permissions || []);
+            const remaining = Number(response.data.session_remaining_seconds);
+            if (Number.isFinite(remaining)) {
+              setSessionRemainingSeconds(remaining);
+              setShowSessionWarning(remaining > 0 && remaining <= SESSION_WARNING_SECONDS);
+            }
           }
         }
       } catch (error) {
         console.error("User is not logged in:", error);
-        setLoggedIn(false);
-        setPasswordResetRequired(false);
-        setResetUserType(null);
-        setUsername('');
-        setUserRole(null);
-        setUserPermissions([]);
+        resetAuthState();
       } finally {
         setLoading(false);
       }
     };
 
     checkLoginStatus();
-  }, []);
+  }, [resetAuthState]);
+
+  useEffect(() => {
+    if (!loggedIn) return undefined;
+
+    const verifySessionAlive = async () => {
+      try {
+        const response = await axios.get('/session-status');
+        const status = response?.data?.status;
+        if (status !== 'logged_in') {
+          resetAuthState();
+          return;
+        }
+
+        const remaining = Number(response?.data?.session_remaining_seconds);
+        if (Number.isFinite(remaining)) {
+          setSessionRemainingSeconds(remaining);
+          setShowSessionWarning(remaining > 0 && remaining <= SESSION_WARNING_SECONDS);
+        }
+      } catch (error) {
+        if (error?.response?.status === 401) {
+          resetAuthState();
+        }
+      }
+    };
+
+    verifySessionAlive();
+    const intervalId = setInterval(verifySessionAlive, SESSION_HEARTBEAT_MS);
+    return () => clearInterval(intervalId);
+  }, [loggedIn, resetAuthState]);
+
+  const handleExtendSession = useCallback(async () => {
+    setExtendingSession(true);
+    try {
+      const response = await axios.post('/session/extend');
+      if (response?.data?.status !== 'logged_in') {
+        resetAuthState();
+        return;
+      }
+
+      const remaining = Number(response?.data?.session_remaining_seconds);
+      if (Number.isFinite(remaining)) {
+        setSessionRemainingSeconds(remaining);
+      }
+      setShowSessionWarning(false);
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        resetAuthState();
+      }
+    } finally {
+      setExtendingSession(false);
+    }
+  }, [resetAuthState]);
+
+  const handleLogoutFromWarning = useCallback(async () => {
+    try {
+      await axios.post('/logout');
+    } catch (error) {
+      // Ignore network/logout errors and clear local auth state anyway.
+    }
+    resetAuthState();
+  }, [resetAuthState]);
 
   useEffect(() => {
     localStorage.setItem('theme', darkMode ? 'dark' : 'light');
@@ -177,6 +266,34 @@ const App = () => {
             setUserPermissions={setUserPermissions}
           />
         )}
+      <Dialog
+        open={loggedIn && showSessionWarning}
+        onClose={() => {}}
+        disableEscapeKeyDown
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Session expiring soon</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You are about to be logged out in{" "}
+            {Math.max(0, Math.ceil(Number(sessionRemainingSeconds || 0)))} seconds.
+            Are you still there?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleLogoutFromWarning} color="inherit">
+            Log out
+          </Button>
+          <Button
+            onClick={handleExtendSession}
+            variant="contained"
+            disabled={extendingSession}
+          >
+            Stay logged in (+1h)
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Routes>
         <Route
           path="/"
@@ -185,7 +302,7 @@ const App = () => {
         <Route
           path="/dashboard"
           element={loggedIn && hasPermission('view_dashboard') ? 
-            <Dashboard userRole={userRole} userPermissions={userPermissions} /> : 
+            <Dashboard /> : 
               <Navigate to={loggedIn ? getDefaultRoute() : "/login"} replace />}
         />
         <Route

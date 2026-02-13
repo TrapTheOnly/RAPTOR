@@ -29,6 +29,13 @@ from modules.permissions import (
     permission_required,
     user_has_permission
 )
+from modules.session_policy import (
+    SESSION_IDLE_TIMEOUT_SECONDS,
+    extend_session,
+    get_session_timing,
+    initialize_session_tracking,
+    session_has_expired
+)
 from flask import Flask, request, jsonify, send_from_directory, session
 
 # ---------------------------------------------------------
@@ -255,6 +262,7 @@ def init_db(db_path=DB_PATH):
     record_columns = {row[1] for row in c.fetchall()}
     if "application_id" not in record_columns:
         c.execute("ALTER TABLE records ADD COLUMN application_id INTEGER")
+        record_columns.add("application_id")
 
     # Allowed users table
     c.execute("""
@@ -292,6 +300,41 @@ def init_db(db_path=DB_PATH):
             created_at TEXT NOT NULL
         )
     """)
+
+    # Legacy data repair: old deployments may have name-only application mapping.
+    if "application_name" in record_columns:
+        c.execute("""
+            UPDATE records
+            SET application_id = (
+                SELECT a.id
+                FROM applications a
+                WHERE a.name = records.application_name
+                LIMIT 1
+            )
+            WHERE (application_id IS NULL OR application_id = 0)
+              AND application_name IS NOT NULL
+              AND TRIM(application_name) != ''
+              AND EXISTS (
+                  SELECT 1
+                  FROM applications a
+                  WHERE a.name = records.application_name
+              )
+        """)
+        c.execute("""
+            UPDATE records
+            SET application_name = (
+                SELECT a.name
+                FROM applications a
+                WHERE a.id = records.application_id
+                LIMIT 1
+            )
+            WHERE application_id IS NOT NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM applications a
+                  WHERE a.id = records.application_id
+              )
+        """)
 
     # IP sources table
     c.execute("""
@@ -908,12 +951,66 @@ def update_data():
 # ---------------------------------------------------------
 app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.getenv("SECRET_KEY")
-app.permanent_session_lifetime = timedelta(hours=1)
+app.permanent_session_lifetime = timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
+app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(",")}})
 
 # ---------------------------------------------------------
 #! Record API Endpoints
 # ---------------------------------------------------------
+@app.route('/dashboard/data', methods=['GET'])
+@permission_required('view_dashboard')
+def get_dashboard_data():
+    """
+    Returns dashboard-ready datasets in one authorized request so users with
+    dashboard access do not need additional tab permissions for backend calls.
+    """
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+
+            c.execute("""
+                SELECT
+                    r.id,
+                    r.name,
+                    r.source,
+                    r.status,
+                    r.last_modification_date
+                FROM records r
+            """)
+            records = [dict(ix) for ix in c.fetchall()]
+
+            c.execute("""
+                SELECT
+                    r.id AS recordId,
+                    r.name,
+                    r.source,
+                    COALESCE(p.status, 'Not Started') AS status,
+                    COALESCE(p.vulnerable, 0) AS vulnerable,
+                    COALESCE(p.vulnerability_fixed, 0) AS vulnerability_fixed,
+                    COALESCE(p.vulnerabilities, '') AS vulnerabilities,
+                    p.tested_by,
+                    p.test_start_date,
+                    p.test_end_date
+                FROM records r
+                LEFT JOIN pentest_data p ON r.id = p.record_id
+            """)
+            pentest_records = [dict(ix) for ix in c.fetchall()]
+
+            c.execute("SELECT source_name FROM ip_sources")
+            ip_sources = [dict(ix) for ix in c.fetchall()]
+
+        return jsonify({
+            "records": records,
+            "pentestRecords": pentest_records,
+            "ipSources": ip_sources
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching dashboard datasets: {e}")
+        return jsonify({"error": "Failed to load dashboard data."}), 500
+
+
 @app.route('/api/records', methods=['GET'])
 @permission_required('view_records')
 def get_records():
@@ -1104,18 +1201,37 @@ def update_application(app_id):
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
-            if not c.fetchone():
+            c.execute("SELECT id, name FROM applications WHERE id = ?", (app_id,))
+            existing_app = c.fetchone()
+            if not existing_app:
                 return jsonify({"error": "Application not found."}), 404
+
+            old_name = str(existing_app["name"] or "").strip()
             c.execute("UPDATE applications SET name = ? WHERE id = ?", (sanitized, app_id))
 
             # Keep legacy denormalized schemas consistent (older DBs may still have this column).
             c.execute("PRAGMA table_info(records)")
             record_columns = {row["name"] for row in c.fetchall()}
             if "application_name" in record_columns:
+                # Backfill old rows that were name-linked only, so future joins are stable.
                 c.execute(
-                    "UPDATE records SET application_name = ? WHERE application_id = ?",
-                    (sanitized, app_id)
+                    """
+                    UPDATE records
+                    SET application_id = ?
+                    WHERE (application_id IS NULL OR application_id = 0)
+                      AND application_name = ?
+                    """,
+                    (app_id, old_name)
+                )
+
+                c.execute(
+                    """
+                    UPDATE records
+                    SET application_name = ?
+                    WHERE application_id = ?
+                       OR application_name = ?
+                    """,
+                    (sanitized, app_id, old_name)
                 )
 
             conn.commit()
@@ -1879,6 +1995,7 @@ def login():
 
             session['logged_in'] = True
             session.pop('reset_required', None)
+            initialize_session_tracking()
             return jsonify({
                 "status": "logged_in",
                 "username": username,
@@ -1914,6 +2031,7 @@ def login():
 
             session['logged_in'] = True
             session.pop('reset_required', None)
+            initialize_session_tracking()
             return jsonify({
                 "status": "logged_in",
                 "username": username,
@@ -1927,6 +2045,7 @@ def login():
             session['username'] = user[0]
             session['user_type'] = user_role
             session.pop('reset_required', None)
+            initialize_session_tracking()
             return jsonify({
                 "status": "logged_in",
                 "username": username,
@@ -1943,6 +2062,10 @@ def session_status():
     """
     Check if the user is logged in.
     """
+    if session.get('logged_in') and session_has_expired(update_activity=False):
+        session.clear()
+        return jsonify({"status": "logged_out"}), 401
+
     if session.get('reset_required'):
         return jsonify({
             "status": "password_reset_required",
@@ -1952,13 +2075,43 @@ def session_status():
         }), 200
     if 'logged_in' in session and session['logged_in']:
         user_type = session.get('user_type')
+        timing = get_session_timing(update_activity=False) or {}
         return jsonify({
             "status": "logged_in",
             "username": session.get("username"),
             "user_type": user_type,
-            "permissions": list(get_user_permissions(session.get("username"), user_type))
+            "permissions": list(get_user_permissions(session.get("username"), user_type)),
+            "session_remaining_seconds": timing.get("remaining_seconds"),
+            "active_remaining_seconds": timing.get("active_remaining_seconds"),
+            "idle_remaining_seconds": timing.get("idle_remaining_seconds")
         }), 200
     return jsonify({"status": "logged_out"}), 401
+
+@app.route('/session/extend', methods=['POST'])
+def extend_logged_in_session():
+    """
+    Extend current session by configured extension window.
+    """
+    if not session.get('logged_in'):
+        return jsonify({"status": "logged_out"}), 401
+    if session_has_expired(update_activity=False):
+        session.clear()
+        return jsonify({"status": "logged_out"}), 401
+
+    timing = extend_session()
+    if not timing:
+        return jsonify({"status": "logged_out"}), 401
+
+    user_type = session.get('user_type')
+    return jsonify({
+        "status": "logged_in",
+        "username": session.get("username"),
+        "user_type": user_type,
+        "permissions": list(get_user_permissions(session.get("username"), user_type)),
+        "session_remaining_seconds": timing.get("remaining_seconds"),
+        "active_remaining_seconds": timing.get("active_remaining_seconds"),
+        "idle_remaining_seconds": timing.get("idle_remaining_seconds")
+    }), 200
 
 @app.route('/logout', methods=['POST'])
 def logout():

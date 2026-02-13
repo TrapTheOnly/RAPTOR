@@ -6,6 +6,7 @@ import logging
 import json
 from flask import session, jsonify
 from functools import wraps
+from modules.session_policy import session_has_expired
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +216,9 @@ def admin_required(f):
     """Decorator to protect admin-only routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if session_has_expired(update_activity=True):
+            session.clear()
+            return jsonify({"error": "Session expired"}), 401
         if (
             not session.get('logged_in')
             or session.get('user_type') != 'admin'
@@ -228,6 +232,9 @@ def admin_or_manager_required(f):
     """Decorator to protect admin- or manager-only routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if session_has_expired(update_activity=True):
+            session.clear()
+            return jsonify({"error": "Session expired"}), 401
         if (
             not session.get('logged_in')
             or session.get('user_type') not in ('admin', 'manager')

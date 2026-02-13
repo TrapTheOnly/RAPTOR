@@ -40,21 +40,16 @@ const EMPTY_VIEW_MODEL = {
   generatedAt: new Date().toISOString()
 };
 
-const Dashboard = ({ userRole, userPermissions = [] }) => {
+const Dashboard = () => {
   const [viewModel, setViewModel] = useState(EMPTY_VIEW_MODEL);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  const isAdmin = userRole === 'admin';
-  const canViewPentest =
-    userPermissions.includes('view_security_dashboard') ||
-    ['admin', 'manager', 'pentester'].includes(userRole);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const sourceData = await fetchDashboardSources({ canViewPentest, isAdmin });
+      const sourceData = await fetchDashboardSources();
       setViewModel(buildDashboardViewModel(sourceData));
     } catch (fetchError) {
       console.error('Dashboard fetch failed', fetchError);
@@ -62,7 +57,7 @@ const Dashboard = ({ userRole, userPermissions = [] }) => {
     } finally {
       setLoading(false);
     }
-  }, [canViewPentest, isAdmin]);
+  }, []);
 
   useEffect(() => {
     fetchDashboard();

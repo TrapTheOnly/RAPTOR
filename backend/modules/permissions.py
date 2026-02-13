@@ -4,6 +4,7 @@ import sqlite3
 import logging
 from functools import wraps
 from flask import session, jsonify
+from modules.session_policy import session_has_expired
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,9 @@ def permission_required(permission):
         def wrapped(*args, **kwargs):
             if not session.get("logged_in"):
                 return jsonify({"error": "Unauthorized access"}), 403
+            if session_has_expired(update_activity=True):
+                session.clear()
+                return jsonify({"error": "Session expired"}), 401
             role = session.get("user_type")
             username = session.get("username")
             if not role or not username:
