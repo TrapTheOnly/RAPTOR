@@ -1,0 +1,140 @@
+{
+  "slug": "search-filter-and-export-records",
+  "title": "Search, Filter, and Export",
+  "audience": [
+    "Users",
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Provides parameter-search patterns, suggestion behavior, and a precise CSV export contract.",
+  "coverage": [
+    "Filter chips and parameterized search syntax",
+    "Suggestion behavior and keyboard flow",
+    "Combining filters with free-text search",
+    "CSV export scope and expected output columns"
+  ],
+  "article": {
+    "sections": [
+      {
+        "id": "search-model",
+        "title": "Search and filter model",
+        "paragraphs": [
+          "RAPTOR combines free-text query and structured filter chips. Structured filters provide deterministic narrowing by known parameters, while free-text search supports exploratory discovery.",
+          "For operational precision, prefer structured filters first and use free text as a secondary refinement."
+        ]
+      },
+      {
+        "id": "parameter-syntax",
+        "title": "Parameter syntax and examples",
+        "paragraphs": [
+          "The search input supports parameter-based expressions and suggestion-assisted completion. This allows fast filtering without opening each record group manually."
+        ],
+        "table": {
+          "columns": [
+            "Intent",
+            "Input pattern",
+            "Example",
+            "Result"
+          ],
+          "rows": [
+            [
+              "Filter by source",
+              "`field=value`",
+              "`source=External`",
+              "Shows records with matching source classification."
+            ],
+            [
+              "Filter by application",
+              "`field=value`",
+              "`application_name=Payments API`",
+              "Narrows to records in the target application group."
+            ],
+            [
+              "Ownership lookup",
+              "free text or parameter",
+              "`maintainer=platform-sre@company.com`",
+              "Finds records assigned to the target maintainer."
+            ],
+            [
+              "Port surface check",
+              "parameter value",
+              "`open_ports=443`",
+              "Finds records explicitly listing that port value."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "suggestion-behavior",
+        "title": "Suggestion and keyboard behavior",
+        "paragraphs": [
+          "As operators type, RAPTOR proposes fields and values derived from current dataset metadata. This improves speed and reduces input error in high-volume triage.",
+          "Press Enter to apply search or accept top suggestion depending on context. Use Tab for quick suggestion completion when available."
+        ],
+        "tip": {
+          "variant": "tip",
+          "title": "TIP",
+          "paragraphs": [
+            "When investigating data quality issues, build filters incrementally and keep each filter chip explicit rather than relying on one complex free-text query."
+          ]
+        }
+      },
+      {
+        "id": "csv-export-contract",
+        "title": "CSV export contract",
+        "paragraphs": [
+          "CSV export serializes the currently filtered record set. Export content is therefore scope-sensitive and reflects active chips plus search query state at export time.",
+          "Use export for audit packets, ownership reconciliation, or external review preparation. Avoid editing exported files as a substitute for updating source records in RAPTOR."
+        ],
+        "table": {
+          "columns": [
+            "Export characteristic",
+            "Behavior"
+          ],
+          "rows": [
+            [
+              "Scope",
+              "Includes only records visible under current filter/search context."
+            ],
+            [
+              "Filename",
+              "Export is generated as `dns_records.csv`."
+            ],
+            [
+              "Use case",
+              "Handoff, governance review, reconciliation, and evidence packaging."
+            ],
+            [
+              "Data authority",
+              "RAPTOR remains authoritative source; CSV is a point-in-time snapshot."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "review-playbook",
+        "title": "Review playbook",
+        "paragraphs": [
+          "A repeatable review pattern improves speed and consistency for inventory governance. Start with broad filters, isolate ownership gaps, then export exception sets for follow-up actions.",
+          "When possible, run the same query set on a fixed weekly cadence to detect drift trends."
+        ],
+        "orderedList": [
+          "Apply source and application filters to establish scope.",
+          "Filter for ownership and maintainer exception patterns.",
+          "Validate open ports formatting consistency.",
+          "Export result set for tracked remediation work."
+        ],
+        "related": [
+          {
+            "label": "Record Management: Record Lifecycle and Editing",
+            "to": "/docs/records-management/record-lifecycle-and-editing"
+          },
+          {
+            "label": "Reporting: Report Generation Flow",
+            "to": "/docs/reporting/report-generation-flow"
+          }
+        ]
+      }
+    ]
+  }
+}

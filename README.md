@@ -1,237 +1,274 @@
 # RAPTOR Security Platform
 
-**R**econnaissance, **A**ssessment, **P**enetration **T**esting, **O**perations & **R**eporting
+RAPTOR (Reconnaissance, Assessment, Penetration Testing, Operations, and Reporting) is a web platform for managing DNS asset inventory and penetration-testing operations in one workflow.
 
-## Overview
+## What the Project Does
 
-RAPTOR is a comprehensive cybersecurity operations platform designed for security professionals, penetration testers, and IT administrators. It provides integrated asset discovery, vulnerability assessment, and penetration testing management capabilities.
-
-## Key Features
-
-### 🎯 **Asset Discovery & Management**
-- Automated DNS zone file monitoring
-- Real-time asset inventory tracking
-- IP-to-source mapping and classification
-- Change detection and alerting
-
-### 🔒 **Security Testing Operations**
-- Integrated penetration testing workflow
-- Vulnerability tracking and management
-- OWASP testing methodology support
-- Security test reporting and documentation
-
-### 📊 **Operations Dashboard**
-- Real-time security metrics and KPIs
-- Asset status monitoring
-- Test progress tracking
-- Activity timeline and alerts
-
-### 👥 **Multi-Role Access Control**
-- Admin: Full system control and user management
-- Pentester: Security testing and vulnerability management
-- Manager: Elevated operations across records and pentests
-- User: Asset viewing and basic operations
-- LDAP/Active Directory integration
-
-### 🛡️ **Vulnerability Management**
-- Automated vulnerability status tracking
-- Remediation workflow management
-- Service desk integration
-- Fix verification and reporting
+- Ingests BIND-style zone files (`*_A_Records`) into a managed asset inventory.
+- Tracks record lifecycle and change history.
+- Runs role-based pentest workflows (assignment, status, findings, remediation).
+- Supports checklist-based testing templates and report templates.
+- Generates and stores PDF pentest reports.
+- Provides admin tooling for users, permissions, IP source mapping, vulnerability categories, and maintenance operations.
 
 ## Architecture
 
-- **Frontend**: React.js with Material-UI
-- **Backend**: Python Flask REST API
-- **Database**: SQLite with comprehensive audit trails
-- **Authentication**: LDAP/AD integration + local admin
-- **Deployment**: Docker containerization
+- Frontend: React 19 + MUI 6 (`frontend/`)
+- Backend: Flask (`backend/main.py` + `backend/modules/`)
+- Database: SQLite (`DATA_PATH/database.db`)
+- Auth: Local admin + local users + LDAP/AD users
+- File/report storage: FTP service for uploaded/generated report assets
+- Packaging: Multi-stage Docker build with Compose for dev/prod
 
-## Quick Start
+## Repository Layout
 
-### Prerequisites
-- Docker and Docker Compose
-- LDAP/Active Directory server (for user authentication)
-- SSL certificates (for production)
-
-### Environment Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd raptor-security-platform
-   ```
-
-2. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your specific configuration
-   ```
-
-3. **Start the platform**
-   ```bash
-   # Development
-   docker-compose -f docker-compose.dev.yml up -d
-
-   # Production
-   docker-compose -f docker-compose.prod.yml up -d
-   ```
-
-4. **Access the platform**
-   - Navigate to `https://localhost:5000` (or your configured port)
-   - Use the generated admin credentials from `/tmp/writehere.txt`
-
-## Configuration
-
-### Required Environment Variables
-
-```bash
-# Application Settings
-APP_PORT=5000
-SECRET_KEY=your-secret-key
-DATA_PATH=./data/
-BACKUP_FOLDER=./backups/
-
-# Admin User
-ADMIN_USERNAME=admin
-
-# LDAP Configuration
-LDAP_SERVER=ldap.yourdomain.com
-LDAP_DOMAIN=yourdomain.com
-LDAP_USER=service-account@yourdomain.com
-LDAP_PASS=service-account-password
-
-# File Transfer
-SHARED_PATH=./shared/
-FTP_USER=raptor-ftp
-FTP_PASS=secure-ftp-password
-
-# SSL (Production)
-CERT_FILE=./certs/cert.pem
-KEY_FILE=./certs/key.pem
+```text
+backend/
+  main.py                 # Flask app, DB init, routes, periodic zone updates
+  modules/                # auth, permissions, pentest/report logic, templates
+frontend/
+  src/                    # React app (dashboard, records, pentest, admin settings)
+Dockerfile                # Builds frontend, packages with backend
+Dockerfile.sftp           # SFTP sidecar image
+docker-compose.dev.yml    # Development stack
+docker-compose.prod.yml   # Production stack
+scripts/
+  dev.ps1                 # Build frontend -> backend/static, run backend locally
+  docker_runner.sh        # Dev helper: rebuild stack and seed sample zone files
 ```
 
-## User Roles & Permissions
+## Quick Start (Docker)
 
-Roles are fixed permission bundles. Per-user custom permissions are not supported yet.
+### 1) Create a root `.env`
 
-### User
-- View records page
-- View security dashboard
-- Modify records
-- View record details
-- Export records
-- Manage apps
+Create `C:\Users\Ismail\Documents\Codes\RAPTOR\.env` with at least:
 
-### Pentester
-- View records page
-- View security dashboard
-- Modify records
-- View record details
-- Export records
-- Manage apps
-- View pentest page
-- Modify pentests (assign to self, run tests)
-- Export pentests
+```env
+# Core app
+APP_PORT=3000
+SECRET_KEY=replace-with-a-random-secret
+ADMIN_USERNAME=awadmin
+DB_BACKEND=sqlite
+# For PostgreSQL mode:
+# DB_BACKEND=postgres
+# DATABASE_URL=postgresql://user:password@postgres:5432/raptor
 
-### Manager
-- All user and pentester permissions
-- Reassign pentests as admin
-- Delete records
-- Modify others' pentests as admin
+# Storage paths used by backend
+DATA_PATH=/appdata/data
+BACKUP_FOLDER=/appdata/backups
+SHARED_PATH=/usr/app/src/shared
 
-### Admin
-- Full system access, including user management and configuration
+# Zone refresh interval in seconds
+UPDATE_TIME=86400
 
-## Applications & Domain Grouping
+# Session cookie/CORS
+CORS_ORIGINS=*
+SESSION_COOKIE_SAMESITE=Lax
 
-- Create applications in the Records page via  Manage Apps.
-- Assign domains by editing a record and selecting an application.
-- Records and Pentest dashboards can group by application (folder/tree view).
+# LDAP (required for LDAP auth/admin LDAP search)
+LDAP_SERVER=ldap.example.com
+LDAP_DOMAIN=example.com
+LDAP_USER=svc_account@example.com
+LDAP_PASS=replace-me
 
-## Security Features
+# FTP (used by pentest report/image storage)
+FTP_USER=dnsradar_ftp_user
+FTP_PASS=replace-me
 
-- **Secure Authentication**: LDAP/AD integration with session management
-- **Role-Based Access Control**: Granular permission system
-- **Audit Logging**: Comprehensive activity tracking
-- **Data Encryption**: Secure data storage and transmission
-- **Input Sanitization**: Protection against injection attacks
+# TLS (needed when APP_PORT=5000 mode is used)
+CERT_FILE=/certs/cert.pem
+KEY_FILE=/certs/key.pem
 
-## API Documentation
-
-### Authentication Endpoints
-- `POST /login` - User authentication
-- `GET /session-status` - Check login status
-- `POST /logout` - End user session
-
-### Asset Management
-- `GET /api/records` - Retrieve all assets
-- `POST /api/records/{id}` - Update asset details
-- `DELETE /api/records/{id}` - Delete asset (admin only)
-
-### Applications
-- GET /api/apps - List applications
-- POST /api/apps - Create application
-- PUT /api/apps/{id} - Rename application
-- DELETE /api/apps/{id} - Delete application (unassigns records)
-
-### Security Testing
-- `GET /pentest/records` - Get penetration test data
-- `POST /pentest/{id}` - Update test results
-- `DELETE /pentest/{id}` - Remove test data
-
-### Administration
-- `GET /ldap-search` - Search LDAP users
-- `POST /add-user` - Add new user
-- `GET /existing-users` - List current users
-
-## Development
-
-### Local Development Setup
-
-1. **Backend Development**
-   ```bash
-   cd backend
-   python -m venv env
-   source env/bin/activate  # On Windows: env\Scripts\activate
-   pip install -r requirements.txt
-   python main.py
-   ```
-
-2. **Frontend Development**
-   ```bash
-   cd frontend
-   npm install
-   npm start
-   ```
-
-### Debug Mode
-
-For authentication debugging, run:
-```bash
-cd backend
-python debug_admin.py
+# Optional hardening knobs
+FAILED_LOGIN_ATTEMPT_LIMIT=5
+LOGIN_LOCKOUT_BASE_MINUTES=1
+LOGIN_LOCKOUT_MAX_MINUTES=0
 ```
 
-## Contributing
+### 2) Start the dev stack
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+```bash
+docker compose -f docker-compose.dev.yml up -d --build
+```
 
-## Support
+Default dev access:
 
-For support and documentation:
-- Check the application logs at `{DATA_PATH}/application.log`
-- Review the debug output from `debug_admin.py`
-- Ensure all environment variables are properly configured
+- URL: `http://localhost:1337`
+- App container port mapping: `1337 -> APP_PORT` (commonly `3000` in dev)
+- SFTP sidecar: `localhost:2222`
 
-## License
+### 2.1) Enable PostgreSQL mode (migration in progress)
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+To start testing PostgreSQL backend compatibility:
 
----
+```env
+DB_BACKEND=postgres
+DATABASE_URL=postgresql://raptor:raptor@postgres:5432/raptor
+POSTGRES_DB=raptor
+POSTGRES_USER=raptor
+POSTGRES_PASSWORD=raptor
+```
 
-**RAPTOR** - *Precision in Cybersecurity Operations*
+Start with the Postgres profile enabled:
+
+```bash
+docker compose -f docker-compose.dev.yml --profile postgres up -d --build
+```
+
+The app defaults to SQLite when `DB_BACKEND` is not set to `postgres`.
+
+### 2.2) One-time SQLite -> PostgreSQL data migration
+
+After the Postgres container is up and reachable, run:
+
+```bash
+python scripts/migrate_sqlite_to_postgres.py \
+  --sqlite-path backend/data/database.db \
+  --postgres-url "postgresql://raptor:raptor@localhost:5432/raptor" \
+  --truncate
+```
+
+Useful flags:
+
+- `--dry-run` shows source tables and row counts only.
+- `--schema-only` creates/updates destination tables without copying data.
+- `--data-only` copies rows only (assumes schema already exists).
+- `--skip-if-marked` skips work when `app_meta.sqlite_to_postgres_migrated_v1` exists.
+
+CI/CD production deploy (`main` branch) now runs this migration automatically via the one-shot
+`db-migrate` Compose service before starting `app` in Postgres mode.
+
+The pipeline also runs a `db-verify` step (marker + row-count checks) and an app health check
+against `/session-status`; deployment fails automatically if either check fails.
+
+Important: the migration script is mounted only into the transient `db-migrate` container
+(`./scripts:/scripts:ro`) and is not part of the long-running app container runtime path.
+
+### 3) Initial admin credentials
+
+On first startup, the backend creates the admin account and writes credentials to:
+
+- `DATA_PATH/initial_admin_credentials.txt`
+
+Delete this file after first successful admin login.
+
+## Production Compose
+
+Use:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+`docker-compose.prod.yml` maps host `1337` to container `5000` and expects TLS cert/key paths when running in HTTPS mode.
+
+## Local Development (Without Docker)
+
+### Option A: Integrated local run (recommended in this repo)
+
+```powershell
+cd C:\Users\Ismail\Documents\Codes\RAPTOR
+.\scripts\dev.ps1 -Install
+```
+
+Prerequisite (first time only): create `backend/env` and install backend dependencies once.
+
+```powershell
+cd C:\Users\Ismail\Documents\Codes\RAPTOR\backend
+python -m venv env
+env\Scripts\activate
+pip install -r requirements.txt
+```
+
+Then run `.\scripts\dev.ps1 -Install`. The script installs/builds frontend, copies build output into `backend/static`, activates `backend/env`, then starts `python main.py`.
+
+### Option B: Manual split workflow
+
+Backend:
+
+```powershell
+cd C:\Users\Ismail\Documents\Codes\RAPTOR\backend
+python -m venv env
+env\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
+
+Frontend-only dev server (UI work):
+
+```powershell
+cd C:\Users\Ismail\Documents\Codes\RAPTOR\frontend
+npm install
+npm start
+```
+
+Note: the frontend uses relative API paths (for same-origin deployment). If you run `npm start` separately, configure proxy/CORS accordingly.
+
+## Data Ingestion Model
+
+- Backend scans `SHARED_PATH` for files named `*_A_Records`.
+- It parses BIND A-record entries, updates current records, and keeps backups under `BACKUP_FOLDER`.
+- Periodic update interval is controlled by `UPDATE_TIME` (seconds).
+- Admins can trigger an immediate refresh via `POST /manual-update`.
+
+## Security and Access Control
+
+- Role defaults: `user`, `pentester`, `manager`, `admin`.
+- Optional per-user extra permissions are constrained by role policy.
+- Session controls include idle timeout, extension window, and max active lifetime.
+- Login lockout policy is configurable through env vars.
+- Admin account enforces password-reset flow for bootstrap credentials.
+
+## API Surface (High-Level)
+
+Authentication/session:
+
+- `POST /login`
+- `GET /session-status`
+- `POST /session/extend`
+- `POST /logout`
+
+Records/apps:
+
+- `GET /api/records`
+- `POST /api/records/{id}`
+- `DELETE /api/records/{id}`
+- `GET|POST /api/apps`
+- `PUT|DELETE /api/apps/{id}`
+
+Pentest and reporting:
+
+- `GET /pentest/records`
+- `POST|DELETE /pentest/{record_id}`
+- `GET|DELETE /pentest/{record_id}/report`
+- `POST /pentest/{record_id}/generate-report`
+- `GET|DELETE /pentest/{record_id}/generated-report`
+- `POST /pentest/{record_id}/images`
+- `GET /pentest/images/{filename}`
+
+Admin and taxonomy:
+
+- `GET /ldap-search`
+- `POST /add-user`
+- `POST /add-local-user`
+- `GET /existing-users`
+- `POST /update-user-role`
+- `POST /update-user-permissions`
+- `DELETE /delete-user`
+- `GET|POST|DELETE /ip-sources`
+- `GET|POST|DELETE /vuln-categories`
+- `GET|POST|PUT|DELETE /checklist-templates`
+- `GET|POST|PUT|DELETE /report-templates`
+
+## Operations and Troubleshooting
+
+- App logs: `DATA_PATH/application.log`
+- Database: `DATA_PATH/database.db`
+- Zone-file backups: `BACKUP_FOLDER/<domain>/...`
+- If no assets appear, verify `SHARED_PATH` contains valid `*_A_Records` files and run `POST /manual-update`.
+
+## Current Focus Areas
+
+- Documentation and onboarding polish
+- Continued hardening of auth/session policies
+- UX refinements in records and pentest workflows

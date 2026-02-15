@@ -21,6 +21,8 @@ services:
       - ENVIRONMENT=development
       - CORS_ORIGINS
       - UPDATE_TIME
+      - DB_BACKEND
+      - DATABASE_URL
       - DATA_PATH
       - SHARED_PATH
       - BACKUP_FOLDER
@@ -36,6 +38,8 @@ services:
       - FTP_USER
       - FTP_PASS
       - FTP_HOST=ftp 
+    depends_on:
+      - ftp
     restart: unless-stopped
 
   ftp:
@@ -70,6 +74,72 @@ services:
       - dns_zonefiles_volume:/chroot/upload
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: dnsradar-postgres-prod
+    profiles: ["postgres"]
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-raptor}
+      - POSTGRES_USER=${POSTGRES_USER:-raptor}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-raptor}
+    volumes:
+      - postgres_data_volume:/var/lib/postgresql/data
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  db-migrate:
+    image: dnsradar-prod
+    profiles: ["postgres"]
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL
+    volumes:
+      - db_and_backups_volume:/appdata
+      - ./scripts:/scripts:ro
+    command:
+      [
+        "python",
+        "/scripts/migrate_sqlite_to_postgres.py",
+        "--sqlite-path",
+        "/appdata/data/database.db",
+        "--postgres-url",
+        "${DATABASE_URL:-postgresql://raptor:raptor@postgres:5432/raptor}",
+        "--allow-missing-sqlite",
+        "--skip-if-marked"
+      ]
+    networks:
+      - app_network
+    restart: "no"
+
+  db-verify:
+    image: dnsradar-prod
+    profiles: ["postgres"]
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL
+    volumes:
+      - db_and_backups_volume:/appdata
+      - ./scripts:/scripts:ro
+    command:
+      [
+        "python",
+        "/scripts/verify_postgres_migration.py",
+        "--sqlite-path",
+        "/appdata/data/database.db",
+        "--postgres-url",
+        "${DATABASE_URL:-postgresql://raptor:raptor@postgres:5432/raptor}",
+        "--allow-missing-sqlite",
+        "--require-marker-if-sqlite",
+        "--count-mode",
+        "ge"
+      ]
+    networks:
+      - app_network
+    restart: "no"
+
 volumes:
   db_and_backups_volume:
     driver: local
@@ -78,6 +148,8 @@ volumes:
   certs_volume:
     driver: local
   ftp_volume:
+    driver: local
+  postgres_data_volume:
     driver: local
 
 networks:

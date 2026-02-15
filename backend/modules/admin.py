@@ -4,8 +4,10 @@ import secrets
 import sqlite3
 import logging
 import json
+from datetime import datetime
 from flask import session, jsonify
 from functools import wraps
+from modules.session_policy import session_has_expired
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,41 @@ COMMON_PASSWORDS = {
     "abc123", "111111", "trustno1", "sunshine", "princess",
     "login", "qwertyuiop", "passw0rd", "master", "shadow"
 }
+
+
+def _write_initial_admin_credentials(username, password):
+    """
+    Persist bootstrap admin credentials to a local file with restrictive permissions.
+    This avoids writing plaintext credentials into application logs.
+    """
+    target_path = os.getenv(
+        "INITIAL_ADMIN_PASSWORD_FILE",
+        os.path.join(DATA_PATH, "initial_admin_credentials.txt")
+    )
+    try:
+        absolute_target = os.path.abspath(target_path)
+        target_dir = os.path.dirname(absolute_target)
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
+
+        payload = (
+            "RAPTOR initial admin credentials\n"
+            f"generated_at_utc={datetime.utcnow().isoformat()}Z\n"
+            f"username={username}\n"
+            f"password={password}\n"
+            "warning=Delete this file immediately after first successful admin login.\n"
+        )
+        fd = os.open(absolute_target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        try:
+            os.chmod(absolute_target, 0o600)
+        except Exception:
+            pass
+        return absolute_target
+    except Exception as e:
+        logger.error(f"Failed to persist initial admin credentials: {e}")
+        return None
 
 def validate_password_nist(password, username=None):
     """Validate password against NIST-style requirements."""
@@ -73,7 +110,18 @@ def init_admin_db():
                     "INSERT INTO admin_users (username, password, must_reset) VALUES (?, ?, 1)",
                     (static_username, hashed_password)
                 )
-                logger.info("Created admin user with username: %s and password: %s", static_username, static_password)
+                credentials_path = _write_initial_admin_credentials(static_username, static_password)
+                if credentials_path:
+                    logger.warning(
+                        "Created admin user '%s'. Initial password stored at '%s'.",
+                        static_username,
+                        credentials_path
+                    )
+                else:
+                    logger.warning(
+                        "Created admin user '%s'. Initial password could not be stored to file.",
+                        static_username
+                    )
             else:
                 logger.info("Admin user already exists. Skipping creation.")
             conn.commit()
@@ -215,6 +263,9 @@ def admin_required(f):
     """Decorator to protect admin-only routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if session_has_expired(update_activity=True):
+            session.clear()
+            return jsonify({"error": "Session expired"}), 401
         if (
             not session.get('logged_in')
             or session.get('user_type') != 'admin'
@@ -228,6 +279,9 @@ def admin_or_manager_required(f):
     """Decorator to protect admin- or manager-only routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if session_has_expired(update_activity=True):
+            session.clear()
+            return jsonify({"error": "Session expired"}), 401
         if (
             not session.get('logged_in')
             or session.get('user_type') not in ('admin', 'manager')

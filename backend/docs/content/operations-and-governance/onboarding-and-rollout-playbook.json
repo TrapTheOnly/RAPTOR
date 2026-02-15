@@ -1,0 +1,189 @@
+{
+  "slug": "onboarding-and-rollout-playbook",
+  "title": "Onboarding and Rollout Playbook",
+  "audience": [
+    "Admins",
+    "Managers"
+  ],
+  "summary": "Operational rollout guide for launching RAPTOR to new teams and scaling usage safely.",
+  "coverage": [
+    "Pilot rollout sequence",
+    "Training path by role",
+    "Baseline configuration checklist",
+    "Steady-state review and improvement loop"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Successful rollout depends on data quality and access governance before broad onboarding. Do not start with open-ended user provisioning."
+      ]
+    },
+    "sections": [
+      {
+        "id": "rollout-objective",
+        "title": "Rollout objective",
+        "paragraphs": [
+          "The rollout objective is to make RAPTOR operationally trustworthy from day one for inventory, pentest execution, and reporting. This requires a phased rollout that validates users, taxonomy, and workflow quality before scale-up.",
+          "Treat rollout as an operations program, not a UI onboarding event. The target outcome is stable weekly use with predictable ownership, assignment, and reporting behavior."
+        ]
+      },
+      {
+        "id": "prerequisites",
+        "title": "Prerequisites before pilot",
+        "table": {
+          "columns": [
+            "Prerequisite",
+            "Why it matters",
+            "Validation signal"
+          ],
+          "rows": [
+            [
+              "Authentication connectivity",
+              "Users cannot onboard without working local or LDAP auth path.",
+              "Admin and at least one non-admin user can login successfully."
+            ],
+            [
+              "Permission baseline",
+              "Wrong role defaults block critical workflows.",
+              "Each target role can access expected modules and no more."
+            ],
+            [
+              "Source and taxonomy setup",
+              "Dashboards and findings become noisy without stable taxonomy.",
+              "IP sources and vulnerability categories are configured and reviewed."
+            ],
+            [
+              "Template baseline",
+              "Report and checklist output quality depends on templates.",
+              "Default templates load, customizations validated on sample records."
+            ],
+            [
+              "Data ingestion health",
+              "Users lose trust if inventory is stale or inconsistent.",
+              "Manual update succeeds and records appear current."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "pilot-sequence",
+        "title": "Pilot rollout sequence",
+        "paragraphs": [
+          "Start with a small controlled cohort, then expand by role and application domain after measurable stability."
+        ],
+        "orderedList": [
+          "Select pilot scope with one admin, one manager, one pentester, and one inventory user.",
+          "Assign pilot applications and records with clear owner and maintainer metadata.",
+          "Execute one full pentest lifecycle from `Not Started` to report generation.",
+          "Run weekly review using dashboard signals and fix observed workflow friction.",
+          "Document issues and update taxonomy, templates, or permissions before expansion.",
+          "Expand cohort in batches, repeating the same lifecycle validation gates."
+        ]
+      },
+      {
+        "id": "role-based-training",
+        "title": "Role-based training path",
+        "table": {
+          "columns": [
+            "Role",
+            "Primary modules",
+            "Training focus"
+          ],
+          "rows": [
+            [
+              "Admin",
+              "`Settings`, `Dashboard`",
+              "User lifecycle, taxonomy governance, maintenance controls, and recovery procedures."
+            ],
+            [
+              "Manager",
+              "`Dashboard`, `Records`, `Security`",
+              "Prioritization, assignment governance, KPI interpretation, and escalation decisions."
+            ],
+            [
+              "Pentester",
+              "`Security`, `Pentest Record`, `Reporting`",
+              "Lifecycle updates, findings quality, checklist completion, and report generation."
+            ],
+            [
+              "User",
+              "`Records`",
+              "Metadata quality, ownership fields, filtering, and export for operational handoff."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "baseline-configuration-checklist",
+        "title": "Baseline configuration checklist",
+        "orderedList": [
+          "Create user accounts with minimal required roles and optional permissions.",
+          "Validate `Settings` section visibility matches policy per role.",
+          "Configure IP source mappings for known ingestion origins.",
+          "Review vulnerability category list and remove ambiguous duplicates.",
+          "Validate checklist and report templates with a test record.",
+          "Verify session timeout, extension, and lockout behavior in a controlled test.",
+          "Record baseline configuration snapshot for audit and rollback reference."
+        ]
+      },
+      {
+        "id": "go-live-gates",
+        "title": "Go-live quality gates",
+        "table": {
+          "columns": [
+            "Gate",
+            "Acceptance condition"
+          ],
+          "rows": [
+            [
+              "Access gate",
+              "Each role can complete its core workflow without unauthorized errors."
+            ],
+            [
+              "Data gate",
+              "Pilot records have complete owner, maintainer, application, and source metadata."
+            ],
+            [
+              "Security gate",
+              "At least one complete pentest lifecycle has been executed and validated."
+            ],
+            [
+              "Reporting gate",
+              "Generated report output is accurate and accepted by stakeholders."
+            ],
+            [
+              "Operational gate",
+              "Known issues are documented with owner and target resolution date."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "steady-state-loop",
+        "title": "Steady-state improvement loop",
+        "paragraphs": [
+          "After go-live, move to a recurring operations loop focused on quality drift detection and process improvement. Keep scope changes incremental and measurable.",
+          "Use dashboard and activity signals to detect backlog risk, ownership gaps, and slow remediation. Feed results back into role training and configuration governance."
+        ],
+        "orderedList": [
+          "Run weekly manager review of coverage, open risk, and assignment balance.",
+          "Run monthly admin review of permissions, taxonomy, and template drift.",
+          "Run quarterly restore and recovery validation for continuity readiness.",
+          "Track action items and completion in an operational governance register."
+        ],
+        "related": [
+          {
+            "label": "Dashboards and Analytics: Risk and Prioritization Workflows",
+            "to": "/docs/dashboards-and-analytics/risk-and-prioritization-workflows"
+          },
+          {
+            "label": "Administration: Admin Settings Map",
+            "to": "/docs/administration/admin-settings-map"
+          }
+        ]
+      }
+    ]
+  }
+}

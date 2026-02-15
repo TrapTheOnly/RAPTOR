@@ -1,0 +1,147 @@
+{
+  "slug": "record-lifecycle-and-editing",
+  "title": "Record Lifecycle and Editing",
+  "audience": [
+    "Users",
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Documents edit lifecycle, field-level expectations, and safe change controls for record updates.",
+  "coverage": [
+    "Edit mode behavior and save/cancel flows",
+    "Open ports, maintainer, owner, and application fields",
+    "Deletion flow and safeguards",
+    "History and record detail drill-down"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Record edits affect operational ownership, security context, and exported reporting data. Validate values before save, especially for owner, maintainer, and open ports fields."
+      ]
+    },
+    "sections": [
+      {
+        "id": "edit-lifecycle-contract",
+        "title": "Edit lifecycle contract",
+        "paragraphs": [
+          "Record editing follows an explicit lifecycle: enter edit mode, modify allowed fields, save or cancel, then re-validate from refreshed data. This pattern prevents ambiguous write state and supports predictable audit behavior.",
+          "If save succeeds, RAPTOR refreshes the dataset and reorders records by latest modification time. If save fails, the current edit state is preserved so the operator can correct and retry."
+        ]
+      },
+      {
+        "id": "editable-fields",
+        "title": "Editable field contract",
+        "paragraphs": [
+          "The record edit form focuses on fields that drive accountability and technical context. Populate these fields precisely and avoid free-form values that cannot be consistently interpreted by other teams."
+        ],
+        "table": {
+          "columns": [
+            "Field",
+            "Expected content",
+            "Good example",
+            "Anti-pattern"
+          ],
+          "rows": [
+            [
+              "`application_id`",
+              "Application selection from managed list.",
+              "Assigned to `Payments API` application.",
+              "Leaving unassigned when service ownership is known."
+            ],
+            [
+              "`application_owner`",
+              "Business owner or accountable service owner.",
+              "`payments-owner@company.com`",
+              "Team alias with no accountable person."
+            ],
+            [
+              "`maintainer`",
+              "Technical maintainer who performs implementation changes.",
+              "`platform-sre@company.com`",
+              "Copying business owner when maintenance is handled elsewhere."
+            ],
+            [
+              "`open_ports`",
+              "Externally visible ports in consistent comma-separated format.",
+              "`80,443,8443`",
+              "Mixed prose like `web ports and admin maybe 8443`."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "owner-vs-maintainer",
+        "title": "Owner versus maintainer",
+        "paragraphs": [
+          "The owner and maintainer fields serve different operational responsibilities. Conflating them weakens escalation flow and delays incident response.",
+          "Owner identifies who is accountable for risk acceptance and business prioritization. Maintainer identifies who is expected to execute technical change and remediation implementation."
+        ],
+        "table": {
+          "columns": [
+            "Role dimension",
+            "Application owner",
+            "Maintainer"
+          ],
+          "rows": [
+            [
+              "Primary responsibility",
+              "Risk ownership and service accountability.",
+              "Technical operation and change execution."
+            ],
+            [
+              "Typical team",
+              "Product, service management, or business owner.",
+              "SRE, platform engineering, or app engineering."
+            ],
+            [
+              "Used in",
+              "Escalation, prioritization, governance review.",
+              "Implementation follow-up and operational handoff."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "delete-and-recovery",
+        "title": "Delete operation and safeguards",
+        "paragraphs": [
+          "Record deletion is a privileged action and should be used only when the asset is out of scope or entered incorrectly. Deletion changes operational visibility and can alter downstream reporting and security workload scope.",
+          "Always validate the record identity and confirm retirement status with the owning team before deletion."
+        ],
+        "tip": {
+          "variant": "tip",
+          "title": "TIP",
+          "paragraphs": [
+            "Prefer metadata correction over deletion when the record still represents a real service endpoint."
+          ]
+        }
+      },
+      {
+        "id": "validation-checklist",
+        "title": "Post-edit validation",
+        "paragraphs": [
+          "After each save, validate that assignment, ownership, and open ports reflect intended values. Then verify the record appears correctly in grouped and filtered views.",
+          "For critical records, open the detailed record view to review historical updates and ensure changes align with expected operational timeline."
+        ],
+        "orderedList": [
+          "Re-open the edited record card after refresh and confirm values.",
+          "Run a targeted filter query to verify discoverability by key fields.",
+          "Confirm application grouping placement is correct.",
+          "If ownership changed, notify downstream security stakeholders."
+        ],
+        "related": [
+          {
+            "label": "Record Management: Search, Filter, and Export",
+            "to": "/docs/records-management/search-filter-and-export-records"
+          },
+          {
+            "label": "Record Management: Application Management",
+            "to": "/docs/records-management/application-management"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -17,6 +17,9 @@ import threading
 import hashlib
 from flask_cors import CORS
 from datetime import timedelta
+from modules.db_backend import ensure_db_backend
+
+ensure_db_backend()
 from modules.user import *
 from modules.admin import *
 from modules.offsec import *
@@ -28,6 +31,18 @@ from modules.permissions import (
     sanitize_extra_permissions,
     permission_required,
     user_has_permission
+)
+from modules.session_policy import (
+    SESSION_IDLE_TIMEOUT_SECONDS,
+    extend_session,
+    get_session_timing,
+    initialize_session_tracking,
+    session_has_expired
+)
+from modules.docs_portal import (
+    get_docs_access_matrix_for_user,
+    get_docs_manifest_for_user,
+    get_docs_page_for_user
 )
 from flask import Flask, request, jsonify, send_from_directory, session
 
@@ -56,6 +71,161 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+FAILED_LOGIN_ATTEMPT_LIMIT = max(1, int(os.getenv("FAILED_LOGIN_ATTEMPT_LIMIT", "5")))
+LOGIN_LOCKOUT_BASE_MINUTES = max(1, int(os.getenv("LOGIN_LOCKOUT_BASE_MINUTES", "1")))
+LOGIN_LOCKOUT_MAX_MINUTES = max(0, int(os.getenv("LOGIN_LOCKOUT_MAX_MINUTES", "0")))
+
+
+def _env_flag(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_json_object():
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def normalize_auth_key(username):
+    return str(username or "").strip().lower()
+
+
+def get_login_lockout_status(username, db_path=DB_PATH):
+    key = normalize_auth_key(username)
+    if not key:
+        return {
+            "locked": False,
+            "retry_after_seconds": 0,
+            "remaining_attempts": FAILED_LOGIN_ATTEMPT_LIMIT
+        }
+
+    now_epoch = int(time.time())
+    try:
+        with sqlite3.connect(db_path) as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT failed_attempts, lockout_until_epoch
+                FROM auth_lockouts
+                WHERE username = ?
+            """, (key,))
+            row = c.fetchone()
+            if not row:
+                return {
+                    "locked": False,
+                    "retry_after_seconds": 0,
+                    "remaining_attempts": FAILED_LOGIN_ATTEMPT_LIMIT
+                }
+
+            failed_attempts = max(0, int(row[0] or 0))
+            lockout_until_epoch = max(0, int(row[1] or 0))
+            retry_after_seconds = max(0, lockout_until_epoch - now_epoch)
+            return {
+                "locked": retry_after_seconds > 0,
+                "retry_after_seconds": retry_after_seconds,
+                "remaining_attempts": max(0, FAILED_LOGIN_ATTEMPT_LIMIT - failed_attempts)
+            }
+    except Exception as e:
+        logger.error(f"Error reading login lockout state for '{key}': {e}")
+        return {
+            "locked": False,
+            "retry_after_seconds": 0,
+            "remaining_attempts": FAILED_LOGIN_ATTEMPT_LIMIT
+        }
+
+
+def register_failed_login_attempt(username, db_path=DB_PATH):
+    key = normalize_auth_key(username)
+    if not key:
+        return {"locked": False, "retry_after_seconds": 0}
+
+    now_epoch = int(time.time())
+    try:
+        with sqlite3.connect(db_path) as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT failed_attempts, lockout_level, lockout_until_epoch
+                FROM auth_lockouts
+                WHERE username = ?
+            """, (key,))
+            row = c.fetchone()
+            failed_attempts = max(0, int(row[0] or 0)) if row else 0
+            lockout_level = max(0, int(row[1] or 0)) if row else 0
+            lockout_until_epoch = max(0, int(row[2] or 0)) if row else 0
+
+            if lockout_until_epoch > now_epoch:
+                return {
+                    "locked": True,
+                    "retry_after_seconds": lockout_until_epoch - now_epoch
+                }
+
+            failed_attempts += 1
+            lockout_triggered = False
+            retry_after_seconds = 0
+
+            if failed_attempts >= FAILED_LOGIN_ATTEMPT_LIMIT:
+                computed_minutes = LOGIN_LOCKOUT_BASE_MINUTES * (2 ** lockout_level)
+                lockout_minutes = (
+                    min(LOGIN_LOCKOUT_MAX_MINUTES, computed_minutes)
+                    if LOGIN_LOCKOUT_MAX_MINUTES > 0
+                    else computed_minutes
+                )
+                retry_after_seconds = int(lockout_minutes * 60)
+                lockout_until_epoch = now_epoch + retry_after_seconds
+                lockout_level += 1
+                failed_attempts = 0
+                lockout_triggered = True
+
+            if row:
+                c.execute("""
+                    UPDATE auth_lockouts
+                    SET failed_attempts = ?,
+                        lockout_level = ?,
+                        lockout_until_epoch = ?,
+                        updated_at = datetime('now')
+                    WHERE username = ?
+                """, (failed_attempts, lockout_level, lockout_until_epoch, key))
+            else:
+                c.execute("""
+                    INSERT INTO auth_lockouts (
+                        username, failed_attempts, lockout_level, lockout_until_epoch, updated_at
+                    ) VALUES (?, ?, ?, ?, datetime('now'))
+                """, (key, failed_attempts, lockout_level, lockout_until_epoch))
+            conn.commit()
+
+            return {
+                "locked": lockout_triggered,
+                "retry_after_seconds": retry_after_seconds,
+                "remaining_attempts": max(0, FAILED_LOGIN_ATTEMPT_LIMIT - failed_attempts)
+            }
+    except Exception as e:
+        logger.error(f"Error storing failed login attempt for '{key}': {e}")
+        return {"locked": False, "retry_after_seconds": 0}
+
+
+def clear_login_lockout_state(username, db_path=DB_PATH):
+    key = normalize_auth_key(username)
+    if not key:
+        return
+    try:
+        with sqlite3.connect(db_path) as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM auth_lockouts WHERE username = ?", (key,))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Error clearing login lockout state for '{key}': {e}")
+
+
+def invalid_credentials_response(username):
+    lockout = register_failed_login_attempt(username)
+    if lockout.get("locked"):
+        return jsonify({
+            "error": "Too many failed login attempts. Try again later.",
+            "retry_after_seconds": int(lockout.get("retry_after_seconds") or 0)
+        }), 429
+    return jsonify({"error": "Invalid credentials"}), 401
 
 # ---------------------------------------------------------
 # Utility: figure out source from IP
@@ -255,6 +425,7 @@ def init_db(db_path=DB_PATH):
     record_columns = {row[1] for row in c.fetchall()}
     if "application_id" not in record_columns:
         c.execute("ALTER TABLE records ADD COLUMN application_id INTEGER")
+        record_columns.add("application_id")
 
     # Allowed users table
     c.execute("""
@@ -292,6 +463,41 @@ def init_db(db_path=DB_PATH):
             created_at TEXT NOT NULL
         )
     """)
+
+    # Legacy data repair: old deployments may have name-only application mapping.
+    if "application_name" in record_columns:
+        c.execute("""
+            UPDATE records
+            SET application_id = (
+                SELECT a.id
+                FROM applications a
+                WHERE a.name = records.application_name
+                LIMIT 1
+            )
+            WHERE (application_id IS NULL OR application_id = 0)
+              AND application_name IS NOT NULL
+              AND TRIM(application_name) != ''
+              AND EXISTS (
+                  SELECT 1
+                  FROM applications a
+                  WHERE a.name = records.application_name
+              )
+        """)
+        c.execute("""
+            UPDATE records
+            SET application_name = (
+                SELECT a.name
+                FROM applications a
+                WHERE a.id = records.application_id
+                LIMIT 1
+            )
+            WHERE application_id IS NOT NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM applications a
+                  WHERE a.id = records.application_id
+              )
+        """)
 
     # IP sources table
     c.execute("""
@@ -418,6 +624,17 @@ def init_db(db_path=DB_PATH):
         CREATE TABLE IF NOT EXISTS app_meta (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        )
+    """)
+
+    # Login lockout tracking table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS auth_lockouts (
+            username TEXT PRIMARY KEY,
+            failed_attempts INTEGER NOT NULL DEFAULT 0,
+            lockout_level INTEGER NOT NULL DEFAULT 0,
+            lockout_until_epoch INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
         )
     """)
 
@@ -908,12 +1125,72 @@ def update_data():
 # ---------------------------------------------------------
 app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.getenv("SECRET_KEY")
-app.permanent_session_lifetime = timedelta(hours=1)
+app.permanent_session_lifetime = timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
+app.config["SESSION_REFRESH_EACH_REQUEST"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+app.config["SESSION_COOKIE_SECURE"] = _env_flag(
+    "SESSION_COOKIE_SECURE",
+    bool(os.getenv("CERT_FILE") and os.getenv("KEY_FILE"))
+)
 CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(",")}})
 
 # ---------------------------------------------------------
 #! Record API Endpoints
 # ---------------------------------------------------------
+@app.route('/dashboard/data', methods=['GET'])
+@permission_required('view_dashboard')
+def get_dashboard_data():
+    """
+    Returns dashboard-ready datasets in one authorized request so users with
+    dashboard access do not need additional tab permissions for backend calls.
+    """
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+
+            c.execute("""
+                SELECT
+                    r.id,
+                    r.name,
+                    r.source,
+                    r.status,
+                    r.last_modification_date
+                FROM records r
+            """)
+            records = [dict(ix) for ix in c.fetchall()]
+
+            c.execute("""
+                SELECT
+                    r.id AS recordId,
+                    r.name,
+                    r.source,
+                    COALESCE(p.status, 'Not Started') AS status,
+                    COALESCE(p.vulnerable, 0) AS vulnerable,
+                    COALESCE(p.vulnerability_fixed, 0) AS vulnerability_fixed,
+                    COALESCE(p.vulnerabilities, '') AS vulnerabilities,
+                    p.tested_by,
+                    p.test_start_date,
+                    p.test_end_date
+                FROM records r
+                LEFT JOIN pentest_data p ON r.id = p.record_id
+            """)
+            pentest_records = [dict(ix) for ix in c.fetchall()]
+
+            c.execute("SELECT source_name FROM ip_sources")
+            ip_sources = [dict(ix) for ix in c.fetchall()]
+
+        return jsonify({
+            "records": records,
+            "pentestRecords": pentest_records,
+            "ipSources": ip_sources
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching dashboard datasets: {e}")
+        return jsonify({"error": "Failed to load dashboard data."}), 500
+
+
 @app.route('/api/records', methods=['GET'])
 @permission_required('view_records')
 def get_records():
@@ -954,7 +1231,9 @@ def update_record(record_id):
     """
     Update a record by ID (including open_ports in pentest_data).
     """
-    data = request.get_json(force=True)
+    data = parse_json_object()
+    if not data:
+        return jsonify({"error": "Invalid JSON payload."}), 400
 
     def sanitize_string(s):
         return re.sub(r'[^a-zA-Z0-9\.\-_ ]+', '', s)
@@ -1038,7 +1317,7 @@ def update_record(record_id):
         return jsonify({"status": "success"}), 200
     except Exception as e:
         logger.error(f"Error updating record {record_id}: {e}")
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": "Failed to update record."}), 400
 
 @app.route('/api/apps', methods=['GET'])
 @permission_required('view_records')
@@ -1063,7 +1342,9 @@ def get_applications():
 @permission_required('manage_apps')
 def create_application():
     """Create a new application group."""
-    data = request.get_json(force=True)
+    data = parse_json_object()
+    if not data:
+        return jsonify({"error": "Invalid JSON payload."}), 400
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({"error": "Application name is required."}), 400
@@ -1091,7 +1372,9 @@ def create_application():
 @permission_required('manage_apps')
 def update_application(app_id):
     """Rename an application group."""
-    data = request.get_json(force=True)
+    data = parse_json_object()
+    if not data:
+        return jsonify({"error": "Invalid JSON payload."}), 400
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({"error": "Application name is required."}), 400
@@ -1104,18 +1387,37 @@ def update_application(app_id):
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
-            if not c.fetchone():
+            c.execute("SELECT id, name FROM applications WHERE id = ?", (app_id,))
+            existing_app = c.fetchone()
+            if not existing_app:
                 return jsonify({"error": "Application not found."}), 404
+
+            old_name = str(existing_app["name"] or "").strip()
             c.execute("UPDATE applications SET name = ? WHERE id = ?", (sanitized, app_id))
 
             # Keep legacy denormalized schemas consistent (older DBs may still have this column).
             c.execute("PRAGMA table_info(records)")
             record_columns = {row["name"] for row in c.fetchall()}
             if "application_name" in record_columns:
+                # Backfill old rows that were name-linked only, so future joins are stable.
                 c.execute(
-                    "UPDATE records SET application_name = ? WHERE application_id = ?",
-                    (sanitized, app_id)
+                    """
+                    UPDATE records
+                    SET application_id = ?
+                    WHERE (application_id IS NULL OR application_id = 0)
+                      AND application_name = ?
+                    """,
+                    (app_id, old_name)
+                )
+
+                c.execute(
+                    """
+                    UPDATE records
+                    SET application_name = ?
+                    WHERE application_id = ?
+                       OR application_name = ?
+                    """,
+                    (sanitized, app_id, old_name)
                 )
 
             conn.commit()
@@ -1185,7 +1487,7 @@ def delete_record(record_id):
         return jsonify({"status": "success", "message": f"Record {record_id} deleted"}), 200
     except Exception as e:
         logger.error(f"Error deleting record {record_id}: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 400
+        return jsonify({"status": "error", "message": "Failed to delete record."}), 400
 
 @app.route('/api/records/<int:record_id>/history', methods=['GET'])
 @permission_required('view_record_details')
@@ -1297,7 +1599,8 @@ def ldap_search():
         results = search_ldap_users(query)
         return jsonify({"results": results}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"LDAP search failed: {e}")
+        return jsonify({"error": "LDAP search failed."}), 500
     
 @app.route('/add-user', methods=['POST'])
 @admin_required
@@ -1305,11 +1608,18 @@ def add_user():
     """
     Add a user to the allowed_users table.
     """
-    data = request.get_json()
-    username = data.get('username').lower()
-    email = data.get('email').lower()
-    role = data.get('role', 'user').lower()
+    data = parse_json_object()
+    username = str(data.get('username') or '').strip().lower()
+    email = str(data.get('email') or '').strip().lower()
+    role = str(data.get('role', 'user')).strip().lower()
     permissions = data.get('permissions', [])
+
+    if not username:
+        return jsonify({"error": "Username is required."}), 400
+    if not email:
+        return jsonify({"error": "Email is required."}), 400
+    if not isinstance(permissions, list):
+        return jsonify({"error": "Permissions must be a list."}), 400
 
     #Basic role validation
     if role not in ['user', 'pentester', 'manager']:
@@ -1320,7 +1630,7 @@ def add_user():
         return jsonify({"message": f"User {username} added successfully with role {role}."}), 200
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to add user."}), 500
 
 @app.route('/add-local-user', methods=['POST'])
 @admin_required
@@ -1328,9 +1638,9 @@ def add_local_user():
     """
     Add a local (non-LDAP) user with a temporary password.
     """
-    data = request.get_json()
-    username = data.get('username', '').lower().strip()
-    role = data.get('role', 'user').lower()
+    data = parse_json_object()
+    username = str(data.get('username') or '').strip().lower()
+    role = str(data.get('role', 'user')).strip().lower()
     permissions = data.get('permissions', [])
 
     if not username:
@@ -1339,6 +1649,8 @@ def add_local_user():
         return jsonify({"error": "Username is reserved."}), 400
     if role not in ['user', 'pentester', 'manager']:
         return jsonify({"error": "Invalid role specified."}), 400
+    if not isinstance(permissions, list):
+        return jsonify({"error": "Permissions must be a list."}), 400
 
     try:
         # Generate a temporary password (meets minimum length)
@@ -1363,7 +1675,7 @@ def add_local_user():
         }), 200
     except Exception as e:
         logger.error(f"Error adding local user {username}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to create local user."}), 500
     
 @app.route('/change-password', methods=['POST'])
 @admin_required
@@ -1371,7 +1683,7 @@ def api_change_password():
     """
     Endpoint to change the admin password.
     """
-    data = request.get_json()
+    data = parse_json_object()
     current_password = data.get('current_password')
     new_password = data.get('new_password')
 
@@ -1389,7 +1701,7 @@ def api_admin_reset_password():
     if not session.get('reset_required') or session.get('username') != ADMIN_USERNAME:
         return jsonify({"error": "Unauthorized"}), 403
 
-    data = request.get_json()
+    data = parse_json_object()
     if not data:
         return jsonify({"error": "No data provided"}), 400
     new_password = data.get('new_password')
@@ -1417,7 +1729,7 @@ def api_user_reset_password():
     if not session.get('reset_required') or session.get('user_type') == 'admin':
         return jsonify({"error": "Unauthorized"}), 403
 
-    data = request.get_json()
+    data = parse_json_object()
     if not data:
         return jsonify({"error": "No data provided"}), 400
     new_password = data.get('new_password')
@@ -1475,9 +1787,9 @@ def api_get_existing_users():
 @app.route('/update-user-role', methods=['POST'])
 @admin_required
 def update_user_role():
-    data = request.get_json()
-    username = data.get('username')
-    new_role = data.get('role')
+    data = parse_json_object()
+    username = normalize_auth_key(data.get('username'))
+    new_role = str(data.get('role') or '').strip().lower()
 
     if not username or not new_role:
         return jsonify({"error": "Username and role are required"}), 400
@@ -1505,8 +1817,8 @@ def update_user_role():
 @app.route('/update-user-permissions', methods=['POST'])
 @admin_required
 def update_user_permissions():
-    data = request.get_json() or {}
-    username = data.get('username')
+    data = parse_json_object()
+    username = normalize_auth_key(data.get('username'))
     requested_permissions = data.get('permissions', [])
 
     if not username:
@@ -1549,8 +1861,8 @@ def api_delete_user():
     """
     Endpoint to delete a user from the allowed_users table.
     """
-    data = request.get_json()
-    username = data.get('username')
+    data = parse_json_object()
+    username = normalize_auth_key(data.get('username'))
 
     if not username:
         return jsonify({"error": "Username is required."}), 400
@@ -1568,8 +1880,8 @@ def manual_update():
         update_data()
         return jsonify({"status": "success", "message": "Records updated successfully."}), 200
     except Exception as e:
-        logger.error(f"Manual update error: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        logger.error(f"Manual update error: {e}")
+        return jsonify({"status": "error", "message": "Failed to update records."}), 500
 
 @app.route('/pentest/reset-keep-open', methods=['POST'])
 @admin_required
@@ -1578,7 +1890,7 @@ def reset_keep_open_vulnerabilities():
     Reset pentest progress for all records except open vulnerabilities
     (vulnerable=1 and vulnerability_fixed=0). Requires explicit confirmation.
     """
-    data = request.get_json() or {}
+    data = parse_json_object()
     confirm = data.get('confirm') is True
     phrase = data.get('phrase')
     required_phrase = "RESET ALL BUT OPEN VULNERABILITIES"
@@ -1670,7 +1982,7 @@ def get_ip_sources():
         return jsonify({"ip_sources": ip_sources}), 200
     except Exception as e:
         logger.error(f"Error retrieving IP sources: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to retrieve IP sources."}), 500
     
 @app.route('/ip-sources', methods=['POST'])
 @permission_required('manage_ip_sources')
@@ -1680,9 +1992,9 @@ def add_ip_source():
     Also updates existing records if they have this IP (source=..., status='updated').
     JSON body: { "source_name": "...", "ip_address": "..." }
     """
-    data = request.get_json()
-    source_name = data.get('source_name')
-    ip_address = data.get('ip_address')
+    data = parse_json_object()
+    source_name = str(data.get('source_name') or '').strip()
+    ip_address = str(data.get('ip_address') or '').strip()
 
     if not source_name or not ip_address:
         return jsonify({"error": "source_name and ip_address are required."}), 400
@@ -1718,7 +2030,7 @@ def add_ip_source():
         return jsonify({"error": f"IP address {ip_address} is already defined."}), 400
     except Exception as e:
         logger.error(f"Error adding IP source: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to add IP source."}), 500
     
 @app.route('/ip-sources', methods=['DELETE'])
 @permission_required('manage_ip_sources')
@@ -1728,8 +2040,8 @@ def delete_ip_source():
     Also reverts any matching records to 'Other' with status='updated'.
     JSON body: { "ip_address": "..." }
     """
-    data = request.get_json()
-    ip_address = data.get('ip_address')
+    data = parse_json_object()
+    ip_address = str(data.get('ip_address') or '').strip()
 
     if not ip_address:
         return jsonify({"error": "ip_address is required."}), 400
@@ -1769,7 +2081,7 @@ def delete_ip_source():
         return jsonify({"message": message}), 200
     except Exception as e:
         logger.error(f"Error deleting IP source for {ip_address}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to delete IP source."}), 500
 
 # ---------------------------------------------------------
 #! Vulnerability Categories API Endpoints
@@ -1792,7 +2104,7 @@ def get_vuln_categories():
 @app.route('/vuln-categories', methods=['POST'])
 @permission_required('manage_vuln_categories')
 def add_vuln_category():
-    data = request.get_json() or {}
+    data = parse_json_object()
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({"error": "Category name is required."}), 400
@@ -1839,30 +2151,33 @@ def login():
     """
     Authenticate the user and set session variables.
     """
-    
-    data = request.get_json()
+    data = parse_json_object()
     if not data:
         return jsonify({"error": "No data provided"}), 400
-    
-    username = data.get('username')
+
+    username = normalize_auth_key(data.get('username'))
     password = data.get('password')
-    
+
     if not username or not password:
         return jsonify({"error": "Username and password required"}), 400
-    
-    username = username.lower()
-    
+
+    lockout = get_login_lockout_status(username)
+    if lockout.get("locked"):
+        return jsonify({
+            "error": "Too many failed login attempts. Try again later.",
+            "retry_after_seconds": int(lockout.get("retry_after_seconds") or 0)
+        }), 429
+
     # Check allowed users first
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT username, role, auth_type, password, must_reset FROM allowed_users WHERE username = ?", (username,))
     user = c.fetchone()
     conn.close()
-    
 
     if username == ADMIN_USERNAME:
-
         if admin_login(username, password):
+            clear_login_lockout_state(username)
             session.permanent = True
             session['username'] = username
             session['user_type'] = 'admin'
@@ -1879,14 +2194,14 @@ def login():
 
             session['logged_in'] = True
             session.pop('reset_required', None)
+            initialize_session_tracking()
             return jsonify({
                 "status": "logged_in",
                 "username": username,
                 "user_type": "admin",
                 "permissions": list(get_user_permissions(username, "admin"))
             }), 200
-        else:
-            return jsonify({"error": "Invalid credentials"}), 401
+        return invalid_credentials_response(username)
 
     if user:
         user_role = user[1] if user[1] else 'user'
@@ -1896,8 +2211,9 @@ def login():
 
         if auth_type == 'local':
             if not password_hash or not bcrypt.checkpw(password.encode(), password_hash):
-                return jsonify({"error": "Invalid credentials"}), 401
+                return invalid_credentials_response(username)
 
+            clear_login_lockout_state(username)
             session.permanent = True
             session['username'] = user[0]
             session['user_type'] = user_role
@@ -1914,6 +2230,7 @@ def login():
 
             session['logged_in'] = True
             session.pop('reset_required', None)
+            initialize_session_tracking()
             return jsonify({
                 "status": "logged_in",
                 "username": username,
@@ -1922,27 +2239,31 @@ def login():
             }), 200
 
         if ldap_authenticate(username, password):
+            clear_login_lockout_state(username)
             session.permanent = True
             session['logged_in'] = True
             session['username'] = user[0]
             session['user_type'] = user_role
             session.pop('reset_required', None)
+            initialize_session_tracking()
             return jsonify({
                 "status": "logged_in",
                 "username": username,
                 "user_type": session['user_type'],
                 "permissions": list(get_user_permissions(username, user_role))
             }), 200
-        else:
-            return jsonify({"error": "Invalid credentials"}), 401
-    else:
-        return jsonify({"error": "Invalid credentials"}), 401
+        return invalid_credentials_response(username)
+    return invalid_credentials_response(username)
     
 @app.route('/session-status', methods=['GET'])
 def session_status():
     """
     Check if the user is logged in.
     """
+    if session.get('logged_in') and session_has_expired(update_activity=False):
+        session.clear()
+        return jsonify({"status": "logged_out"}), 401
+
     if session.get('reset_required'):
         return jsonify({
             "status": "password_reset_required",
@@ -1952,13 +2273,43 @@ def session_status():
         }), 200
     if 'logged_in' in session and session['logged_in']:
         user_type = session.get('user_type')
+        timing = get_session_timing(update_activity=False) or {}
         return jsonify({
             "status": "logged_in",
             "username": session.get("username"),
             "user_type": user_type,
-            "permissions": list(get_user_permissions(session.get("username"), user_type))
+            "permissions": list(get_user_permissions(session.get("username"), user_type)),
+            "session_remaining_seconds": timing.get("remaining_seconds"),
+            "active_remaining_seconds": timing.get("active_remaining_seconds"),
+            "idle_remaining_seconds": timing.get("idle_remaining_seconds")
         }), 200
     return jsonify({"status": "logged_out"}), 401
+
+@app.route('/session/extend', methods=['POST'])
+def extend_logged_in_session():
+    """
+    Extend current session by configured extension window.
+    """
+    if not session.get('logged_in'):
+        return jsonify({"status": "logged_out"}), 401
+    if session_has_expired(update_activity=False):
+        session.clear()
+        return jsonify({"status": "logged_out"}), 401
+
+    timing = extend_session()
+    if not timing:
+        return jsonify({"status": "logged_out"}), 401
+
+    user_type = session.get('user_type')
+    return jsonify({
+        "status": "logged_in",
+        "username": session.get("username"),
+        "user_type": user_type,
+        "permissions": list(get_user_permissions(session.get("username"), user_type)),
+        "session_remaining_seconds": timing.get("remaining_seconds"),
+        "active_remaining_seconds": timing.get("active_remaining_seconds"),
+        "idle_remaining_seconds": timing.get("idle_remaining_seconds")
+    }), 200
 
 @app.route('/logout', methods=['POST'])
 def logout():
@@ -1967,6 +2318,41 @@ def logout():
     """
     session.clear()
     return jsonify({"status": "logged_out"}), 200
+
+
+# ---------------------------------------------------------
+#! Documentation API Endpoints
+# ---------------------------------------------------------
+@app.route('/docs/manifest', methods=['GET'])
+@login_required_json
+def docs_manifest():
+    response, status_code = get_docs_manifest_for_user(
+        session.get('username'),
+        session.get('user_type')
+    )
+    return jsonify(response), status_code
+
+
+@app.route('/docs/content/<string:section_slug>/<string:page_slug>', methods=['GET'])
+@login_required_json
+def docs_page_content(section_slug, page_slug):
+    response, status_code = get_docs_page_for_user(
+        section_slug=section_slug,
+        page_slug=page_slug,
+        username=session.get('username'),
+        role=session.get('user_type')
+    )
+    return jsonify(response), status_code
+
+
+@app.route('/docs/access-matrix', methods=['GET'])
+@login_required_json
+def docs_access_matrix():
+    response, status_code = get_docs_access_matrix_for_user(
+        session.get('username'),
+        session.get('user_type')
+    )
+    return jsonify(response), status_code
 
 # ---------------------------------------------------------
 #! Frontend Routes

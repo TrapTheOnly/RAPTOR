@@ -1,0 +1,107 @@
+{
+  "slug": "application-management",
+  "title": "Application Management",
+  "audience": [
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Explains application catalog governance, create and rename patterns, and controlled retirement workflow.",
+  "coverage": [
+    "Manage Apps dialog workflow",
+    "Assigning records to applications",
+    "Meaning of application owner vs maintainer",
+    "Impact of app rename/delete on assigned records"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Application definitions are shared grouping primitives across records and security workflows. Name and ownership hygiene at the application level prevents large-scale reporting and assignment drift."
+      ]
+    },
+    "sections": [
+      {
+        "id": "application-purpose",
+        "title": "Application purpose",
+        "paragraphs": [
+          "Application management establishes service boundaries used for grouping records and interpreting risk posture. A clean application catalog makes cross-record review, ownership governance, and workload planning significantly more reliable.",
+          "Applications are not cosmetic labels. They are organizational anchors used by both operational and security workflows."
+        ]
+      },
+      {
+        "id": "manage-apps-workflow",
+        "title": "Manage Apps workflow",
+        "paragraphs": [
+          "The Manage Apps dialog supports create, rename, and delete operations. Each operation should be treated as a controlled catalog change because it affects all records linked to the target application.",
+          "Rename operations are intended for canonicalization and service naming alignment. Create operations should follow a naming standard that reflects stable service identity."
+        ],
+        "table": {
+          "columns": [
+            "Operation",
+            "Expected use",
+            "Immediate effect"
+          ],
+          "rows": [
+            [
+              "Create app",
+              "Introduce a new stable service grouping.",
+              "New application becomes selectable in record edit forms."
+            ],
+            [
+              "Rename app",
+              "Correct naming drift or align with canonical service name.",
+              "Linked records adopt updated application display name."
+            ],
+            [
+              "Delete app",
+              "Retire obsolete grouping that should no longer be used.",
+              "Linked records become unassigned and require reclassification."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "owner-maintainer-governance",
+        "title": "Owner and maintainer governance at app scope",
+        "paragraphs": [
+          "Application-level governance requires consistency between record ownership values and service grouping intent. If an application contains many records with conflicting owner semantics, incident routing and remediation coordination become noisy.",
+          "Use app-level review sessions to harmonize owner and maintainer patterns across records in the same group."
+        ]
+      },
+      {
+        "id": "rename-delete-risk",
+        "title": "Rename and delete risk controls",
+        "paragraphs": [
+          "Renaming or deleting applications can have broad downstream impact. Rename is generally safe when it preserves service identity. Delete should be reserved for verified retirement or accidental duplicate catalogs.",
+          "Before delete, confirm the list of linked records and define a reassignment plan so unassigned records do not accumulate."
+        ],
+        "orderedList": [
+          "Identify the set of records currently linked to the application.",
+          "Confirm whether the app should be renamed or replaced.",
+          "If deleting, prepare target application mappings first.",
+          "Execute change and immediately reassign any ungrouped records."
+        ]
+      },
+      {
+        "id": "naming-standard",
+        "title": "Naming standard recommendations",
+        "paragraphs": [
+          "Use short, stable, service-oriented names. Avoid temporary project labels, personal names, or environment-only variants as top-level application names.",
+          "A practical pattern is `Service Name` for the application and environment-specific context in record metadata, not in application identity."
+        ],
+        "list": [
+          "Prefer `Payments API` over `payments-api-prod-new`.",
+          "Use one app entity per stable service boundary.",
+          "Review duplicate names quarterly and merge where appropriate."
+        ],
+        "related": [
+          {
+            "label": "Record Management: Records Dashboard Overview",
+            "to": "/docs/records-management/records-dashboard-overview"
+          }
+        ]
+      }
+    ]
+  }
+}

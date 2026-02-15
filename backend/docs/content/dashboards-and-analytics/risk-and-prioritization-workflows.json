@@ -1,0 +1,114 @@
+{
+  "slug": "risk-and-prioritization-workflows",
+  "title": "Risk and Prioritization Workflows",
+  "audience": [
+    "Managers",
+    "Admins",
+    "Pentesters"
+  ],
+  "summary": "Describes repeatable triage flows that convert analytics signals into assignment and remediation actions.",
+  "coverage": [
+    "Top-risk asset triage process",
+    "Backlog balancing across testers",
+    "Remediation verification priorities",
+    "Operational review cadences"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Prioritization should combine risk signal and delivery capacity. Focusing only on finding volume can stall active remediation when workload and assignment constraints are ignored."
+      ]
+    },
+    "sections": [
+      {
+        "id": "prioritization-objective",
+        "title": "Prioritization objective",
+        "paragraphs": [
+          "The goal of dashboard-driven prioritization is to reduce open risk while maintaining sustainable test throughput. Effective prioritization balances severity, exposure concentration, and execution ownership.",
+          "RAPTOR provides enough context to move from strategic view to actionable queues without leaving management workflow."
+        ]
+      },
+      {
+        "id": "weekly-triage-sequence",
+        "title": "Weekly triage sequence",
+        "paragraphs": [
+          "Use a fixed cadence for triage so trend interpretation remains consistent and operational drift is identified early. A weekly cycle generally provides enough signal while staying lightweight."
+        ],
+        "orderedList": [
+          "Review `Open Risk Assets` and unresolved indicator movement versus previous period.",
+          "Inspect `Top Risk Assets` to validate current high-priority targets.",
+          "Check `Tester Workload` for concentration or assignment bottlenecks.",
+          "Verify throughput trends to ensure completion keeps pace with starts.",
+          "Create filtered Security queues for immediate reassignment or follow-up."
+        ]
+      },
+      {
+        "id": "risk-tiering-approach",
+        "title": "Risk tiering approach",
+        "paragraphs": [
+          "A practical risk tiering model is to treat unresolved vulnerable assets with high finding volume as first-tier attention, then address high in-progress concentration to protect cycle time.",
+          "Records with completed testing but unresolved risk should remain visible in active management queues until remediation signal is updated."
+        ],
+        "table": {
+          "columns": [
+            "Tier",
+            "Selection pattern",
+            "Typical action"
+          ],
+          "rows": [
+            [
+              "Tier 1",
+              "Open-risk assets with highest finding counts.",
+              "Immediate owner alignment and remediation tracking."
+            ],
+            [
+              "Tier 2",
+              "In-progress assets with growing vulnerability indicators.",
+              "Execution unblock and timeline review."
+            ],
+            [
+              "Tier 3",
+              "Not-started backlog in high-value applications.",
+              "Assignment planning and scheduled start dates."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "capacity-balancing",
+        "title": "Capacity balancing with workload data",
+        "paragraphs": [
+          "Tester workload panel is intended for assignment balancing decisions. High open-risk concentration under one assignee is a strong signal to consider controlled reassignment where policy permits.",
+          "Balance decisions should preserve continuity for complex cases while preventing prolonged queue stagnation."
+        ],
+        "tip": {
+          "variant": "tip",
+          "title": "TIP",
+          "paragraphs": [
+            "When reassigning active work, transfer context in notes and ticket links before ownership change so receiving tester can continue without discovery delay."
+          ]
+        }
+      },
+      {
+        "id": "escalation-triggers",
+        "title": "Escalation triggers",
+        "paragraphs": [
+          "Define local escalation thresholds so management response is predictable. Suggested triggers include sustained growth in open-risk assets, falling completion trend, or repeated unassigned backlog in critical apps.",
+          "Escalation should result in explicit ownership changes, schedule adjustments, or targeted scope reduction, not only additional reporting."
+        ],
+        "related": [
+          {
+            "label": "Pentest Operations: Assignment and Reassignment",
+            "to": "/docs/pentest-operations/assignment-and-reassignment"
+          },
+          {
+            "label": "Dashboards and Analytics: Executive Dashboard",
+            "to": "/docs/dashboards-and-analytics/executive-dashboard"
+          }
+        ]
+      }
+    ]
+  }
+}

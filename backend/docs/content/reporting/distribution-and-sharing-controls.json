@@ -1,0 +1,176 @@
+{
+  "slug": "distribution-and-sharing-controls",
+  "title": "Distribution and Sharing Controls",
+  "audience": [
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Documents report distribution expectations, data handling rules, and cross-team handoff patterns.",
+  "coverage": [
+    "Internal vs external sharing considerations",
+    "Service desk linkage and tracking completeness",
+    "Data sensitivity handling for exported reports",
+    "Operational checklist before stakeholder sendout"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Reports may include sensitive vulnerability evidence and infrastructure context. Treat every exported PDF as controlled security material."
+      ]
+    },
+    "sections": [
+      {
+        "id": "distribution-model",
+        "title": "Distribution model in RAPTOR",
+        "paragraphs": [
+          "RAPTOR currently provides controlled generation, storage, download, and deletion for report files. It does not provide built-in email dispatch or external recipient workflows.",
+          "Distribution to stakeholders is performed outside RAPTOR after download. Teams should enforce local policy for classification, encryption, and approved transfer channels."
+        ]
+      },
+      {
+        "id": "access-control-matrix",
+        "title": "Access control matrix",
+        "paragraphs": [
+          "Every report file operation is controlled by permission decorators plus record-level assignment enforcement. This protects report material from cross-assignee access by default."
+        ],
+        "table": {
+          "columns": [
+            "Operation",
+            "Endpoint",
+            "Permission gate",
+            "Record-level gate"
+          ],
+          "rows": [
+            [
+              "Download manual report",
+              "`GET /pentest/:id/report`",
+              "`view_pentest_page`",
+              "`enforce_pentest_record_access`"
+            ],
+            [
+              "Download generated report",
+              "`GET /pentest/:id/generated-report`",
+              "`export_pentests`",
+              "`enforce_pentest_record_access`"
+            ],
+            [
+              "Generate report",
+              "`POST /pentest/:id/generate-report`",
+              "`export_pentests`",
+              "`enforce_pentest_record_access`"
+            ],
+            [
+              "Delete manual report",
+              "`DELETE /pentest/:id/report`",
+              "`modify_pentests`",
+              "`enforce_pentest_record_access`"
+            ],
+            [
+              "Delete generated report",
+              "`DELETE /pentest/:id/generated-report`",
+              "`modify_pentests`",
+              "`enforce_pentest_record_access`"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "pre-send-checks",
+        "title": "Pre-send checks for stakeholder delivery",
+        "paragraphs": [
+          "Before sharing any report externally, validate that the report reflects current operational truth and includes traceability links for remediation follow-up."
+        ],
+        "orderedList": [
+          "Confirm pentest status and assignee are current.",
+          "Verify vulnerability and remediation flags are accurate.",
+          "Ensure service desk link is populated for downstream tracking.",
+          "Regenerate report after final save to avoid stale narrative or findings.",
+          "Review the downloaded PDF for template correctness and data leakage risk.",
+          "Record where and to whom the report was distributed."
+        ]
+      },
+      {
+        "id": "retention-and-replacement",
+        "title": "Retention and replacement semantics",
+        "paragraphs": [
+          "Both manual and generated reports are stored as file references in `pentest_data`. File names are unique and decoupled from user-facing naming conventions.",
+          "When pentest data is deleted by an admin, RAPTOR attempts to remove both `report_file` and `generated_report_file` from storage."
+        ],
+        "table": {
+          "columns": [
+            "Event",
+            "System behavior"
+          ],
+          "rows": [
+            [
+              "New manual PDF upload and save",
+              "Manual `report_file` pointer is updated to the newly stored file."
+            ],
+            [
+              "Generate report again",
+              "Generated file pointer is replaced and prior generated artifact is deleted when possible."
+            ],
+            [
+              "Delete generated report",
+              "Generated file reference fields are nulled in `pentest_data`."
+            ],
+            [
+              "Delete pentest data record",
+              "Both manual and generated files are deleted before row removal."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "common-distribution-failures",
+        "title": "Common distribution failures and responses",
+        "table": {
+          "columns": [
+            "Symptom",
+            "Likely cause",
+            "Response"
+          ],
+          "rows": [
+            [
+              "`403` on download or generate",
+              "User lacks permission or assignment access.",
+              "Validate role permissions and current `tested_by` assignment."
+            ],
+            [
+              "`404 Generated report not found`",
+              "No generated report exists for record.",
+              "Generate the report first, then retry download."
+            ],
+            [
+              "`404 Pentest data not found` during generation",
+              "Record has no persisted pentest row yet.",
+              "Save pentest record data once before generating."
+            ],
+            [
+              "`400 Invalid file. Please upload a PDF file.`",
+              "Manual upload used non-PDF file type.",
+              "Upload a valid `.pdf` file only."
+            ],
+            [
+              "Generated output appears stale",
+              "Recent edits were not saved before generation.",
+              "Save progress, regenerate, and verify `Last generated` timestamp."
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Reporting: Report Generation Flow",
+            "to": "/docs/reporting/report-generation-flow"
+          },
+          {
+            "label": "Pentest Operations: Pentest Record Lifecycle",
+            "to": "/docs/pentest-operations/pentest-record-lifecycle"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,239 @@
+{
+  "slug": "user-management-and-authentication",
+  "title": "User Management and Authentication",
+  "audience": [
+    "Admins"
+  ],
+  "summary": "Covers local/domain user flows, role assignment, auth modes, and account lifecycle operations.",
+  "coverage": [
+    "Create, edit, disable, and reset user access",
+    "Domain user onboarding and sync considerations",
+    "Auth type behavior and constraints",
+    "Role assignment governance"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Role and permission changes are enforced on subsequent authorization checks. A user can lose route visibility immediately after access is reduced."
+      ]
+    },
+    "sections": [
+      {
+        "id": "identity-model-and-storage",
+        "title": "Identity model and credential storage",
+        "paragraphs": [
+          "RAPTOR distinguishes privileged admin identity from standard operator identities. The admin account is stored in `admin_users`, while LDAP and local non-admin users are stored in `allowed_users`.",
+          "Authentication mode is explicit through `auth_type` for non-admin users. Local accounts carry password hash and reset flags, while LDAP accounts rely on directory authentication and do not store local passwords by default."
+        ],
+        "table": {
+          "columns": [
+            "Account class",
+            "Storage table",
+            "Auth mode",
+            "Reset behavior"
+          ],
+          "rows": [
+            [
+              "Admin account",
+              "`admin_users`",
+              "Local password validation in admin auth path",
+              "`must_reset=1` on bootstrap forces password reset before normal session use."
+            ],
+            [
+              "LDAP user",
+              "`allowed_users`",
+              "`auth_type=ldap`",
+              "No first-login local password reset flow unless converted to local auth later."
+            ],
+            [
+              "Local non-admin user",
+              "`allowed_users`",
+              "`auth_type=local`",
+              "Created with temporary password and `must_reset=1`, then forced through user reset flow."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "ldap-onboarding-flow",
+        "title": "LDAP onboarding flow",
+        "paragraphs": [
+          "LDAP onboarding is handled from `User Management -> Add LDAP Users`. Admins search directory users, stage selected identities, assign role and optional permissions, and submit in batch.",
+          "The backend normalizes usernames to lowercase and validates role and permission payloads before insert. Duplicate identity insert attempts fail at the database uniqueness layer."
+        ],
+        "orderedList": [
+          "Run `Search` with a non-empty query, which calls `GET /ldap-search?query=...`.",
+          "Select one or more directory users from search results.",
+          "Assign a role per selected user and set optional permissions allowed for that role.",
+          "Submit the batch, which calls `POST /add-user` for each selected entry.",
+          "Verify new entries in `Existing Users` with correct `auth_type` and effective role."
+        ]
+      },
+      {
+        "id": "local-user-onboarding-flow",
+        "title": "Local user onboarding flow",
+        "paragraphs": [
+          "Local user creation is used when LDAP is not available or when a controlled local account is required. The flow lives in `User Management -> Add Local Users`.",
+          "On create, backend generates a temporary password, hashes it, stores `auth_type=local` and `must_reset=1`, and returns the temporary password once in the response payload."
+        ],
+        "table": {
+          "columns": [
+            "Validation or behavior",
+            "Source",
+            "Result"
+          ],
+          "rows": [
+            [
+              "Username required and normalized",
+              "Client and `POST /add-local-user`",
+              "Blank usernames are rejected and stored username is lowercase."
+            ],
+            [
+              "Reserved admin username blocked",
+              "`POST /add-local-user`",
+              "Cannot create local non-admin user with reserved admin username."
+            ],
+            [
+              "Role must be `user|pentester|manager`",
+              "Client and backend role validation",
+              "Invalid roles are rejected before insert."
+            ],
+            [
+              "Temporary password returned once",
+              "`POST /add-local-user` response",
+              "Admin must capture and transfer credential securely."
+            ],
+            [
+              "First login requires password reset",
+              "`must_reset=1` with `/user-reset-password` flow",
+              "User cannot proceed to normal routes until reset is complete."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "role-and-optional-permission-governance",
+        "title": "Role and optional permission governance",
+        "paragraphs": [
+          "RAPTOR applies role defaults and then merges role-allowed optional permissions. Optional permissions outside the allowed set are stripped by backend sanitization.",
+          "When role is updated through `POST /update-user-role`, backend resets stored optional permissions to an empty list. Admins should reapply optional permissions explicitly after role transition."
+        ],
+        "table": {
+          "columns": [
+            "Role",
+            "Default posture",
+            "Optional permissions allowed"
+          ],
+          "rows": [
+            [
+              "`user`",
+              "Record-centric access baseline",
+              "`view_dashboard`, `view_security_dashboard`, `manage_apps`"
+            ],
+            [
+              "`pentester`",
+              "Security workflow baseline",
+              "`view_dashboard`, `modify_records`, `manage_apps`"
+            ],
+            [
+              "`manager`",
+              "Broad operational and settings access",
+              "None"
+            ],
+            [
+              "`admin`",
+              "Full permission set",
+              "None"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "existing-user-maintenance-actions",
+        "title": "Existing user maintenance actions",
+        "paragraphs": [
+          "Existing user cards expose role and optional permission editing in a single dialog. Save triggers role update first when changed, then permission save with role-aware normalization.",
+          "Deletion permanently removes the user row from `allowed_users`. Use deletion only when access should be fully removed, not for temporary suspension."
+        ],
+        "table": {
+          "columns": [
+            "Action",
+            "Endpoint",
+            "Key behavior"
+          ],
+          "rows": [
+            [
+              "Update role",
+              "`POST /update-user-role`",
+              "Allows `user`, `pentester`, `manager` and clears optional permissions."
+            ],
+            [
+              "Update optional permissions",
+              "`POST /update-user-permissions`",
+              "Requested permissions are validated against role optional set."
+            ],
+            [
+              "Delete user",
+              "`DELETE /delete-user`",
+              "Removes user from `allowed_users`; non-existing user returns `404`."
+            ],
+            [
+              "Fetch current catalog",
+              "`GET /existing-users`",
+              "Returns username, email, role, auth type, and stored optional permissions."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "authentication-reset-and-session-cases",
+        "title": "Authentication reset and session edge cases",
+        "paragraphs": [
+          "Password reset is policy-enforced for bootstrap admin and newly created local users. Login also applies lockout and session-expiry protections that can block access even with correct credentials.",
+          "Common failure paths should be handled before deeper troubleshooting to reduce time spent on permission or route assumptions."
+        ],
+        "table": {
+          "columns": [
+            "Symptom",
+            "Likely control",
+            "Expected response"
+          ],
+          "rows": [
+            [
+              "User is routed to reset flow after login",
+              "`must_reset` flag is set",
+              "Complete `/admin-reset-password` or `/user-reset-password` flow."
+            ],
+            [
+              "Login returns too many attempts error",
+              "Lockout threshold reached",
+              "`429` with retry-after semantics from login endpoint."
+            ],
+            [
+              "Action returns unauthorized after role edit",
+              "Role or optional permission no longer grants action",
+              "Re-evaluate effective permissions and section visibility."
+            ],
+            [
+              "API returns session expired",
+              "Session lifetime or inactivity threshold reached",
+              "`401` and cleared session; user must authenticate again."
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Getting Started: Login and Session Management",
+            "to": "/docs/getting-started/login-and-session-management"
+          },
+          {
+            "label": "Operations and Governance: Permissions Reference",
+            "to": "/docs/operations-and-governance/permissions-reference"
+          }
+        ]
+      }
+    ]
+  }
+}

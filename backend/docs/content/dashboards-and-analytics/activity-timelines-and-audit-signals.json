@@ -1,0 +1,137 @@
+{
+  "slug": "activity-timelines-and-audit-signals",
+  "title": "Activity Timelines and Audit Signals",
+  "audience": [
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Explains event feed semantics, timeline rules, and how to use dashboard signals for audit traceability.",
+  "coverage": [
+    "Recent activity feed semantics",
+    "Detecting stalled records and overdue tests",
+    "Using history views for governance evidence",
+    "Escalation triggers and operational thresholds"
+  ],
+  "article": {
+    "sections": [
+      {
+        "id": "timeline-purpose",
+        "title": "Timeline purpose",
+        "paragraphs": [
+          "Activity timeline is a compact audit-oriented feed that highlights meaningful state changes across testing and inventory scope. It supports review preparation, anomaly detection, and operational accountability checks.",
+          "Because events are timestamped and typed, the feed can be used as an initial verification layer before deeper record-level audit."
+        ]
+      },
+      {
+        "id": "event-taxonomy",
+        "title": "Event taxonomy",
+        "paragraphs": [
+          "Timeline entries are categorized into start, completion, detection, and scope change classes. This taxonomy helps reviewers quickly separate execution progress from risk emergence and inventory drift."
+        ],
+        "table": {
+          "columns": [
+            "Category",
+            "What it indicates",
+            "Primary follow-up"
+          ],
+          "rows": [
+            [
+              "Test started",
+              "Execution intake has begun for a target.",
+              "Validate assignee capacity and expected cycle duration."
+            ],
+            [
+              "Test completed",
+              "Execution stage closed for target.",
+              "Confirm vulnerability and remediation flags are current."
+            ],
+            [
+              "Vulnerabilities detected",
+              "New or newly logged risk indicator observed.",
+              "Prioritize remediation and ownership alignment."
+            ],
+            [
+              "Scope updated",
+              "Record scope metadata changed.",
+              "Validate if change affects test scope assumptions."
+            ],
+            [
+              "Asset marked missing",
+              "Potential de-scope or visibility gap.",
+              "Confirm retirement status and documentation trail."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "timestamp-and-window-rules",
+        "title": "Timestamp and window rules",
+        "paragraphs": [
+          "Timeline ingestion uses a 30-day window and event-specific date fields. Display formatting uses relative time for recent entries and short date labels for older entries.",
+          "This keeps feed dense but readable during daily operations and still suitable for weekly review packets."
+        ],
+        "table": {
+          "columns": [
+            "Rule",
+            "Current behavior"
+          ],
+          "rows": [
+            [
+              "Window",
+              "Events included only if they fall in last 30 days."
+            ],
+            [
+              "Ordering",
+              "Newest-first by event timestamp."
+            ],
+            [
+              "Display limit",
+              "Top 14 events displayed."
+            ],
+            [
+              "Relative formatting",
+              "`Xm`, `Xh`, `Xd` for recent events, then month-day format."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "audit-usage-pattern",
+        "title": "Audit usage pattern",
+        "paragraphs": [
+          "For audit preparation, use timeline feed as an index and then validate critical entries in corresponding detailed records. The feed shows that change happened, while detailed pages provide full evidence context.",
+          "Combine timeline review with exported snapshots to preserve review baselines for sign-off cycles."
+        ],
+        "orderedList": [
+          "Capture current dashboard snapshot for review timestamp.",
+          "Inspect high-risk and scope-change events from timeline feed.",
+          "Open target records to validate ownership, status, and notes.",
+          "Export supporting data sets for archive and reviewer distribution."
+        ]
+      },
+      {
+        "id": "anomaly-detection",
+        "title": "Anomaly detection signals",
+        "paragraphs": [
+          "Repeated starts without completions, repeated detection events on same assets, or frequent scope-missing entries may indicate process friction or data integrity issues.",
+          "Treat these patterns as operational quality signals and investigate assignment flow, test process, and metadata hygiene."
+        ],
+        "list": [
+          "High detection activity with flat completion trend.",
+          "Persistent open risk with low remediation progress.",
+          "Frequent scope-missing events for active applications."
+        ],
+        "related": [
+          {
+            "label": "Dashboards and Analytics: Risk and Prioritization Workflows",
+            "to": "/docs/dashboards-and-analytics/risk-and-prioritization-workflows"
+          },
+          {
+            "label": "Operations and Governance: Audit and Troubleshooting",
+            "to": "/docs/operations-and-governance/audit-and-troubleshooting"
+          }
+        ]
+      }
+    ]
+  }
+}

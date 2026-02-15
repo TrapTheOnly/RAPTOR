@@ -1,0 +1,236 @@
+{
+  "slug": "report-templates-and-branding",
+  "title": "Report Templates and Branding",
+  "audience": [
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Defines template schema, block rendering rules, branding controls, and governance lifecycle for reliable PDF output.",
+  "coverage": [
+    "Template sections and variable placeholders",
+    "Block composition and rendering behavior",
+    "Branding and document consistency controls",
+    "Template governance and change approval"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Template changes affect future generated PDFs only. Existing generated files are not retroactively rewritten."
+      ]
+    },
+    "sections": [
+      {
+        "id": "governance-scope",
+        "title": "Governance scope",
+        "paragraphs": [
+          "Template governance is managed in `Settings -> Report Templates`. This area controls template identity, block composition order, branding, placeholder fields, and enabled state.",
+          "Only users with `manage_report_templates` can create, edit, enable, disable, reset, or delete report templates."
+        ]
+      },
+      {
+        "id": "permission-model",
+        "title": "Permission model",
+        "table": {
+          "columns": [
+            "Capability",
+            "Permission key",
+            "Effective behavior"
+          ],
+          "rows": [
+            [
+              "Use templates during report generation",
+              "`export_pentests`",
+              "User can select enabled templates in pentest record and call generate endpoint."
+            ],
+            [
+              "List templates for administration",
+              "`manage_report_templates`",
+              "Can request `include_disabled=true` and see full template catalog."
+            ],
+            [
+              "Create and update templates",
+              "`manage_report_templates`",
+              "Can submit `POST` and `PUT` requests to `/report-templates`."
+            ],
+            [
+              "Delete or reset templates",
+              "`manage_report_templates`",
+              "Can delete custom templates and reset system templates to canonical."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "template-contract",
+        "title": "Template data contract",
+        "paragraphs": [
+          "Backend validates template payloads before commit. Invalid keys or missing block definitions are rejected with explicit validation errors."
+        ],
+        "table": {
+          "columns": [
+            "Field",
+            "Constraint",
+            "Details"
+          ],
+          "rows": [
+            [
+              "`key`",
+              "Required, unique, lowercase pattern",
+              "Regex: `^[a-z0-9][a-z0-9_-]{1,62}$`."
+            ],
+            [
+              "`name`",
+              "Required string",
+              "Displayed in template pickers and admin lists."
+            ],
+            [
+              "`description`",
+              "Optional string",
+              "Used for admin context and change clarity."
+            ],
+            [
+              "`enabled`",
+              "Boolean",
+              "Disabled templates are hidden from standard generation lists."
+            ],
+            [
+              "`template.version`",
+              "Integer fallback",
+              "Defaults to `1` when absent."
+            ],
+            [
+              "`template.branding`",
+              "Object",
+              "Contains `company_name`, `primary_color`, `accent_color`, `logo_url`."
+            ],
+            [
+              "`template.placeholders`",
+              "Object",
+              "Contains tokens like `report_title`, `prepared_by`, `prepared_for`."
+            ],
+            [
+              "`template.blocks`",
+              "Required non-empty array",
+              "Each block must include a valid `type`."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "block-types-and-rendering",
+        "title": "Supported block types and rendering behavior",
+        "paragraphs": [
+          "Block order in the builder is the final render order in generated PDF output. Each block type maps to a specific renderer in `report_pdf.py`."
+        ],
+        "table": {
+          "columns": [
+            "Block type",
+            "Rendered content",
+            "Operational note"
+          ],
+          "rows": [
+            [
+              "`cover`",
+              "Title page with subtitle and optional logo.",
+              "Adds confidentiality footer and starts next page automatically."
+            ],
+            [
+              "`engagement_overview`",
+              "Target, source, assignee, dates, status, and service desk link.",
+              "Best used near beginning of report."
+            ],
+            [
+              "`key_metrics`",
+              "KPI tile grid for findings, open ports, and checklist coverage.",
+              "Uses computed metrics from current pentest data."
+            ],
+            [
+              "`chart`",
+              "Severity distribution or checklist/remediation pie views.",
+              "Supported values: `vulnerability_severity`, `checklist_completion`, `vulnerability_fix_status`."
+            ],
+            [
+              "`open_ports`",
+              "Normalized open ports table with service mapping.",
+              "Empty when no ports are recorded."
+            ],
+            [
+              "`markdown`",
+              "Rendered markdown from a selected field.",
+              "Supported fields include `description`, `notes`, `open_ports`, and `service_desk_link`."
+            ],
+            [
+              "`checklists`",
+              "Checklist coverage table by enabled template.",
+              "Uses selected and auto-enabled checklist sets."
+            ],
+            [
+              "`vulnerabilities`",
+              "Finding cards with severity, CVSS, and optional descriptions.",
+              "Controlled by `include_descriptions` flag."
+            ],
+            [
+              "`text`",
+              "Free-form narrative with token interpolation.",
+              "Useful for management summary and decision context."
+            ],
+            [
+              "`page_break`",
+              "Hard pagination separator.",
+              "Forces next content block onto a new page."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "placeholders-and-branding-rules",
+        "title": "Placeholders and branding rules",
+        "paragraphs": [
+          "Variable tokens from record, pentest, metrics, and placeholder groups can be embedded in titles, subtitles, and text block content. Unknown tokens resolve to empty text.",
+          "Color values are interpreted as hex colors. Invalid values fall back to default report colors during render. Logo rendering expects an image path that resolves to a RAPTOR pentest image URL pattern."
+        ],
+        "tip": {
+          "variant": "tip",
+          "title": "TIP",
+          "paragraphs": [
+            "When using `logo_url`, prefer a value like `/pentest/images/<filename>.png`. URLs outside that pattern are ignored by the PDF image fetcher."
+          ]
+        }
+      },
+      {
+        "id": "system-vs-custom",
+        "title": "System templates vs custom templates",
+        "table": {
+          "columns": [
+            "Template class",
+            "Can edit key",
+            "Can delete",
+            "Can reset"
+          ],
+          "rows": [
+            [
+              "System template",
+              "No, key is locked in UI and API.",
+              "No, deletion is blocked.",
+              "Yes, reset to canonical is available when customized."
+            ],
+            [
+              "Custom template",
+              "Yes, subject to key validation and uniqueness.",
+              "Yes, delete is allowed.",
+              "No, canonical reset is not applicable."
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Reporting: Report Generation Flow",
+            "to": "/docs/reporting/report-generation-flow"
+          }
+        ]
+      }
+    ]
+  }
+}

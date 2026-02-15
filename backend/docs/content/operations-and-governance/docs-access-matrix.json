@@ -1,0 +1,76 @@
+{
+  "slug": "docs-access-matrix",
+  "title": "Documentation Access Matrix",
+  "audience": [
+    "Admins"
+  ],
+  "summary": "Live matrix of documentation visibility by role and optional permission combinations.",
+  "coverage": [
+    "Role-by-role docs visibility in current configuration",
+    "Impact of optional permission grants on page access",
+    "Access-rule interpretation for each documentation page",
+    "Validation flow for minimizing documentation exposure"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "This page exposes internal access logic for the documentation portal."
+      ]
+    },
+    "sections": [
+      {
+        "id": "what-this-matrix-shows",
+        "title": "What this matrix shows",
+        "paragraphs": [
+          "The matrix below is generated from the live documentation manifest and the current backend role model. It reports exactly which documentation pages are visible to each role under base permissions and optional permission scenarios.",
+          "Use it to verify that operational and governance documentation is restricted to intended audiences, especially when role defaults or optional grants are updated."
+        ]
+      },
+      {
+        "id": "how-visibility-is-evaluated",
+        "title": "How visibility is evaluated",
+        "paragraphs": [
+          "Each page can define access rules with `roles`, `require_all`, and `require_any`. A role can see a page only when all role constraints and permission constraints are satisfied.",
+          "For roles that support optional grants, the matrix includes multiple scenarios so you can inspect how each optional permission changes visibility."
+        ],
+        "list": [
+          "`roles`: restricts visibility to explicit role names.",
+          "`require_all`: every permission in the list must be present.",
+          "`require_any`: at least one listed permission must be present.",
+          "No access block means page is visible to any authenticated user."
+        ]
+      },
+      {
+        "id": "live-role-matrix",
+        "title": "Live role matrix",
+        "paragraphs": [
+          "Review scenario counts first to detect broad visibility changes. Then review page-level rows to confirm each section follows your confidentiality policy."
+        ],
+        "dynamic": {
+          "type": "docs-access-matrix"
+        }
+      },
+      {
+        "id": "recommended-review-cadence",
+        "title": "Recommended review cadence",
+        "paragraphs": [
+          "Run this review after any change to role defaults, optional grants, documentation manifest access blocks, or settings that affect permission assignment."
+        ],
+        "orderedList": [
+          "Open this matrix after permission configuration changes.",
+          "Compare scenario page counts against previous expected values.",
+          "Inspect page rows with admin-only or sensitive operational content.",
+          "If visibility is broader than intended, adjust `roles`, `require_all`, or `require_any` rules in the docs manifest."
+        ],
+        "related": [
+          {
+            "label": "Operations and Governance: Permissions Reference",
+            "to": "/docs/operations-and-governance/permissions-reference"
+          }
+        ]
+      }
+    ]
+  }
+}

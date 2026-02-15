@@ -1,0 +1,222 @@
+{
+  "slug": "customization-and-taxonomies",
+  "title": "Customization and Taxonomies",
+  "audience": [
+    "Admins",
+    "Managers"
+  ],
+  "summary": "Documents IP source management, vulnerability category setup, and checklist/template customization.",
+  "coverage": [
+    "Managing IP source groups and scope",
+    "Vulnerability category taxonomy design",
+    "Checklist template governance",
+    "Keeping taxonomy aligned with reporting outputs"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Taxonomy and template changes modify future operator behavior and report output quality. Validate changes in a controlled test record before broad rollout."
+      ]
+    },
+    "sections": [
+      {
+        "id": "ip-source-governance-model",
+        "title": "IP source governance model",
+        "paragraphs": [
+          "IP source mapping links concrete IP addresses to operational source groups. This labeling is part of inventory governance and directly impacts filtering and triage in records workflows.",
+          "The settings UI stages additions and deletions in memory and applies them only on `Submit Changes`, allowing admins to review a batch before commit."
+        ],
+        "table": {
+          "columns": [
+            "Operation",
+            "Endpoint",
+            "Record-side side effect"
+          ],
+          "rows": [
+            [
+              "Add mapping",
+              "`POST /ip-sources`",
+              "Matching `records.ip_address` rows get `source=<group>`, `status=updated`, and refreshed modification timestamp."
+            ],
+            [
+              "Delete mapping",
+              "`DELETE /ip-sources`",
+              "Matching rows are reverted to `source=Other`, `status=updated`, and refreshed modification timestamp."
+            ],
+            [
+              "List mappings",
+              "`GET /ip-sources`",
+              "Returns all source and IP pairs used to rebuild settings UI model."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "ip-source-change-flow",
+        "title": "IP source change flow",
+        "paragraphs": [
+          "Use source groups for durable provenance labels such as scanner domain, ingestion channel, or network segment. Avoid temporary labels that cannot survive long-term analytics.",
+          "For each source group, add or remove IPs, then submit in one batch. This keeps source transition events coherent and easier to audit."
+        ],
+        "orderedList": [
+          "Create or select a source group in `IP Sources`.",
+          "Add or remove IP addresses in the right-side panel.",
+          "Review staged changes and click `Submit Changes`.",
+          "Refresh records list and verify `source` and `status` updates on impacted records."
+        ]
+      },
+      {
+        "id": "vulnerability-category-taxonomy",
+        "title": "Vulnerability category taxonomy",
+        "paragraphs": [
+          "Vulnerability categories are stored in `vuln_categories` and exposed in pentest workflows for standardized classification. A stable category model improves trend and reporting consistency.",
+          "Category creation and deletion are permission-gated by `manage_vuln_categories`. Duplicate names are rejected by backend uniqueness constraints."
+        ],
+        "table": {
+          "columns": [
+            "Field",
+            "Operational meaning",
+            "Notes"
+          ],
+          "rows": [
+            [
+              "`name`",
+              "Display name used in category selectors",
+              "Should be concise and stable across reporting periods."
+            ],
+            [
+              "`is_custom`",
+              "Distinguishes custom entries from defaults",
+              "Visible in admin list as `Custom` or `Default`."
+            ],
+            [
+              "`created_by` and `created_at`",
+              "Change provenance metadata",
+              "Supports audit traceability for taxonomy lifecycle."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "checklist-template-governance",
+        "title": "Checklist template governance",
+        "paragraphs": [
+          "Checklist templates define service-specific test coverage and optional auto-enable ports. They are managed under `Checklist Templates` and written to `service_checklists`.",
+          "System templates cannot be deleted. Admins can customize them and later reset to canonical definitions when drift must be removed."
+        ],
+        "table": {
+          "columns": [
+            "Constraint area",
+            "Rule",
+            "Result on violation"
+          ],
+          "rows": [
+            [
+              "Template key",
+              "Regex `^[a-z0-9][a-z0-9_-]{1,62}$`",
+              "Create or update request fails with `400`."
+            ],
+            [
+              "Service field",
+              "Required and normalized lowercase",
+              "Create or update request fails with `400`."
+            ],
+            [
+              "Auto ports",
+              "Integer ports `1-65535`, deduplicated",
+              "Invalid entries are dropped during normalization."
+            ],
+            [
+              "Sections payload",
+              "Non-empty valid sections with valid item ids and test names",
+              "Request fails with `At least one section with valid checklist items is required.`"
+            ],
+            [
+              "System template deletion",
+              "Blocked for `is_system=1`",
+              "Delete request fails, use disable or reset instead."
+            ],
+            [
+              "System template key changes",
+              "Blocked when editing system template",
+              "Update request fails with key immutability error."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "report-template-administration",
+        "title": "Report template administration",
+        "paragraphs": [
+          "Report templates are managed in Settings and stored in `report_templates`. Enabled templates appear in pentest report generation selectors, while disabled templates remain available for management when permission allows.",
+          "Template definition validation enforces non-empty block arrays and normalized block types. System templates support canonical reset and protect immutable key semantics."
+        ],
+        "table": {
+          "columns": [
+            "Admin action",
+            "Endpoint",
+            "Governance note"
+          ],
+          "rows": [
+            [
+              "List templates including disabled",
+              "`GET /report-templates?include_disabled=true`",
+              "Disabled templates are visible only for accounts that can manage templates."
+            ],
+            [
+              "Create template",
+              "`POST /report-templates`",
+              "Requires valid key, name, and valid template definition object with blocks."
+            ],
+            [
+              "Update template",
+              "`PUT /report-templates/:id`",
+              "System template key cannot be changed."
+            ],
+            [
+              "Delete template",
+              "`DELETE /report-templates/:id`",
+              "System templates cannot be deleted."
+            ],
+            [
+              "Reset system template",
+              "`POST /report-templates/:id/reset`",
+              "Restores canonical content and clears customization flag."
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Reporting: Report Templates and Branding",
+            "to": "/docs/reporting/report-templates-and-branding"
+          }
+        ]
+      },
+      {
+        "id": "taxonomy-operating-cadence",
+        "title": "Recommended taxonomy operating cadence",
+        "paragraphs": [
+          "Treat taxonomy and template governance as a recurring operations task instead of ad-hoc edits. A predictable cadence reduces schema drift and reporting inconsistency."
+        ],
+        "orderedList": [
+          "Review new source groups and category additions weekly.",
+          "Validate checklist auto-port mappings against real service exposure monthly.",
+          "Review report template enabled set and canonical drift before each reporting cycle.",
+          "Document every taxonomy or template change in the operational change log."
+        ],
+        "related": [
+          {
+            "label": "Pentest Operations: Findings and Checklist Management",
+            "to": "/docs/pentest-operations/findings-and-checklist-management"
+          },
+          {
+            "label": "Reporting: Report Generation Flow",
+            "to": "/docs/reporting/report-generation-flow"
+          }
+        ]
+      }
+    ]
+  }
+}

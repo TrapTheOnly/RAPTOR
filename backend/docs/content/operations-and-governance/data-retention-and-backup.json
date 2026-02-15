@@ -1,0 +1,251 @@
+{
+  "slug": "data-retention-and-backup",
+  "title": "Data Retention and Backup",
+  "audience": [
+    "Admins"
+  ],
+  "summary": "Defines retention considerations for records, findings, reports, and supporting evidence data.",
+  "coverage": [
+    "Retention policy decision points",
+    "Backup scope and restore strategy",
+    "Data integrity checks after restore",
+    "Controlled cleanup and archival guidance"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "RAPTOR does not provide a built-in full backup scheduler for database and FTP artifacts. You must implement infrastructure-level backup policy."
+      ]
+    },
+    "sections": [
+      {
+        "id": "data-surfaces-and-storage",
+        "title": "Data surfaces and storage locations",
+        "paragraphs": [
+          "Retention planning must include both relational data and file artifacts. Core metadata and workflow state live in the application database, while report and image artifacts are stored on FTP-backed storage.",
+          "Zone ingestion also creates per-domain backup files with an internal cap, which is separate from full disaster-recovery backups."
+        ],
+        "table": {
+          "columns": [
+            "Data surface",
+            "Default location",
+            "Operational notes"
+          ],
+          "rows": [
+            [
+              "Application database",
+              "`DATA_PATH/database.db`",
+              "Contains records, users, pentest data, templates, lockout state, and taxonomy tables."
+            ],
+            [
+              "Application log",
+              "`DATA_PATH/application.log`",
+              "Runtime troubleshooting and event signal log file."
+            ],
+            [
+              "Zone file backups",
+              "`BACKUP_FOLDER/<domain>/*.bak`",
+              "Automatically managed per domain, oldest removed when count exceeds 100."
+            ],
+            [
+              "Report files",
+              "FTP storage path from `save_report()`",
+              "Stores both manual and generated pentest PDFs."
+            ],
+            [
+              "Pentest images",
+              "FTP `images/` directory",
+              "Stores uploaded pentest evidence images referenced from markdown fields."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "container-deployment-mapping",
+        "title": "Container deployment mapping",
+        "paragraphs": [
+          "In the provided development compose configuration, persistent storage is handled by named volumes. Backup policy should target the underlying volume data at infrastructure level."
+        ],
+        "table": {
+          "columns": [
+            "Compose volume",
+            "Mounted path",
+            "Data class"
+          ],
+          "rows": [
+            [
+              "`db_and_backups_volume`",
+              "`/appdata`",
+              "Database and zone-file backup root when `DATA_PATH` and `BACKUP_FOLDER` point under `/appdata`."
+            ],
+            [
+              "`ftp_volume`",
+              "`/ftp/reports` and FTP root volume mount",
+              "Report artifacts and pentest image files."
+            ],
+            [
+              "`dns_zonefiles_volume`",
+              "`/usr/app/src/shared`",
+              "Input zone files used by ingestion process."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "retention-policy-decisions",
+        "title": "Retention policy decisions",
+        "paragraphs": [
+          "Define retention targets by data class, regulatory profile, and operational need. Keep policy explicit so cleanup and archival actions remain auditable and reversible where required."
+        ],
+        "table": {
+          "columns": [
+            "Data class",
+            "Primary retention question",
+            "Typical policy decision"
+          ],
+          "rows": [
+            [
+              "Records metadata",
+              "How long inventory lineage must be preserved",
+              "Retain long-term to support historical attack-surface traceability."
+            ],
+            [
+              "Pentest workflow rows",
+              "How long execution history is needed",
+              "Retain per security governance window and compliance obligations."
+            ],
+            [
+              "Report artifacts",
+              "How long stakeholder deliverables must be available",
+              "Retain aligned with contractual and legal reporting obligations."
+            ],
+            [
+              "Evidence images",
+              "How long reproducibility evidence is required",
+              "Retain through remediation verification and audit period."
+            ],
+            [
+              "Operational logs",
+              "How long troubleshooting evidence is required",
+              "Retain enough for incident response and trend analysis baseline."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "backup-strategy",
+        "title": "Recommended backup strategy",
+        "paragraphs": [
+          "A reliable strategy captures database, FTP artifacts, and configuration needed to rehydrate service behavior. Partial backups are insufficient for full recovery because report references and markdown image links depend on FTP artifacts.",
+          "Back up on a schedule, and test restore procedures regularly under controlled conditions."
+        ],
+        "orderedList": [
+          "Snapshot application database file or configured DB backend with point-in-time safeguards.",
+          "Snapshot FTP data store containing report PDFs and pentest images.",
+          "Capture environment configuration for `DATA_PATH`, `BACKUP_FOLDER`, FTP, LDAP, and session policy settings.",
+          "Capture zone backup directory when operational history of source files is required.",
+          "Store backup manifest with timestamp, checksum, and restore instructions."
+        ]
+      },
+      {
+        "id": "restore-procedure",
+        "title": "Restore procedure outline",
+        "table": {
+          "columns": [
+            "Step",
+            "Action",
+            "Validation"
+          ],
+          "rows": [
+            [
+              "1",
+              "Restore database to target environment.",
+              "Core tables load and session/login endpoints respond correctly."
+            ],
+            [
+              "2",
+              "Restore FTP artifacts for reports and images.",
+              "Manual and generated report downloads succeed on sample records."
+            ],
+            [
+              "3",
+              "Apply environment configuration values.",
+              "Session timing, authentication, and ingestion settings behave as expected."
+            ],
+            [
+              "4",
+              "Run controlled functional checks.",
+              "Records, pentest dashboard, and settings pages render expected data."
+            ],
+            [
+              "5",
+              "Re-run report generation on sample record.",
+              "Generated report writes and downloads without template or file errors."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "post-restore-integrity-checks",
+        "title": "Post-restore integrity checks",
+        "orderedList": [
+          "Validate a sample of records with ownership fields and source mappings.",
+          "Validate a sample of pentest rows across all lifecycle states.",
+          "Download one manual and one generated report from restored environment.",
+          "Open markdown-backed evidence sections and confirm image links resolve.",
+          "Confirm template catalogs and category taxonomies load without errors.",
+          "Verify login lockout and session status flows return expected payload fields."
+        ]
+      },
+      {
+        "id": "controlled-cleanup-and-archival",
+        "title": "Controlled cleanup and archival guidance",
+        "paragraphs": [
+          "Use destructive operations only through governed procedures. RAPTOR includes explicit delete and reset paths for selected entities, but these are not substitutes for archival policy.",
+          "Before cleanup, export required evidence and retain rollback or recovery artifacts."
+        ],
+        "table": {
+          "columns": [
+            "Cleanup action",
+            "Built-in behavior",
+            "Precondition"
+          ],
+          "rows": [
+            [
+              "Delete record",
+              "Removes selected record via records API.",
+              "Confirm downstream pentest and reporting impact."
+            ],
+            [
+              "Delete pentest row",
+              "Deletes pentest row and attempts report artifact cleanup.",
+              "Export evidence and confirm non-required status for retention."
+            ],
+            [
+              "Delete manual/generated report",
+              "Clears report pointer and deletes file artifact.",
+              "Confirm no active reporting dependency."
+            ],
+            [
+              "Pentest reset keep-open",
+              "Deletes non-open-vulnerability pentest rows and associated files.",
+              "Mandatory phrase confirmation and pre-reset summary export."
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Administration: Security Controls and Maintenance",
+            "to": "/docs/administration/security-controls-and-maintenance"
+          },
+          {
+            "label": "Reporting: Distribution and Sharing Controls",
+            "to": "/docs/reporting/distribution-and-sharing-controls"
+          }
+        ]
+      }
+    ]
+  }
+}
