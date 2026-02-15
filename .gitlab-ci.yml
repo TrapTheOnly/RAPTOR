@@ -56,7 +56,7 @@ build_prod:
   - main
   script:
   - echo "Building Docker images for PROD..."
-  - docker compose -f $COMPOSE_FILE_PROD build
+  - docker compose -f $COMPOSE_FILE_PROD --profile postgres build
   - echo "Docker images built locally on kali01."
   tags:
   - prod-kali
@@ -65,11 +65,41 @@ deploy_prod:
   stage: deploy
   only:
   - main
-  when: manual
+  when: on_success
   script:
   - echo "Deploying PROD environment on kali01..."
-  - docker compose -f $COMPOSE_FILE_PROD down || true
-  - docker compose -f $COMPOSE_FILE_PROD up -d
+  - export DB_BACKEND=postgres
+  - export DATABASE_URL=${DATABASE_URL:-postgresql://raptor:raptor@postgres:5432/raptor}
+  - export POSTGRES_DB=${POSTGRES_DB:-raptor}
+  - export POSTGRES_USER=${POSTGRES_USER:-raptor}
+  - export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-raptor}
+  - docker compose -f $COMPOSE_FILE_PROD --profile postgres down || true
+  - docker compose -f $COMPOSE_FILE_PROD --profile postgres up -d postgres ftp sftp
+  - docker compose -f $COMPOSE_FILE_PROD --profile postgres run --rm db-migrate
+  - docker compose -f $COMPOSE_FILE_PROD --profile postgres run --rm db-verify
+  - docker compose -f $COMPOSE_FILE_PROD --profile postgres up -d app
+  - |
+    echo "Running application health check..."
+    ok=0
+    for i in $(seq 1 30); do
+      code_https=$(curl -k -s -o /dev/null -w "%{http_code}" https://localhost:1337/session-status || true)
+      if [ "$code_https" = "200" ] || [ "$code_https" = "401" ]; then
+        echo "Health check passed over HTTPS with status $code_https"
+        ok=1
+        break
+      fi
+      code_http=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:1337/session-status || true)
+      if [ "$code_http" = "200" ] || [ "$code_http" = "401" ]; then
+        echo "Health check passed over HTTP with status $code_http"
+        ok=1
+        break
+      fi
+      sleep 2
+    done
+    if [ "$ok" -ne 1 ]; then
+      echo "Health check failed: /session-status did not return 200/401 in time"
+      exit 1
+    fi
   - echo "PROD environment is running."
   tags:
   - prod-kali

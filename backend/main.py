@@ -17,6 +17,9 @@ import threading
 import hashlib
 from flask_cors import CORS
 from datetime import timedelta
+from modules.db_backend import ensure_db_backend
+
+ensure_db_backend()
 from modules.user import *
 from modules.admin import *
 from modules.offsec import *

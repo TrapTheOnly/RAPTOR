@@ -48,6 +48,10 @@ Create `C:\Users\Ismail\Documents\Codes\RAPTOR\.env` with at least:
 APP_PORT=3000
 SECRET_KEY=replace-with-a-random-secret
 ADMIN_USERNAME=awadmin
+DB_BACKEND=sqlite
+# For PostgreSQL mode:
+# DB_BACKEND=postgres
+# DATABASE_URL=postgresql://user:password@postgres:5432/raptor
 
 # Storage paths used by backend
 DATA_PATH=/appdata/data
@@ -92,6 +96,53 @@ Default dev access:
 - URL: `http://localhost:1337`
 - App container port mapping: `1337 -> APP_PORT` (commonly `3000` in dev)
 - SFTP sidecar: `localhost:2222`
+
+### 2.1) Enable PostgreSQL mode (migration in progress)
+
+To start testing PostgreSQL backend compatibility:
+
+```env
+DB_BACKEND=postgres
+DATABASE_URL=postgresql://raptor:raptor@postgres:5432/raptor
+POSTGRES_DB=raptor
+POSTGRES_USER=raptor
+POSTGRES_PASSWORD=raptor
+```
+
+Start with the Postgres profile enabled:
+
+```bash
+docker compose -f docker-compose.dev.yml --profile postgres up -d --build
+```
+
+The app defaults to SQLite when `DB_BACKEND` is not set to `postgres`.
+
+### 2.2) One-time SQLite -> PostgreSQL data migration
+
+After the Postgres container is up and reachable, run:
+
+```bash
+python scripts/migrate_sqlite_to_postgres.py \
+  --sqlite-path backend/data/database.db \
+  --postgres-url "postgresql://raptor:raptor@localhost:5432/raptor" \
+  --truncate
+```
+
+Useful flags:
+
+- `--dry-run` shows source tables and row counts only.
+- `--schema-only` creates/updates destination tables without copying data.
+- `--data-only` copies rows only (assumes schema already exists).
+- `--skip-if-marked` skips work when `app_meta.sqlite_to_postgres_migrated_v1` exists.
+
+CI/CD production deploy (`main` branch) now runs this migration automatically via the one-shot
+`db-migrate` Compose service before starting `app` in Postgres mode.
+
+The pipeline also runs a `db-verify` step (marker + row-count checks) and an app health check
+against `/session-status`; deployment fails automatically if either check fails.
+
+Important: the migration script is mounted only into the transient `db-migrate` container
+(`./scripts:/scripts:ro`) and is not part of the long-running app container runtime path.
 
 ### 3) Initial admin credentials
 
