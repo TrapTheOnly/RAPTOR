@@ -13,6 +13,7 @@ import {
   Divider,
   Chip,
   Button,
+  Tooltip,
   useTheme,
   alpha
 } from '@mui/material';
@@ -23,7 +24,8 @@ import {
   Settings,
   Logout,
   Brightness4,
-  Brightness7
+  Brightness7,
+  HelpOutline
 } from '@mui/icons-material';
 
 const ROLE_DEFAULT_PERMISSIONS = {
@@ -122,6 +124,7 @@ const ModernHeader = ({
   ];
 
   const visibleNavItems = navigationItems.filter(item => item.visible);
+  const isDocsRoute = location.pathname.startsWith('/docs');
 
   const isActive = (path) => {
     if (path === '/dashboard' && (location.pathname === '/' || location.pathname === '/dashboard')) return true;
@@ -294,6 +297,26 @@ const ModernHeader = ({
 
         {/* User Profile & Theme Switcher */}
         <Box display="flex" alignItems="center" gap={2}>
+          <Tooltip title="Documentation">
+            <IconButton
+              onClick={() => navigate('/docs')}
+              sx={{
+                color: isDocsRoute
+                  ? theme.palette.text.primary
+                  : theme.palette.text.secondary,
+                backgroundColor: isDocsRoute
+                  ? alpha(theme.palette.text.primary, 0.1)
+                  : 'transparent',
+                '&:hover': {
+                  color: theme.palette.text.primary,
+                  backgroundColor: alpha(theme.palette.text.primary, 0.05),
+                }
+              }}
+              aria-label="Open documentation"
+            >
+              <HelpOutline />
+            </IconButton>
+          </Tooltip>
           <IconButton 
             sx={{ color: theme.palette.text.secondary }} 
             onClick={() => setDarkMode(!darkMode)}

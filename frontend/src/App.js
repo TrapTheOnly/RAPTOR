@@ -20,6 +20,7 @@ import AdminSettings from './pages/AdminSettings';
 import PentestDashboard from './pages/PentestDashboard';
 import Record from './pages/Record';
 import PentestRecord from './pages/PentestRecord';
+import DocumentationPortal from './pages/DocumentationPortal';
 import Error from './pages/Error';
 
 const SESSION_HEARTBEAT_MS = 5000;
@@ -367,6 +368,26 @@ const App = () => {
         <Route
           path="/records/:domain"
           element={loggedIn && hasPermission('view_record_details') ? <Record darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/docs"
+          element={
+            loggedIn ? (
+              <DocumentationPortal />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/docs/:sectionSlug/:pageSlug"
+          element={
+            loggedIn ? (
+              <DocumentationPortal />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
         <Route path="/records/*" element={<Navigate to="/" />} />
         <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />
