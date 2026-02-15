@@ -1,0 +1,130 @@
+{
+  "slug": "platform-overview",
+  "title": "Platform Overview",
+  "audience": [
+    "All users"
+  ],
+  "summary": "Defines RAPTOR scope, module boundaries, and the baseline operating model.",
+  "coverage": [
+    "Platform scope and intended usage model",
+    "Operational domains and outputs",
+    "Core entities and ownership expectations",
+    "Execution baseline and data quality standards"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "This page documents the current RAPTOR interface contract. Validate your deployed version before changing operational procedures."
+      ]
+    },
+    "sections": [
+      {
+        "id": "scope-and-intent",
+        "title": "Scope and intent",
+        "paragraphs": [
+          "RAPTOR is an operational workspace for internet-facing inventory and security testing execution. It joins record metadata, pentest state, and management analytics in one workflow model.",
+          "The platform is built for continuous operations. It favors deterministic routing, permission-aware visibility, and stable object links so teams can move quickly without losing context."
+        ]
+      },
+      {
+        "id": "operational-domains",
+        "title": "Operational domains",
+        "paragraphs": [
+          "RAPTOR is partitioned into four domains. Each domain is responsible for a distinct operational outcome."
+        ],
+        "table": {
+          "columns": [
+            "Domain",
+            "Primary responsibility",
+            "Core objects",
+            "Operational output"
+          ],
+          "rows": [
+            [
+              "Records",
+              "Maintain internet-facing asset metadata and ownership.",
+              "Record, application, owner, maintainer, open ports.",
+              "Reliable inventory and accountability."
+            ],
+            [
+              "Security",
+              "Manage test assignment and lifecycle progression.",
+              "Pentest record, assignee, status, vulnerability indicators.",
+              "Current risk and remediation posture."
+            ],
+            [
+              "Dashboard",
+              "Aggregate posture and throughput signals.",
+              "KPI summaries, trend series, activity history.",
+              "Prioritization input for leadership and ops."
+            ],
+            [
+              "Settings",
+              "Control users, taxonomy, templates, and policy controls.",
+              "Roles, permissions, categories, templates.",
+              "Governed and consistent platform behavior."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "core-data-model",
+        "title": "Core data model",
+        "paragraphs": [
+          "RAPTOR uses linked operational entities. Applications group records by service boundary. Records hold technical and ownership metadata. Pentest records hold test execution state for each record.",
+          "Most reporting and dashboard views are derived from this relationship model, so metadata integrity directly affects decision quality."
+        ],
+        "table": {
+          "columns": [
+            "Entity",
+            "Meaning",
+            "Critical fields"
+          ],
+          "rows": [
+            [
+              "Application",
+              "Logical product or service grouping context.",
+              "`name`"
+            ],
+            [
+              "Record",
+              "Internet-facing DNS asset with operational metadata.",
+              "`domain`, `source`, `application_id`, `application_owner`, `maintainer`, `open_ports`"
+            ],
+            [
+              "Pentest record",
+              "Security workflow state linked to a record.",
+              "`status`, `tested_by`, `test_start_date`, `test_end_date`, `vulnerable`, `vulnerability_fixed`"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "execution-baseline",
+        "title": "Execution baseline",
+        "paragraphs": [
+          "A stable weekly cycle keeps RAPTOR data useful. Teams should keep record metadata current, track security ownership explicitly, and close workflows only when report and remediation linkage is complete."
+        ],
+        "orderedList": [
+          "Review and correct inventory data in `Records`.",
+          "Assign pentest ownership and active scope in `Security`.",
+          "Update status transitions as execution progresses.",
+          "Attach report and ticket linkage before closure.",
+          "Use `Dashboard` trends for planning and escalation."
+        ],
+        "related": [
+          {
+            "label": "Record Management: Records Dashboard Overview",
+            "to": "/docs/records-management/records-dashboard-overview"
+          },
+          {
+            "label": "Pentest Operations: Security Dashboard Overview",
+            "to": "/docs/pentest-operations/security-dashboard-overview"
+          }
+        ]
+      }
+    ]
+  }
+}

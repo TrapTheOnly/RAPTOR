@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
@@ -27,9 +28,17 @@ import {
   ArrowForward,
   Search as SearchIcon
 } from '@mui/icons-material';
-import { DEFAULT_DOC_ROUTE, DOC_SECTIONS, flattenDocsPages } from './docs/outline';
 
 const buildDocPath = (sectionSlug, pageSlug) => `/docs/${sectionSlug}/${pageSlug}`;
+
+const flattenPages = (sections) =>
+  (sections || []).flatMap((section) =>
+    (section.pages || []).map((page) => ({
+      ...page,
+      sectionSlug: section.slug,
+      sectionTitle: section.title
+    }))
+  );
 
 const renderInlineCode = (text) => {
   const chunks = String(text || '').split(/(`[^`]+`)/g);
@@ -75,7 +84,11 @@ const Admonition = ({ variant = 'tip', title, paragraphs = [] }) => {
       <Typography
         component="p"
         variant="body2"
-        sx={{ fontWeight: 700, mb: 1, color: isImportant ? 'warning.contrastText' : 'info.contrastText' }}
+        sx={{
+          fontWeight: 700,
+          mb: 1,
+          color: isImportant ? 'warning.contrastText' : 'info.contrastText'
+        }}
       >
         {title}
       </Typography>
@@ -115,74 +128,441 @@ const SectionAnchorHeading = ({ id, title }) => (
   </Box>
 );
 
+const formatDateTime = (isoString) => {
+  if (!isoString) return '';
+  const parsed = new Date(isoString);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(isoString);
+  }
+  return parsed.toLocaleString();
+};
+
+const DocsAccessMatrix = ({
+  matrix,
+  loading,
+  error,
+  onNavigatePath
+}) => {
+  if (loading) {
+    return (
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          border: 1,
+          borderColor: 'divider',
+          backgroundColor: 'action.hover',
+          mb: 2
+        }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Loading access matrix...
+        </Typography>
+      </Paper>
+    );
+  }
+
+  if (error) {
+    return (
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          border: 1,
+          borderColor: 'error.main',
+          backgroundColor: 'error.dark',
+          mb: 2
+        }}
+      >
+        <Typography variant="body2" color="error.contrastText">
+          {error}
+        </Typography>
+      </Paper>
+    );
+  }
+
+  if (!matrix || !Array.isArray(matrix.roles) || matrix.roles.length === 0) {
+    return (
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          border: 1,
+          borderColor: 'divider',
+          backgroundColor: 'action.hover',
+          mb: 2
+        }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Access matrix is not available.
+        </Typography>
+      </Paper>
+    );
+  }
+
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        Generated: {formatDateTime(matrix.generated_at)} | Total documented pages: {matrix.total_pages_in_manifest}
+      </Typography>
+
+      {matrix.roles.map((roleEntry) => (
+        <Box key={roleEntry.role} sx={{ mb: 3 }}>
+          <Typography
+            component="h3"
+            variant="h6"
+            sx={{ fontWeight: 650, fontSize: { xs: '1rem', md: '1.1rem' }, mb: 1 }}
+          >
+            {roleEntry.role_label}
+          </Typography>
+
+          <TableContainer
+            component={Paper}
+            elevation={0}
+            sx={{ border: 1, borderColor: 'divider', mb: 1.5 }}
+          >
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Scenario</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Optional permissions included</TableCell>
+                  <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Visible pages</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(roleEntry.scenarios || []).map((scenario) => (
+                  <TableRow key={scenario.key}>
+                    <TableCell>{scenario.label}</TableCell>
+                    <TableCell>
+                      {(scenario.optional_permissions || []).length > 0
+                        ? scenario.optional_permissions.join(', ')
+                        : 'None'}
+                    </TableCell>
+                    <TableCell>{scenario.visible_count}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <TableContainer
+            component={Paper}
+            elevation={0}
+            sx={{ border: 1, borderColor: 'divider', mb: 1.5 }}
+          >
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600, minWidth: 300 }}>Page</TableCell>
+                  {(roleEntry.scenarios || []).map((scenario) => (
+                    <TableCell key={`${roleEntry.role}-${scenario.key}`} sx={{ fontWeight: 600 }}>
+                      {scenario.label}
+                    </TableCell>
+                  ))}
+                  <TableCell sx={{ fontWeight: 600, minWidth: 260 }}>Access rule</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(roleEntry.rows || []).map((row) => (
+                  <TableRow key={`${roleEntry.role}-${row.path}`}>
+                    <TableCell sx={{ verticalAlign: 'top' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        <Link
+                          underline="hover"
+                          component="button"
+                          onClick={() => onNavigatePath(row.path)}
+                        >
+                          {row.page_title}
+                        </Link>
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {row.section_title}
+                      </Typography>
+                    </TableCell>
+                    {(roleEntry.scenarios || []).map((scenario) => (
+                      <TableCell
+                        key={`${roleEntry.role}-${row.path}-${scenario.key}`}
+                        sx={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}
+                      >
+                        <Typography
+                          variant="body2"
+                          color={row.visibility?.[scenario.key] ? 'success.main' : 'text.secondary'}
+                          sx={{ fontWeight: row.visibility?.[scenario.key] ? 600 : 400 }}
+                        >
+                          {row.visibility?.[scenario.key] ? 'Yes' : 'No'}
+                        </Typography>
+                      </TableCell>
+                    ))}
+                    <TableCell sx={{ verticalAlign: 'top', lineHeight: 1.6 }}>
+                      {row.access_rule}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ))}
+    </Box>
+  );
+};
+
 const DocumentationPortal = () => {
   const navigate = useNavigate();
   const { sectionSlug, pageSlug } = useParams();
-  const [searchTerm, setSearchTerm] = useState('');
 
-  const allPages = useMemo(() => flattenDocsPages(), []);
-  const activeSection = useMemo(
-    () => DOC_SECTIONS.find((section) => section.slug === sectionSlug),
-    [sectionSlug]
-  );
-  const activePage = useMemo(
-    () => activeSection?.pages.find((page) => page.slug === pageSlug),
-    [activeSection, pageSlug]
-  );
+  const [docsSections, setDocsSections] = useState([]);
+  const [activePageData, setActivePageData] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loadingManifest, setLoadingManifest] = useState(true);
+  const [loadingPage, setLoadingPage] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [docsAccessMatrix, setDocsAccessMatrix] = useState(null);
+  const [loadingAccessMatrix, setLoadingAccessMatrix] = useState(false);
+  const [accessMatrixError, setAccessMatrixError] = useState('');
 
   useEffect(() => {
-    if (!activePage) {
-      navigate(
-        buildDocPath(DEFAULT_DOC_ROUTE.sectionSlug, DEFAULT_DOC_ROUTE.pageSlug),
-        { replace: true }
-      );
+    let canceled = false;
+
+    const fetchManifest = async () => {
+      setLoadingManifest(true);
+      setErrorMessage('');
+      try {
+        const response = await axios.get('/docs/manifest');
+        const sections = response?.data?.sections || [];
+        if (!canceled) {
+          setDocsSections(Array.isArray(sections) ? sections : []);
+        }
+      } catch (error) {
+        if (!canceled) {
+          setDocsSections([]);
+          if (error?.response?.status === 401) {
+            setErrorMessage('Session expired. Please sign in again.');
+          } else {
+            setErrorMessage('Failed to load documentation.');
+          }
+        }
+      } finally {
+        if (!canceled) {
+          setLoadingManifest(false);
+        }
+      }
+    };
+
+    fetchManifest();
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  const defaultRoute = useMemo(() => {
+    const firstSection = docsSections.find(
+      (section) => Array.isArray(section.pages) && section.pages.length > 0
+    );
+    if (!firstSection) return null;
+    return {
+      sectionSlug: firstSection.slug,
+      pageSlug: firstSection.pages[0].slug
+    };
+  }, [docsSections]);
+
+  const activeSection = useMemo(
+    () => docsSections.find((section) => section.slug === sectionSlug),
+    [docsSections, sectionSlug]
+  );
+
+  const activePageMeta = useMemo(
+    () => activeSection?.pages?.find((page) => page.slug === pageSlug),
+    [activeSection, pageSlug]
+  );
+  const isAccessMatrixPage =
+    activeSection?.slug === 'operations-and-governance' &&
+    activePageMeta?.slug === 'docs-access-matrix';
+
+  useEffect(() => {
+    if (loadingManifest) return;
+    if (!defaultRoute) return;
+
+    if (!sectionSlug || !pageSlug || !activePageMeta) {
+      navigate(buildDocPath(defaultRoute.sectionSlug, defaultRoute.pageSlug), {
+        replace: true
+      });
     }
-  }, [activePage, navigate]);
+  }, [activePageMeta, defaultRoute, loadingManifest, navigate, pageSlug, sectionSlug]);
+
+  useEffect(() => {
+    if (!activeSection || !activePageMeta) {
+      setActivePageData(null);
+      return;
+    }
+
+    let canceled = false;
+
+    const fetchPage = async () => {
+      setLoadingPage(true);
+      setErrorMessage('');
+      try {
+        const response = await axios.get(
+          `/docs/content/${activeSection.slug}/${activePageMeta.slug}`
+        );
+        if (!canceled) {
+          setActivePageData(response?.data?.page || null);
+        }
+      } catch (error) {
+        if (canceled) return;
+        setActivePageData(null);
+
+        if (error?.response?.status === 401) {
+          setErrorMessage('Session expired. Please sign in again.');
+          return;
+        }
+
+        if (error?.response?.status === 403 || error?.response?.status === 404) {
+          if (
+            defaultRoute &&
+            (activeSection.slug !== defaultRoute.sectionSlug ||
+              activePageMeta.slug !== defaultRoute.pageSlug)
+          ) {
+            navigate(buildDocPath(defaultRoute.sectionSlug, defaultRoute.pageSlug), {
+              replace: true
+            });
+            return;
+          }
+          setErrorMessage('You do not have access to this documentation page.');
+          return;
+        }
+
+        setErrorMessage('Failed to load documentation page.');
+      } finally {
+        if (!canceled) {
+          setLoadingPage(false);
+        }
+      }
+    };
+
+    fetchPage();
+    return () => {
+      canceled = true;
+    };
+  }, [activePageMeta, activeSection, defaultRoute, navigate]);
+
+  useEffect(() => {
+    let canceled = false;
+
+    if (!isAccessMatrixPage) {
+      setDocsAccessMatrix(null);
+      setLoadingAccessMatrix(false);
+      setAccessMatrixError('');
+      return () => {
+        canceled = true;
+      };
+    }
+
+    const fetchAccessMatrix = async () => {
+      setLoadingAccessMatrix(true);
+      setAccessMatrixError('');
+      try {
+        const response = await axios.get('/docs/access-matrix');
+        if (!canceled) {
+          setDocsAccessMatrix(response?.data?.matrix || null);
+        }
+      } catch (error) {
+        if (canceled) return;
+        setDocsAccessMatrix(null);
+        if (error?.response?.status === 401) {
+          setAccessMatrixError('Session expired. Please sign in again.');
+        } else if (error?.response?.status === 403) {
+          setAccessMatrixError('You do not have access to the documentation access matrix.');
+        } else {
+          setAccessMatrixError('Failed to load access matrix.');
+        }
+      } finally {
+        if (!canceled) {
+          setLoadingAccessMatrix(false);
+        }
+      }
+    };
+
+    fetchAccessMatrix();
+    return () => {
+      canceled = true;
+    };
+  }, [isAccessMatrixPage]);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
   const filteredSections = useMemo(
     () =>
-      DOC_SECTIONS.map((section) => ({
-        ...section,
-        pages: section.pages.filter((page) => {
-          if (!normalizedSearch) return true;
-          const inTitle = page.title.toLowerCase().includes(normalizedSearch);
-          const inSummary = page.summary.toLowerCase().includes(normalizedSearch);
-          const inCoverage = page.coverage.some((line) =>
-            line.toLowerCase().includes(normalizedSearch)
-          );
-          const inArticleSections =
-            page.article?.sections?.some(
-              (articleSection) =>
-                articleSection.title.toLowerCase().includes(normalizedSearch) ||
-                (articleSection.paragraphs || []).some((paragraph) =>
-                  paragraph.toLowerCase().includes(normalizedSearch)
-                )
-            ) || false;
-          return inTitle || inSummary || inCoverage || inArticleSections;
-        })
-      })).filter((section) => section.pages.length > 0),
-    [normalizedSearch]
+      docsSections
+        .map((section) => ({
+          ...section,
+          pages: (section.pages || []).filter((page) => {
+            if (!normalizedSearch) return true;
+            const inTitle = (page.title || '').toLowerCase().includes(normalizedSearch);
+            const inSummary = (page.summary || '').toLowerCase().includes(normalizedSearch);
+            const inCoverage = (page.coverage || []).some((line) =>
+              String(line || '').toLowerCase().includes(normalizedSearch)
+            );
+            return inTitle || inSummary || inCoverage;
+          })
+        }))
+        .filter((section) => (section.pages || []).length > 0),
+    [docsSections, normalizedSearch]
   );
 
-  if (!activeSection || !activePage) {
-    return null;
-  }
-
-  const globalPageIndex = allPages.findIndex(
-    (page) =>
-      page.sectionSlug === activeSection.slug && page.slug === activePage.slug
+  const allPages = useMemo(() => flattenPages(docsSections), [docsSections]);
+  const globalPageIndex = useMemo(
+    () =>
+      allPages.findIndex(
+        (page) => page.sectionSlug === activeSection?.slug && page.slug === activePageMeta?.slug
+      ),
+    [activePageMeta?.slug, activeSection?.slug, allPages]
   );
   const previousPage = globalPageIndex > 0 ? allPages[globalPageIndex - 1] : null;
   const nextPage =
-    globalPageIndex < allPages.length - 1 ? allPages[globalPageIndex + 1] : null;
+    globalPageIndex >= 0 && globalPageIndex < allPages.length - 1
+      ? allPages[globalPageIndex + 1]
+      : null;
 
   const onNavigatePage = (nextSectionSlug, nextPageSlug) => {
     navigate(buildDocPath(nextSectionSlug, nextPageSlug));
   };
 
-  const article = activePage.article;
+  const activeTitle = activePageData?.title || activePageMeta?.title || 'Documentation';
+  const activeSummary = activePageData?.summary || activePageMeta?.summary || '';
+  const activeCoverage = activePageData?.coverage || activePageMeta?.coverage || [];
+  const article = activePageData?.article || null;
+
+  if (loadingManifest) {
+    return (
+      <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+          RAPTOR Documentation
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Loading documentation...
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (!defaultRoute) {
+    return (
+      <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+          RAPTOR Documentation
+        </Typography>
+        <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+            No documentation available
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Your account currently has no documentation pages assigned.
+          </Typography>
+        </Paper>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
@@ -241,7 +621,7 @@ const DocumentationPortal = () => {
                 <List dense disablePadding>
                   {section.pages.map((page) => {
                     const selected =
-                      section.slug === activeSection.slug && page.slug === activePage.slug;
+                      section.slug === activeSection?.slug && page.slug === activePageMeta?.slug;
                     return (
                       <ListItemButton
                         key={`${section.slug}-${page.slug}`}
@@ -286,13 +666,13 @@ const DocumentationPortal = () => {
                 color="inherit"
                 component="button"
                 onClick={() =>
-                  onNavigatePage(DEFAULT_DOC_ROUTE.sectionSlug, DEFAULT_DOC_ROUTE.pageSlug)
+                  onNavigatePage(defaultRoute.sectionSlug, defaultRoute.pageSlug)
                 }
               >
                 Documentation
               </Link>
-              <Typography color="text.primary">{activeSection.title}</Typography>
-              <Typography color="text.primary">{activePage.title}</Typography>
+              <Typography color="text.primary">{activeSection?.title || ''}</Typography>
+              <Typography color="text.primary">{activeTitle}</Typography>
             </Breadcrumbs>
 
             <Typography
@@ -300,17 +680,48 @@ const DocumentationPortal = () => {
               variant="h4"
               sx={{ fontWeight: 650, fontSize: { xs: '1.55rem', md: '1.85rem' }, mb: 0.75 }}
             >
-              {activePage.title}
+              {activeTitle}
             </Typography>
             <Typography
               variant="body1"
               color="text.secondary"
               sx={{ mb: 2.5, lineHeight: 1.7, maxWidth: 950 }}
             >
-              {activePage.summary}
+              {activeSummary}
             </Typography>
 
-            {article ? (
+            {errorMessage && (
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  border: 1,
+                  borderColor: 'error.main',
+                  backgroundColor: 'error.dark',
+                  mb: 2
+                }}
+              >
+                <Typography variant="body2" color="error.contrastText">
+                  {errorMessage}
+                </Typography>
+              </Paper>
+            )}
+
+            {loadingPage ? (
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  border: 1,
+                  borderColor: 'divider',
+                  backgroundColor: 'action.hover'
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Loading page...
+                </Typography>
+              </Paper>
+            ) : article ? (
               <Grid container spacing={2}>
                 <Grid item xs={12} xl={9}>
                   {article.warning && (
@@ -321,7 +732,7 @@ const DocumentationPortal = () => {
                     />
                   )}
 
-                  {article.sections.map((section) => (
+                  {(article.sections || []).map((section) => (
                     <Box key={section.id} sx={{ mb: 0.5 }}>
                       <SectionAnchorHeading id={section.id} title={section.title} />
 
@@ -411,6 +822,15 @@ const DocumentationPortal = () => {
                         />
                       )}
 
+                      {section.dynamic?.type === 'docs-access-matrix' && (
+                        <DocsAccessMatrix
+                          matrix={docsAccessMatrix}
+                          loading={loadingAccessMatrix}
+                          error={accessMatrixError}
+                          onNavigatePath={(path) => navigate(path)}
+                        />
+                      )}
+
                       {section.related && (
                         <Box sx={{ mb: 1.75 }}>
                           <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
@@ -450,7 +870,7 @@ const DocumentationPortal = () => {
                     >
                       On this page
                     </Typography>
-                    {article.sections.map((section) => (
+                    {(article.sections || []).map((section) => (
                       <Typography key={section.id} variant="body2" sx={{ mb: 0.65 }}>
                         <Link underline="hover" href={`#${section.id}`} color="text.secondary">
                           {section.title}
@@ -474,7 +894,7 @@ const DocumentationPortal = () => {
                   Planned page scope
                 </Typography>
                 <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-                  {activePage.coverage.map((item) => (
+                  {activeCoverage.map((item) => (
                     <Typography key={item} component="li" variant="body2" sx={{ mb: 0.75 }}>
                       {item}
                     </Typography>
@@ -483,12 +903,7 @@ const DocumentationPortal = () => {
               </Paper>
             )}
 
-            <Stack
-              direction="row"
-              justifyContent="space-between"
-              spacing={2}
-              sx={{ mt: 3 }}
-            >
+            <Stack direction="row" justifyContent="space-between" spacing={2} sx={{ mt: 3 }}>
               <Button
                 startIcon={<ArrowBack />}
                 disabled={!previousPage}

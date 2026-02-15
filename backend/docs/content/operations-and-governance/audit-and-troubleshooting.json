@@ -1,0 +1,222 @@
+{
+  "slug": "audit-and-troubleshooting",
+  "title": "Audit and Troubleshooting",
+  "audience": [
+    "Admins",
+    "Managers"
+  ],
+  "summary": "Provides methods to investigate anomalies, verify data health, and resolve common operational issues.",
+  "coverage": [
+    "First-response troubleshooting flow",
+    "Detecting inconsistent records or test states",
+    "Session and access issue triage",
+    "Audit evidence checklist"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Audit and troubleshooting should preserve evidence before remediation. Export relevant datasets and capture timestamps before destructive changes."
+      ]
+    },
+    "sections": [
+      {
+        "id": "first-response-workflow",
+        "title": "First-response workflow",
+        "paragraphs": [
+          "Use a fixed triage sequence to reduce false assumptions and shorten recovery time. Start from scope and symptom, then validate session state, permission state, and data state in order.",
+          "Do not begin with direct database edits. Most issues are caused by access controls, assignment rules, stale sessions, or unsaved workflow state."
+        ],
+        "orderedList": [
+          "Classify the issue as access, data integrity, workflow, or reporting output.",
+          "Capture impacted user, record id, route, and exact response message or HTTP code.",
+          "Check `GET /session-status` for login state and remaining session windows.",
+          "Confirm effective permissions and role for the impacted account.",
+          "Validate object-level constraints such as pentest assignment ownership.",
+          "Apply corrective action and verify end-to-end behavior on the same object."
+        ]
+      },
+      {
+        "id": "diagnostic-signal-sources",
+        "title": "Primary diagnostic signal sources",
+        "table": {
+          "columns": [
+            "Signal source",
+            "What it confirms",
+            "Where to check"
+          ],
+          "rows": [
+            [
+              "Session payload",
+              "Authentication state, role, and effective permissions",
+              "`GET /session-status` response fields."
+            ],
+            [
+              "HTTP status and error body",
+              "Authorization, validation, and not-found outcomes",
+              "Browser network trace or API client response."
+            ],
+            [
+              "Application log",
+              "Backend exception and operational event trail",
+              "`DATA_PATH/application.log` on backend host."
+            ],
+            [
+              "UI section visibility",
+              "Frontend permission gating behavior",
+              "Settings drawer and module tabs for current account."
+            ],
+            [
+              "Pentest assignment fields",
+              "Record-level access control outcome",
+              "`tested_by` value on pentest record and board rows."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "common-failure-patterns",
+        "title": "Common failure patterns and responses",
+        "table": {
+          "columns": [
+            "Observed symptom",
+            "Likely cause",
+            "Corrective action"
+          ],
+          "rows": [
+            [
+              "`403 Unauthorized access` on protected route",
+              "Missing permission or admin-only decorator path.",
+              "Validate permission gate and role for caller."
+            ],
+            [
+              "`401 Session expired` during active work",
+              "Idle or active timeout exceeded.",
+              "Re-authenticate and continue from saved state."
+            ],
+            [
+              "Pentest actions blocked with assignment message",
+              "User is not current assignee and lacks override permission.",
+              "Assign record to caller or use override-capable account."
+            ],
+            [
+              "Generated report missing after expected creation",
+              "Template disabled, not selected, or generation failed.",
+              "Check template enabled state and rerun generation after save."
+            ],
+            [
+              "IP source update does not appear in record views",
+              "Change not submitted or mapping does not match IP.",
+              "Submit staged IP changes and verify exact IP string match."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "session-and-auth-triage",
+        "title": "Session and authentication triage",
+        "paragraphs": [
+          "RAPTOR enforces both idle and active timeout windows. Session extension is explicit and capped by extension limits. Login additionally uses lockout counters with escalating lockout windows.",
+          "When diagnosing login failures, always distinguish invalid credentials (`401`) from lockout (`429`) and reset-required state (`password_reset_required`)."
+        ],
+        "table": {
+          "columns": [
+            "Auth symptom",
+            "Backend behavior",
+            "Next step"
+          ],
+          "rows": [
+            [
+              "Invalid credentials",
+              "`401 Invalid credentials`",
+              "Verify username normalization and auth source (`local` or LDAP)."
+            ],
+            [
+              "Too many attempts",
+              "`429` with `retry_after_seconds`",
+              "Wait for lockout expiry or reset lockout state via controlled admin procedure."
+            ],
+            [
+              "Password reset required",
+              "`status=password_reset_required`",
+              "Complete reset endpoint flow before normal route access."
+            ],
+            [
+              "Session extension unavailable",
+              "Extend endpoint returns logged-out state",
+              "Re-authenticate and continue with fresh session tracking."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "data-consistency-checks",
+        "title": "Data consistency checks",
+        "paragraphs": [
+          "Consistency checks should focus on relationships between records, pentest rows, and generated outputs. Inconsistencies usually appear as missing references, stale labels, or lifecycle conflicts.",
+          "Use read-only inspection first, then correct from normal product flows where possible."
+        ],
+        "table": {
+          "columns": [
+            "Consistency target",
+            "Healthy expectation",
+            "Drift signal"
+          ],
+          "rows": [
+            [
+              "Record and pentest linkage",
+              "Pentest row `record_id` points to valid record id.",
+              "Pentest page errors with missing record or pentest row."
+            ],
+            [
+              "Assignment and status",
+              "`tested_by` aligns with active operator workflow.",
+              "Users blocked from owned work or unauthorized edits appear."
+            ],
+            [
+              "Report references",
+              "`report_file` and `generated_report_file` fields match existing artifacts.",
+              "Download endpoints return `404` for expected files."
+            ],
+            [
+              "Source taxonomy",
+              "`records.source` reflects configured `ip_sources` mappings.",
+              "Records remain `Other` despite exact source IP mapping."
+            ],
+            [
+              "Checklist and findings payloads",
+              "Valid JSON-like payloads and expected rendered summaries.",
+              "Render failures, empty summaries, or save-validation errors."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "audit-evidence-package",
+        "title": "Audit evidence package checklist",
+        "paragraphs": [
+          "For internal audit and post-incident review, package evidence in a repeatable format so outcomes can be verified independently."
+        ],
+        "orderedList": [
+          "Issue statement with impacted modules, users, and object identifiers.",
+          "Request and response samples including status codes and timestamps.",
+          "Session status snapshot before and after remediation.",
+          "Relevant configuration snapshot such as role and optional permissions.",
+          "Data exports used for verification, including pre-change and post-change views.",
+          "Final validation result and operator sign-off."
+        ],
+        "related": [
+          {
+            "label": "Operations and Governance: Permissions Reference",
+            "to": "/docs/operations-and-governance/permissions-reference"
+          },
+          {
+            "label": "Administration: Security Controls and Maintenance",
+            "to": "/docs/administration/security-controls-and-maintenance"
+          }
+        ]
+      }
+    ]
+  }
+}

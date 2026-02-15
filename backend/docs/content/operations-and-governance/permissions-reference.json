@@ -1,0 +1,316 @@
+{
+  "slug": "permissions-reference",
+  "title": "Permissions Reference",
+  "audience": [
+    "Admins",
+    "Managers"
+  ],
+  "summary": "Single reference for permission keys, effective access behavior, and role fallback logic.",
+  "coverage": [
+    "Permission catalog and practical meaning",
+    "Role defaults vs explicit grants",
+    "How permission checks impact UI and APIs",
+    "Troubleshooting missing capability"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Permission checks are enforced on both frontend visibility and backend routes. UI access alone never guarantees API authorization."
+      ]
+    },
+    "sections": [
+      {
+        "id": "authorization-model",
+        "title": "Authorization model",
+        "paragraphs": [
+          "RAPTOR computes effective permissions from three inputs: role defaults, optional permissions stored for the user, and admin full-access behavior. The backend is authoritative and performs permission validation for every protected endpoint.",
+          "For non-admin users, optional permissions are sanitized against a role-specific allowlist before storage and when evaluated. Invalid or unknown permission values are ignored."
+        ]
+      },
+      {
+        "id": "permission-catalog",
+        "title": "Permission catalog",
+        "paragraphs": [
+          "The table below defines every permission key in the current backend permission registry."
+        ],
+        "table": {
+          "columns": [
+            "Permission key",
+            "Primary scope",
+            "Practical effect"
+          ],
+          "rows": [
+            [
+              "`view_settings`",
+              "Settings module",
+              "Grants access to settings route and settings area navigation."
+            ],
+            [
+              "`view_dashboard`",
+              "Management dashboard",
+              "Allows access to executive dashboard views and KPI panels."
+            ],
+            [
+              "`view_records`",
+              "Records module",
+              "Allows loading and browsing records list and records summary data."
+            ],
+            [
+              "`view_security_dashboard`",
+              "Pentest dashboard",
+              "Allows access to pentest board and security summary views."
+            ],
+            [
+              "`modify_records`",
+              "Records write operations",
+              "Allows record field edits such as owner, maintainer, and description."
+            ],
+            [
+              "`view_record_details`",
+              "Record details",
+              "Allows access to record detail pages and record-specific history endpoints."
+            ],
+            [
+              "`export_records`",
+              "Records exports",
+              "Allows record export actions from records workflows."
+            ],
+            [
+              "`manage_apps`",
+              "Application taxonomy",
+              "Allows create, update, and assignment operations for applications."
+            ],
+            [
+              "`view_pentest_page`",
+              "Pentest record view",
+              "Allows opening pentest record pages and related read operations."
+            ],
+            [
+              "`modify_pentests`",
+              "Pentest write operations",
+              "Allows editing pentest lifecycle, notes, checklist state, and findings."
+            ],
+            [
+              "`export_pentests`",
+              "Pentest report export",
+              "Allows generated report operations and exported pentest outputs."
+            ],
+            [
+              "`manage_ip_sources`",
+              "IP source taxonomy",
+              "Allows managing `ip_sources` mappings and source synchronization."
+            ],
+            [
+              "`manage_vuln_categories`",
+              "Vulnerability taxonomy",
+              "Allows creating and deleting vulnerability categories."
+            ],
+            [
+              "`manage_report_templates`",
+              "Report templates",
+              "Allows full administration of report template lifecycle."
+            ],
+            [
+              "`reassign_pentests_admin`",
+              "Assignment control",
+              "Allows reassigning pentests beyond current tester ownership."
+            ],
+            [
+              "`delete_records`",
+              "Records destructive actions",
+              "Allows record deletion operations."
+            ],
+            [
+              "`modify_others_pentests_admin`",
+              "Pentest override",
+              "Allows editing and report operations on other users assigned records."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "role-defaults",
+        "title": "Role defaults and intent",
+        "table": {
+          "columns": [
+            "Role",
+            "Default operational intent",
+            "Default permission posture"
+          ],
+          "rows": [
+            [
+              "`user`",
+              "Inventory maintenance",
+              "Records view/edit baseline with record-detail and export support."
+            ],
+            [
+              "`pentester`",
+              "Security execution",
+              "Pentest dashboard and pentest edit/export baseline with record visibility."
+            ],
+            [
+              "`manager`",
+              "Cross-module coordination",
+              "Broad access across records, pentest, settings, taxonomy, and dashboard."
+            ],
+            [
+              "`admin`",
+              "System governance",
+              "Full permission set from registry, plus admin-only guarded endpoints."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "optional-permissions",
+        "title": "Optional permission extensions",
+        "paragraphs": [
+          "Only `user` and `pentester` roles support optional permission extensions. Manager and admin roles do not accept optional extensions.",
+          "Changing role through user administration resets stored optional permissions to an empty set. Optional grants must be explicitly reapplied after role transition when needed."
+        ],
+        "table": {
+          "columns": [
+            "Role",
+            "Allowed optional permissions"
+          ],
+          "rows": [
+            [
+              "`user`",
+              "`view_dashboard`, `view_security_dashboard`, `manage_apps`"
+            ],
+            [
+              "`pentester`",
+              "`view_dashboard`, `modify_records`, `manage_apps`"
+            ],
+            [
+              "`manager`",
+              "None"
+            ],
+            [
+              "`admin`",
+              "None"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "route-enforcement-patterns",
+        "title": "Route and endpoint enforcement patterns",
+        "paragraphs": [
+          "Most APIs are protected by `@permission_required(...)`. Sensitive admin flows additionally require `@admin_required`, which enforces role, session validity, and reset-required blocking."
+        ],
+        "table": {
+          "columns": [
+            "Endpoint",
+            "Primary gate",
+            "Notes"
+          ],
+          "rows": [
+            [
+              "`GET /ip-sources`",
+              "`manage_ip_sources`",
+              "Taxonomy management endpoint, not available to basic users."
+            ],
+            [
+              "`POST /vuln-categories`",
+              "`manage_vuln_categories`",
+              "Category writes are explicitly separated from category reads."
+            ],
+            [
+              "`POST /report-templates`",
+              "`manage_report_templates`",
+              "Template lifecycle is permission-gated independent of admin role label."
+            ],
+            [
+              "`POST /manual-update`",
+              "`admin_required`",
+              "Admin-only maintenance control."
+            ],
+            [
+              "`POST /pentest/reset-keep-open`",
+              "`admin_required`",
+              "Admin-only destructive operation with phrase and checkbox safeguards."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "record-level-pentest-constraints",
+        "title": "Record-level pentest access constraints",
+        "paragraphs": [
+          "Permission alone is not sufficient for pentest record operations. RAPTOR also enforces record-level access with assignment checks.",
+          "Users without `modify_others_pentests_admin` can operate only on records assigned to their username, and unassigned pentest rows are blocked until assignment is set."
+        ],
+        "table": {
+          "columns": [
+            "Condition",
+            "Outcome"
+          ],
+          "rows": [
+            [
+              "User has `modify_others_pentests_admin`",
+              "Can access and modify any pentest record."
+            ],
+            [
+              "Record assigned to current user",
+              "Access allowed for permitted actions."
+            ],
+            [
+              "Record assigned to different user",
+              "Access denied with assignment-specific message."
+            ],
+            [
+              "Record unassigned and user lacks override",
+              "Access denied until record is assigned."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "capability-troubleshooting",
+        "title": "Troubleshooting missing capability",
+        "table": {
+          "columns": [
+            "Symptom",
+            "Most likely cause",
+            "Verification step"
+          ],
+          "rows": [
+            [
+              "Page tab missing",
+              "Required route permission not in effective set.",
+              "Check role defaults plus optional grants for current user."
+            ],
+            [
+              "Action button missing on page",
+              "Frontend checks current effective permissions.",
+              "Inspect session permissions payload via `GET /session-status`."
+            ],
+            [
+              "API returns `403 Unauthorized access`",
+              "Backend gate rejected request.",
+              "Validate endpoint gate and assignment constraints."
+            ],
+            [
+              "Capability disappeared after role change",
+              "Role update reset optional permissions.",
+              "Reapply needed optional permissions for new role."
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Administration: User Management and Authentication",
+            "to": "/docs/administration/user-management-and-authentication"
+          },
+          {
+            "label": "Getting Started: Roles and Capability Matrix",
+            "to": "/docs/getting-started/roles-and-capability-matrix"
+          }
+        ]
+      }
+    ]
+  }
+}

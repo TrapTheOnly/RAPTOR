@@ -1,0 +1,95 @@
+{
+  "slug": "roles-and-capability-matrix",
+  "title": "Roles and Capability Matrix",
+  "audience": [
+    "All users",
+    "Admins"
+  ],
+  "summary": "Details role defaults, optional permission extensions, and capability evaluation order.",
+  "coverage": [
+    "Role-level operational emphasis",
+    "Permission extension model",
+    "Effective capability evaluation order",
+    "Governance approach for access control"
+  ],
+  "article": {
+    "sections": [
+      {
+        "id": "authorization-model",
+        "title": "Authorization model",
+        "paragraphs": [
+          "RAPTOR combines role defaults with optional permission extensions. This preserves predictable baseline behavior while allowing targeted capability expansion when required."
+        ]
+      },
+      {
+        "id": "role-matrix",
+        "title": "Role matrix",
+        "table": {
+          "columns": [
+            "Role",
+            "Default route",
+            "Operational emphasis",
+            "Capability profile"
+          ],
+          "rows": [
+            [
+              "admin",
+              "`/dashboard`",
+              "Governance and full-system administration.",
+              "Full access including sensitive controls."
+            ],
+            [
+              "manager",
+              "`/dashboard`",
+              "Coverage, throughput, and team coordination.",
+              "Broad access across dashboard, records, security, and settings."
+            ],
+            [
+              "pentester",
+              "`/pentest`",
+              "Test execution and finding progression.",
+              "Security workflow actions plus pentest export."
+            ],
+            [
+              "user",
+              "`/records`",
+              "Inventory quality and metadata upkeep.",
+              "Record visibility and controlled record updates."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "capability-evaluation",
+        "title": "Capability evaluation order",
+        "paragraphs": [
+          "Effective permissions are computed in a fixed order to keep frontend and backend authorization behavior consistent."
+        ],
+        "orderedList": [
+          "Load role default permissions.",
+          "Merge valid optional permissions.",
+          "Apply admin full-access behavior when role is `admin`.",
+          "Evaluate route and action checks against merged capability set."
+        ]
+      },
+      {
+        "id": "access-governance",
+        "title": "Access governance",
+        "paragraphs": [
+          "Use least-privilege defaults and grant additional permissions only for clear operational need. Review elevated permissions periodically and remove stale grants."
+        ],
+        "list": [
+          "Prefer targeted optional grants over broad role changes.",
+          "Document why sensitive permissions were granted.",
+          "Review elevated access on a regular cadence."
+        ],
+        "related": [
+          {
+            "label": "Operations and Governance: Permissions Reference",
+            "to": "/docs/operations-and-governance/permissions-reference"
+          }
+        ]
+      }
+    ]
+  }
+}

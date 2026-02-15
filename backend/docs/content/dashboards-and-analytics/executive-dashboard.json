@@ -1,0 +1,177 @@
+{
+  "slug": "executive-dashboard",
+  "title": "Executive Dashboard",
+  "audience": [
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Provides managerial posture view, KPI strip semantics, and panel-level interpretation guidance.",
+  "coverage": [
+    "KPI intent and update cadence",
+    "Coverage, throughput, and open-risk metrics",
+    "Recent activity and workload summaries",
+    "How managers should interpret trend changes"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Dashboard conclusions are only as reliable as underlying record and pentest updates. Missing assignment, stale status, or delayed remediation flags will distort KPI interpretation."
+      ]
+    },
+    "sections": [
+      {
+        "id": "dashboard-role",
+        "title": "Dashboard role",
+        "paragraphs": [
+          "The Security Operations Dashboard is the manager-focused analytical surface in RAPTOR. It aggregates inventory and pentest execution data into KPI cards, trend charts, workload views, and recent activity signals.",
+          "Use this page for coordination, prioritization, and governance review. It is not a replacement for detailed record editing or pentest authoring."
+        ]
+      },
+      {
+        "id": "data-and-refresh-contract",
+        "title": "Data and refresh contract",
+        "paragraphs": [
+          "Dashboard data is fetched from `GET /dashboard/data` under `view_dashboard` permission. The response includes records, pentest records, and IP source groups in one request to avoid cross-tab permission dependencies.",
+          "Frontend refresh behavior is both automatic and manual. Data refresh runs every 60 seconds and can also be triggered with the explicit refresh action in the header."
+        ],
+        "table": {
+          "columns": [
+            "Input set",
+            "Used for"
+          ],
+          "rows": [
+            [
+              "`records`",
+              "Asset count, scope change events, and inventory context."
+            ],
+            [
+              "`pentestRecords`",
+              "Coverage, risk, remediation, trends, and workload metrics."
+            ],
+            [
+              "`ipSources`",
+              "Source-group cardinality shown in total assets KPI subtitle."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "kpi-strip-overview",
+        "title": "KPI strip overview",
+        "paragraphs": [
+          "The dashboard top row contains eight KPI cards. Together they provide a compact posture summary for volume, coverage, risk, velocity, and remediation.",
+          "Cards should be interpreted as a system. Single-card movement without context can lead to incorrect prioritization."
+        ],
+        "table": {
+          "columns": [
+            "KPI label",
+            "Displayed value",
+            "Operational intent"
+          ],
+          "rows": [
+            [
+              "Total Assets",
+              "`totalAssets`",
+              "Current inventory size and source-group breadth."
+            ],
+            [
+              "Testing Coverage",
+              "`coveragePct%` with started/total subtitle",
+              "How much inventory has entered test lifecycle."
+            ],
+            [
+              "Open Risk Assets",
+              "`openRiskAssets`",
+              "Assets with unresolved vulnerability state."
+            ],
+            [
+              "Avg Test Cycle",
+              "`averageCycleDays` days",
+              "Execution throughput and process latency."
+            ],
+            [
+              "Started (30d)",
+              "`startedLast30d`",
+              "Recent initiation velocity."
+            ],
+            [
+              "Completed (30d)",
+              "`completedLast30d`",
+              "Recent closure velocity and fix-rate companion signal."
+            ],
+            [
+              "New Vuln Findings (30d)",
+              "`newDetectedVulns30d`",
+              "Incoming finding volume over recent window."
+            ],
+            [
+              "Fixed Assets",
+              "`fixedAssets`",
+              "Assets marked remediated in current dataset."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "visual-panels",
+        "title": "Visual panels and intent",
+        "paragraphs": [
+          "Trend charts and supporting cards are arranged to move from broad posture to actionable ownership context. Throughput and vulnerability trends are followed by recent changes, top-risk assets, tester workload, and execution health.",
+          "This layout allows managers to identify whether a movement is volume-related, risk-related, or assignment-related before drilling into Security or Records tabs."
+        ],
+        "table": {
+          "columns": [
+            "Panel",
+            "Primary question answered"
+          ],
+          "rows": [
+            [
+              "Test Throughput Trend",
+              "Are started and completed tests moving in a balanced direction?"
+            ],
+            [
+              "Vulnerability Trend",
+              "Is finding discovery outpacing resolution or stabilizing?"
+            ],
+            [
+              "Recent Changes",
+              "What meaningful events occurred in the last 30 days?"
+            ],
+            [
+              "Top Risk Assets",
+              "Which assets currently require fastest attention?"
+            ],
+            [
+              "Tester Workload",
+              "Where is active and open-risk load concentrated by assignee?"
+            ],
+            [
+              "Execution Health",
+              "How are coverage, fix rate, and in-progress ratio trending together?"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "manager-usage-pattern",
+        "title": "Manager usage pattern",
+        "paragraphs": [
+          "A practical use pattern is to review coverage and open risk first, then validate whether throughput and workload patterns support current remediation goals.",
+          "When anomalies appear, use deep links and filtered security views to confirm whether the issue is assignment bottleneck, data quality gap, or genuine risk increase."
+        ],
+        "related": [
+          {
+            "label": "Dashboards and Analytics: Chart and KPI Definitions",
+            "to": "/docs/dashboards-and-analytics/chart-and-kpi-definitions"
+          },
+          {
+            "label": "Dashboards and Analytics: Risk and Prioritization Workflows",
+            "to": "/docs/dashboards-and-analytics/risk-and-prioritization-workflows"
+          }
+        ]
+      }
+    ]
+  }
+}

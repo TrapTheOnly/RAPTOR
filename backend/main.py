@@ -39,6 +39,11 @@ from modules.session_policy import (
     initialize_session_tracking,
     session_has_expired
 )
+from modules.docs_portal import (
+    get_docs_access_matrix_for_user,
+    get_docs_manifest_for_user,
+    get_docs_page_for_user
+)
 from flask import Flask, request, jsonify, send_from_directory, session
 
 # ---------------------------------------------------------
@@ -2313,6 +2318,41 @@ def logout():
     """
     session.clear()
     return jsonify({"status": "logged_out"}), 200
+
+
+# ---------------------------------------------------------
+#! Documentation API Endpoints
+# ---------------------------------------------------------
+@app.route('/docs/manifest', methods=['GET'])
+@login_required_json
+def docs_manifest():
+    response, status_code = get_docs_manifest_for_user(
+        session.get('username'),
+        session.get('user_type')
+    )
+    return jsonify(response), status_code
+
+
+@app.route('/docs/content/<string:section_slug>/<string:page_slug>', methods=['GET'])
+@login_required_json
+def docs_page_content(section_slug, page_slug):
+    response, status_code = get_docs_page_for_user(
+        section_slug=section_slug,
+        page_slug=page_slug,
+        username=session.get('username'),
+        role=session.get('user_type')
+    )
+    return jsonify(response), status_code
+
+
+@app.route('/docs/access-matrix', methods=['GET'])
+@login_required_json
+def docs_access_matrix():
+    response, status_code = get_docs_access_matrix_for_user(
+        session.get('username'),
+        session.get('user_type')
+    )
+    return jsonify(response), status_code
 
 # ---------------------------------------------------------
 #! Frontend Routes

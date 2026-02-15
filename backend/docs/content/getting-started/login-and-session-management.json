@@ -1,0 +1,111 @@
+{
+  "slug": "login-and-session-management",
+  "title": "Login and Session Management",
+  "audience": [
+    "All users",
+    "Admins"
+  ],
+  "summary": "Explains authentication, role-driven access, session behavior, and practical troubleshooting.",
+  "coverage": [
+    "Authentication and capability loading",
+    "Password reset required flow",
+    "Session warning and expiry behavior",
+    "Operational access troubleshooting baseline"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "RAPTOR performs server-validated session checks during active use. Unsaved edits can be lost when re-authentication is required."
+      ]
+    },
+    "sections": [
+      {
+        "id": "authentication-contract",
+        "title": "Authentication contract",
+        "paragraphs": [
+          "Authentication and authorization are enforced separately. Login establishes identity, while route visibility and action availability are derived from role plus effective permissions.",
+          "After login, RAPTOR loads session status and applies capability checks before rendering module navigation and page actions."
+        ]
+      },
+      {
+        "id": "first-access-reset",
+        "title": "First access and reset behavior",
+        "paragraphs": [
+          "Some accounts are provisioned with a reset-required state. In this state, RAPTOR routes users through password reset before granting normal navigation.",
+          "This prevents partial operational access under transitional credential state."
+        ]
+      },
+      {
+        "id": "session-lifecycle",
+        "title": "Session lifecycle",
+        "paragraphs": [
+          "RAPTOR tracks session validity continuously. A warning dialog appears before expiration and offers explicit continuation or logout paths."
+        ],
+        "table": {
+          "columns": [
+            "Event",
+            "Visible behavior",
+            "System effect"
+          ],
+          "rows": [
+            [
+              "Pre-expiry threshold",
+              "Warning dialog with `Stay logged in (+1h)` and `Log out`.",
+              "User confirms continuation or session termination."
+            ],
+            [
+              "Extension accepted",
+              "Dialog closes and work continues.",
+              "Server returns refreshed session timing."
+            ],
+            [
+              "Expired session detected",
+              "User is redirected to login.",
+              "Local auth state is cleared."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "logout-semantics",
+        "title": "Logout semantics",
+        "paragraphs": [
+          "Logout requests server-side session termination and always clears client-side auth state. Even when network failure occurs, local state is invalidated as a safety fallback."
+        ]
+      },
+      {
+        "id": "troubleshooting-pattern",
+        "title": "Troubleshooting pattern",
+        "paragraphs": [
+          "Most access issues are caused by expired sessions, missing permissions, or reset-required account state. Validate these conditions first before deeper diagnostics."
+        ],
+        "table": {
+          "columns": [
+            "Symptom",
+            "Likely cause",
+            "First check"
+          ],
+          "rows": [
+            [
+              "Repeated redirect to login",
+              "Session expiration or cookie policy mismatch.",
+              "Re-authenticate and validate browser cookie settings."
+            ],
+            [
+              "Missing module tab",
+              "Permission not granted to current account.",
+              "Compare role and optional permissions with expected profile."
+            ],
+            [
+              "Forced reset flow appears",
+              "Account flagged as reset required.",
+              "Complete reset flow or confirm user policy with admin."
+            ]
+          ]
+        }
+      }
+    ]
+  }
+}

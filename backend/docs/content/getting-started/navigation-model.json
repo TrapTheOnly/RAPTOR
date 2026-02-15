@@ -1,0 +1,99 @@
+{
+  "slug": "navigation-model",
+  "title": "Navigation Model",
+  "audience": [
+    "All users"
+  ],
+  "summary": "Documents route behavior, permission-driven visibility, and safe navigation patterns.",
+  "coverage": [
+    "Header navigation contract",
+    "Route map and permission gates",
+    "Deep-link operational handoff practices",
+    "Editing safety while navigating"
+  ],
+  "article": {
+    "sections": [
+      {
+        "id": "header-navigation",
+        "title": "Header navigation behavior",
+        "paragraphs": [
+          "The global header is the primary module switch. It only displays modules that the current session can open. This eliminates dead-end navigation and supports least-privilege operation.",
+          "The RAPTOR logo returns users to their role default route, which acts as a stable recovery point in deep workflows."
+        ]
+      },
+      {
+        "id": "route-map",
+        "title": "Route map",
+        "paragraphs": [
+          "Route contracts are stable and should be used for operational handoff links."
+        ],
+        "table": {
+          "columns": [
+            "Route",
+            "Purpose",
+            "Permission gate"
+          ],
+          "rows": [
+            [
+              "`/dashboard`",
+              "Operational and executive analytics.",
+              "`view_dashboard`"
+            ],
+            [
+              "`/records`",
+              "Inventory and metadata operations.",
+              "`view_records`"
+            ],
+            [
+              "`/records/record/:recordId`",
+              "Detailed record history view.",
+              "`view_record_details`"
+            ],
+            [
+              "`/pentest`",
+              "Security execution board.",
+              "`view_security_dashboard`"
+            ],
+            [
+              "`/pentest/record/:recordId`",
+              "Detailed pentest execution page.",
+              "`view_pentest_page`"
+            ],
+            [
+              "`/settings`",
+              "Configuration and governance controls.",
+              "`view_settings`"
+            ],
+            [
+              "`/docs/:sectionSlug/:pageSlug`",
+              "Documentation pages.",
+              "Logged-in session"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "deep-link-handoffs",
+        "title": "Deep links and handoffs",
+        "paragraphs": [
+          "Use deep links for reviews, triage, and cross-team handoffs. A direct object route reduces ambiguity and preserves context during escalation and QA loops."
+        ]
+      },
+      {
+        "id": "navigation-safety",
+        "title": "Navigation safety during edits",
+        "paragraphs": [
+          "Complete save operations before switching routes. Session revalidation can force redirects and interrupt unsaved forms.",
+          "Avoid editing the same record in multiple tabs under the same account. Parallel tab state is a common source of stale edits."
+        ],
+        "tip": {
+          "variant": "tip",
+          "title": "TIP",
+          "paragraphs": [
+            "For operational reviews, start from `Dashboard` and drill into `Records` or `Security` only when a KPI requires root-cause analysis."
+          ]
+        }
+      }
+    ]
+  }
+}

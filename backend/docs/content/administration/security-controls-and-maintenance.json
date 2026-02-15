@@ -1,0 +1,218 @@
+{
+  "slug": "security-controls-and-maintenance",
+  "title": "Security Controls and Maintenance",
+  "audience": [
+    "Admins"
+  ],
+  "summary": "Explains maintenance mode, platform security controls, and sensitive administrative actions.",
+  "coverage": [
+    "Maintenance toggles and operational effect",
+    "Security hardening controls and defaults",
+    "Reset pentest data safeguards",
+    "Admin-only emergency procedures"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "The pentest reset operation is destructive for all non-open-vulnerability pentest rows and associated report references. Export summary data before execution."
+      ]
+    },
+    "sections": [
+      {
+        "id": "security-control-surface",
+        "title": "Security control surface",
+        "paragraphs": [
+          "The security and maintenance area is limited to admin sessions and is additionally blocked when reset-required state is active. This prevents sensitive operations under transitional credential state.",
+          "Administrative controls are implemented as explicit endpoints with server-side validation and audit-friendly response payloads."
+        ],
+        "table": {
+          "columns": [
+            "Control",
+            "Endpoint",
+            "Gate",
+            "Operational purpose"
+          ],
+          "rows": [
+            [
+              "Admin password rotation",
+              "`POST /change-password`",
+              "`admin_required`",
+              "Rotate privileged credentials under policy checks."
+            ],
+            [
+              "Manual ingestion update",
+              "`POST /manual-update`",
+              "`admin_required`",
+              "Trigger zone parsing and records refresh on demand."
+            ],
+            [
+              "Pentest progress reset",
+              "`POST /pentest/reset-keep-open`",
+              "`admin_required`",
+              "Clear pentest progress except unresolved vulnerabilities."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "password-policy-and-rotation-flow",
+        "title": "Password policy and rotation flow",
+        "paragraphs": [
+          "Admin password changes enforce length and common-password restrictions and reject passwords containing the username. New password must differ from the current value.",
+          "The UI enforces confirmation matching before request submission, while backend repeats validation to guarantee policy integrity."
+        ],
+        "table": {
+          "columns": [
+            "Policy rule",
+            "Constraint",
+            "Enforced by"
+          ],
+          "rows": [
+            [
+              "Minimum length",
+              "`>= 12` characters",
+              "Client hint and backend `validate_password_nist`."
+            ],
+            [
+              "Maximum length",
+              "`<= 64` characters",
+              "Client hint and backend `validate_password_nist`."
+            ],
+            [
+              "Common password block",
+              "Known weak password set rejected",
+              "Client and backend common password set."
+            ],
+            [
+              "Username inclusion block",
+              "Password cannot include username",
+              "Backend `validate_password_nist`."
+            ],
+            [
+              "Password reuse block",
+              "New value must differ from current or temporary password",
+              "Backend change and reset handlers."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "manual-update-operation",
+        "title": "Manual update operation",
+        "paragraphs": [
+          "Manual update calls `update_data()` and refreshes records from configured zone sources. Use this when automation cadence is insufficient for urgent inventory refresh.",
+          "A successful call returns `Records updated successfully.`. Failure returns an error payload and requires log review before retry."
+        ],
+        "orderedList": [
+          "Open `Maintenance` and click `Run Update`.",
+          "Wait for completion message and progress bar to clear.",
+          "Reopen Records dashboard and validate recent changes in source and status fields.",
+          "If failure occurs, inspect backend logs and retry only after root cause is addressed."
+        ]
+      },
+      {
+        "id": "pentest-reset-guardrails-and-effects",
+        "title": "Pentest reset guardrails and data effects",
+        "paragraphs": [
+          "Reset requires two independent confirmations: checkbox approval and exact phrase match `RESET ALL BUT OPEN VULNERABILITIES`. Requests without both are rejected with `400`.",
+          "Rows are preserved only when `vulnerable=1` and `vulnerability_fixed=0`. All other pentest rows are removed, and both manual and generated report files are deleted when present."
+        ],
+        "table": {
+          "columns": [
+            "Data class",
+            "Preserved",
+            "Reset behavior"
+          ],
+          "rows": [
+            [
+              "Open unresolved vulnerabilities",
+              "Yes",
+              "Rows with `vulnerable=1` and `vulnerability_fixed=0` remain in `pentest_data`."
+            ],
+            [
+              "Other pentest rows",
+              "No",
+              "Rows are deleted from `pentest_data`."
+            ],
+            [
+              "Manual report files",
+              "Conditional",
+              "Deleted for rows being reset when `report_file` exists."
+            ],
+            [
+              "Generated report files",
+              "Conditional",
+              "Deleted for rows being reset when `generated_report_file` exists."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "reset-summary-and-csv-interpretation",
+        "title": "Reset summary and CSV interpretation",
+        "paragraphs": [
+          "Before reset, the dialog loads summary data from `GET /pentest/records` and can export a CSV snapshot. This snapshot should be retained as a pre-reset evidence artifact.",
+          "After reset, backend returns a stats object that should be reviewed and archived in change notes."
+        ],
+        "table": {
+          "columns": [
+            "Stat field",
+            "Meaning"
+          ],
+          "rows": [
+            [
+              "`total_reset`",
+              "Number of `pentest_data` rows deleted by the reset operation."
+            ],
+            [
+              "`remaining_open`",
+              "Number of unresolved vulnerability rows preserved."
+            ],
+            [
+              "`reports_deleted`",
+              "Manual report files deleted."
+            ],
+            [
+              "`report_delete_errors`",
+              "Manual report file delete failures."
+            ],
+            [
+              "`generated_reports_deleted`",
+              "Generated report files deleted."
+            ],
+            [
+              "`generated_report_delete_errors`",
+              "Generated report file delete failures."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "post-maintenance-validation",
+        "title": "Post-maintenance validation checklist",
+        "paragraphs": [
+          "Always validate security and maintenance actions immediately after completion to detect partial failures early and preserve operational confidence."
+        ],
+        "orderedList": [
+          "Confirm affected users can still authenticate according to policy.",
+          "Validate section visibility for at least one admin and one manager account.",
+          "Verify pentest dashboard counts match expected preserved-open-vulnerability totals after reset.",
+          "Confirm report download paths for preserved records are intact.",
+          "Attach reset summary and CSV snapshot to the change record."
+        ],
+        "related": [
+          {
+            "label": "Dashboards and Analytics: Executive Dashboard",
+            "to": "/docs/dashboards-and-analytics/executive-dashboard"
+          },
+          {
+            "label": "Operations and Governance: Audit and Troubleshooting",
+            "to": "/docs/operations-and-governance/audit-and-troubleshooting"
+          }
+        ]
+      }
+    ]
+  }
+}

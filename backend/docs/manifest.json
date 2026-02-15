@@ -1,0 +1,605 @@
+{
+  "sections": [
+    {
+      "slug": "getting-started",
+      "title": "Getting Started",
+      "description": "Essential setup and navigation fundamentals for all users.",
+      "pages": [
+        {
+          "slug": "platform-overview",
+          "title": "Platform Overview",
+          "audience": [
+            "All users"
+          ],
+          "summary": "Defines RAPTOR scope, module boundaries, and the baseline operating model.",
+          "coverage": [
+            "Platform scope and intended usage model",
+            "Operational domains and outputs",
+            "Core entities and ownership expectations",
+            "Execution baseline and data quality standards"
+          ],
+          "access": {}
+        },
+        {
+          "slug": "login-and-session-management",
+          "title": "Login and Session Management",
+          "audience": [
+            "All users",
+            "Admins"
+          ],
+          "summary": "Explains authentication, role-driven access, session behavior, and practical troubleshooting.",
+          "coverage": [
+            "Authentication and capability loading",
+            "Password reset required flow",
+            "Session warning and expiry behavior",
+            "Operational access troubleshooting baseline"
+          ],
+          "access": {}
+        },
+        {
+          "slug": "navigation-model",
+          "title": "Navigation Model",
+          "audience": [
+            "All users"
+          ],
+          "summary": "Documents route behavior, permission-driven visibility, and safe navigation patterns.",
+          "coverage": [
+            "Header navigation contract",
+            "Route map and permission gates",
+            "Deep-link operational handoff practices",
+            "Editing safety while navigating"
+          ],
+          "access": {}
+        },
+        {
+          "slug": "roles-and-capability-matrix",
+          "title": "Roles and Capability Matrix",
+          "audience": [
+            "All users",
+            "Admins"
+          ],
+          "summary": "Details role defaults, optional permission extensions, and capability evaluation order.",
+          "coverage": [
+            "Role-level operational emphasis",
+            "Permission extension model",
+            "Effective capability evaluation order",
+            "Governance approach for access control"
+          ],
+          "access": {}
+        }
+      ]
+    },
+    {
+      "slug": "records-management",
+      "title": "Record Management",
+      "description": "Operational workflows for inventory lifecycle and ownership accuracy.",
+      "pages": [
+        {
+          "slug": "records-dashboard-overview",
+          "title": "Records Dashboard Overview",
+          "audience": [
+            "Users",
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Defines inventory semantics, grouping behavior, and record card interpretation for daily operations.",
+          "coverage": [
+            "Record grouping by application",
+            "Record card fields and status signals",
+            "Data freshness and sort logic",
+            "When to use grouped vs flat list view"
+          ],
+          "access": {
+            "require_any": [
+              "view_records"
+            ]
+          }
+        },
+        {
+          "slug": "record-lifecycle-and-editing",
+          "title": "Record Lifecycle and Editing",
+          "audience": [
+            "Users",
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Documents edit lifecycle, field-level expectations, and safe change controls for record updates.",
+          "coverage": [
+            "Edit mode behavior and save/cancel flows",
+            "Open ports, maintainer, owner, and application fields",
+            "Deletion flow and safeguards",
+            "History and record detail drill-down"
+          ],
+          "access": {
+            "require_all": [
+              "view_records",
+              "modify_records"
+            ]
+          }
+        },
+        {
+          "slug": "application-management",
+          "title": "Application Management",
+          "audience": [
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Explains application catalog governance, create and rename patterns, and controlled retirement workflow.",
+          "coverage": [
+            "Manage Apps dialog workflow",
+            "Assigning records to applications",
+            "Meaning of application owner vs maintainer",
+            "Impact of app rename/delete on assigned records"
+          ],
+          "access": {
+            "require_any": [
+              "manage_apps"
+            ]
+          }
+        },
+        {
+          "slug": "search-filter-and-export-records",
+          "title": "Search, Filter, and Export",
+          "audience": [
+            "Users",
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Provides parameter-search patterns, suggestion behavior, and a precise CSV export contract.",
+          "coverage": [
+            "Filter chips and parameterized search syntax",
+            "Suggestion behavior and keyboard flow",
+            "Combining filters with free-text search",
+            "CSV export scope and expected output columns"
+          ],
+          "access": {
+            "require_any": [
+              "view_records"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "slug": "pentest-operations",
+      "title": "Pentest Operations",
+      "description": "Execution model for assignments, findings, checklists, and remediation tracking.",
+      "pages": [
+        {
+          "slug": "security-dashboard-overview",
+          "title": "Security Dashboard Overview",
+          "audience": [
+            "Pentesters",
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Defines board semantics, KPI formulas, and filtering workflows for daily pentest coordination.",
+          "coverage": [
+            "Pentest card model and status lifecycle",
+            "Risk-focused filters and grouping controls",
+            "Assignment indicators and unassigned queues",
+            "Data sources for pentest summary metrics"
+          ],
+          "access": {
+            "require_any": [
+              "view_security_dashboard"
+            ]
+          }
+        },
+        {
+          "slug": "pentest-record-lifecycle",
+          "title": "Pentest Record Lifecycle",
+          "audience": [
+            "Pentesters",
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Documents detailed workspace flow, lifecycle state handling, report management, and closure controls.",
+          "coverage": [
+            "Start/in-progress/completed transitions",
+            "Date fields and lifecycle consistency checks",
+            "Service desk linking and report state",
+            "When to reopen or close a security test"
+          ],
+          "access": {
+            "require_any": [
+              "view_pentest_page"
+            ]
+          }
+        },
+        {
+          "slug": "findings-and-checklist-management",
+          "title": "Findings and Checklist Management",
+          "audience": [
+            "Pentesters",
+            "Managers"
+          ],
+          "summary": "Covers checklist execution, CVSS-based findings, markdown evidence, and quality controls before save.",
+          "coverage": [
+            "Checklist execution and result recording",
+            "Finding severity and vulnerability flags",
+            "Markdown conventions for reproducibility",
+            "Quality controls before final report export"
+          ],
+          "access": {
+            "require_any": [
+              "view_pentest_page"
+            ]
+          }
+        },
+        {
+          "slug": "assignment-and-reassignment",
+          "title": "Assignment and Reassignment",
+          "audience": [
+            "Pentesters",
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Explains assignment controls, override permissions, and server-enforced ownership constraints.",
+          "coverage": [
+            "Permission-based assignment controls",
+            "Admin override and reassign behavior",
+            "Ownership expectations and handoff rules",
+            "Avoiding workflow collisions during parallel edits"
+          ],
+          "access": {
+            "require_any": [
+              "view_pentest_page"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "slug": "dashboards-and-analytics",
+      "title": "Dashboards and Analytics",
+      "description": "Definition reference for KPIs, charts, trends, and prioritization views.",
+      "pages": [
+        {
+          "slug": "executive-dashboard",
+          "title": "Executive Dashboard",
+          "audience": [
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Provides managerial posture view, KPI strip semantics, and panel-level interpretation guidance.",
+          "coverage": [
+            "KPI intent and update cadence",
+            "Coverage, throughput, and open-risk metrics",
+            "Recent activity and workload summaries",
+            "How managers should interpret trend changes"
+          ],
+          "access": {
+            "require_any": [
+              "view_dashboard"
+            ]
+          }
+        },
+        {
+          "slug": "chart-and-kpi-definitions",
+          "title": "Chart and KPI Definitions",
+          "audience": [
+            "Managers",
+            "Admins",
+            "Pentesters"
+          ],
+          "summary": "Defines exact formulas, bucket logic, event taxonomy, and scoring heuristics used by dashboard visuals.",
+          "coverage": [
+            "Metric formulas and denominator rules",
+            "Trend windows and aggregation logic",
+            "Data quality dependencies and staleness effects",
+            "Examples for common interpretation mistakes"
+          ],
+          "access": {
+            "require_any": [
+              "view_dashboard"
+            ]
+          }
+        },
+        {
+          "slug": "risk-and-prioritization-workflows",
+          "title": "Risk and Prioritization Workflows",
+          "audience": [
+            "Managers",
+            "Admins",
+            "Pentesters"
+          ],
+          "summary": "Describes repeatable triage flows that convert analytics signals into assignment and remediation actions.",
+          "coverage": [
+            "Top-risk asset triage process",
+            "Backlog balancing across testers",
+            "Remediation verification priorities",
+            "Operational review cadences"
+          ],
+          "access": {
+            "require_any": [
+              "view_dashboard"
+            ]
+          }
+        },
+        {
+          "slug": "activity-timelines-and-audit-signals",
+          "title": "Activity Timelines and Audit Signals",
+          "audience": [
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Explains event feed semantics, timeline rules, and how to use dashboard signals for audit traceability.",
+          "coverage": [
+            "Recent activity feed semantics",
+            "Detecting stalled records and overdue tests",
+            "Using history views for governance evidence",
+            "Escalation triggers and operational thresholds"
+          ],
+          "access": {
+            "require_any": [
+              "view_dashboard"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "slug": "reporting",
+      "title": "Reporting",
+      "description": "Template-driven reporting and evidence packaging for stakeholders.",
+      "pages": [
+        {
+          "slug": "report-generation-flow",
+          "title": "Report Generation Flow",
+          "audience": [
+            "Pentesters",
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Maps the report lifecycle from draft content to final PDF attachment and delivery readiness.",
+          "coverage": [
+            "Required inputs and pre-export checks",
+            "How findings, checklists, and metadata become report content",
+            "Draft/replace/delete report behavior",
+            "Versioning and verification practices"
+          ],
+          "access": {
+            "require_any": [
+              "export_pentests"
+            ]
+          }
+        },
+        {
+          "slug": "report-templates-and-branding",
+          "title": "Report Templates and Branding",
+          "audience": [
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Defines template schema, block rendering rules, branding controls, and governance lifecycle for reliable PDF output.",
+          "coverage": [
+            "Template sections and variable placeholders",
+            "Block composition and rendering behavior",
+            "Branding and document consistency controls",
+            "Template governance and change approval"
+          ],
+          "access": {
+            "require_any": [
+              "manage_report_templates"
+            ]
+          }
+        },
+        {
+          "slug": "distribution-and-sharing-controls",
+          "title": "Distribution and Sharing Controls",
+          "audience": [
+            "Managers",
+            "Admins"
+          ],
+          "summary": "Documents report distribution expectations, data handling rules, and cross-team handoff patterns.",
+          "coverage": [
+            "Internal vs external sharing considerations",
+            "Service desk linkage and tracking completeness",
+            "Data sensitivity handling for exported reports",
+            "Operational checklist before stakeholder sendout"
+          ],
+          "access": {
+            "require_any": [
+              "export_pentests",
+              "manage_report_templates"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "slug": "administration",
+      "title": "Administration",
+      "description": "Complete map of admin settings, controls, and maintenance responsibilities.",
+      "pages": [
+        {
+          "slug": "admin-settings-map",
+          "title": "Admin Settings Map",
+          "audience": [
+            "Admins",
+            "Managers"
+          ],
+          "summary": "Provides a full index of settings panels and what each control changes in system behavior.",
+          "coverage": [
+            "Settings navigation and section purpose",
+            "Safe order for initial configuration",
+            "Dependencies between settings groups",
+            "Rollback and change verification approach"
+          ],
+          "access": {
+            "require_any": [
+              "view_settings"
+            ]
+          }
+        },
+        {
+          "slug": "user-management-and-authentication",
+          "title": "User Management and Authentication",
+          "audience": [
+            "Admins"
+          ],
+          "summary": "Covers local/domain user flows, role assignment, auth modes, and account lifecycle operations.",
+          "coverage": [
+            "Create, edit, disable, and reset user access",
+            "Domain user onboarding and sync considerations",
+            "Auth type behavior and constraints",
+            "Role assignment governance"
+          ],
+          "access": {
+            "roles": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "slug": "security-controls-and-maintenance",
+          "title": "Security Controls and Maintenance",
+          "audience": [
+            "Admins"
+          ],
+          "summary": "Explains maintenance mode, platform security controls, and sensitive administrative actions.",
+          "coverage": [
+            "Maintenance toggles and operational effect",
+            "Security hardening controls and defaults",
+            "Reset pentest data safeguards",
+            "Admin-only emergency procedures"
+          ],
+          "access": {
+            "roles": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "slug": "customization-and-taxonomies",
+          "title": "Customization and Taxonomies",
+          "audience": [
+            "Admins",
+            "Managers"
+          ],
+          "summary": "Documents IP source management, vulnerability category setup, and checklist/template customization.",
+          "coverage": [
+            "Managing IP source groups and scope",
+            "Vulnerability category taxonomy design",
+            "Checklist template governance",
+            "Keeping taxonomy aligned with reporting outputs"
+          ],
+          "access": {
+            "require_any": [
+              "view_settings",
+              "manage_ip_sources",
+              "manage_vuln_categories",
+              "manage_report_templates"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "slug": "operations-and-governance",
+      "title": "Operations and Governance",
+      "description": "Runbook guidance for reliability, audits, and long-term platform operation.",
+      "pages": [
+        {
+          "slug": "permissions-reference",
+          "title": "Permissions Reference",
+          "audience": [
+            "Admins",
+            "Managers"
+          ],
+          "summary": "Single reference for permission keys, effective access behavior, and role fallback logic.",
+          "coverage": [
+            "Permission catalog and practical meaning",
+            "Role defaults vs explicit grants",
+            "How permission checks impact UI and APIs",
+            "Troubleshooting missing capability"
+          ],
+          "access": {
+            "require_any": [
+              "view_settings"
+            ]
+          }
+        },
+        {
+          "slug": "docs-access-matrix",
+          "title": "Documentation Access Matrix",
+          "audience": [
+            "Admins"
+          ],
+          "summary": "Live matrix of documentation visibility by role, including optional permission scenarios.",
+          "coverage": [
+            "Role-by-role docs visibility in current configuration",
+            "Impact of optional permission grants on page access",
+            "Page-level access rule interpretation",
+            "Verification workflow for docs confidentiality boundaries"
+          ],
+          "access": {
+            "roles": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "slug": "audit-and-troubleshooting",
+          "title": "Audit and Troubleshooting",
+          "audience": [
+            "Admins",
+            "Managers"
+          ],
+          "summary": "Provides methods to investigate anomalies, verify data health, and resolve common operational issues.",
+          "coverage": [
+            "First-response troubleshooting flow",
+            "Detecting inconsistent records or test states",
+            "Session and access issue triage",
+            "Audit evidence checklist"
+          ],
+          "access": {
+            "require_any": [
+              "view_settings"
+            ]
+          }
+        },
+        {
+          "slug": "data-retention-and-backup",
+          "title": "Data Retention and Backup",
+          "audience": [
+            "Admins"
+          ],
+          "summary": "Defines retention considerations for records, findings, reports, and supporting evidence data.",
+          "coverage": [
+            "Retention policy decision points",
+            "Backup scope and restore strategy",
+            "Data integrity checks after restore",
+            "Controlled cleanup and archival guidance"
+          ],
+          "access": {
+            "roles": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "slug": "onboarding-and-rollout-playbook",
+          "title": "Onboarding and Rollout Playbook",
+          "audience": [
+            "Admins",
+            "Managers"
+          ],
+          "summary": "Operational rollout guide for launching RAPTOR to new teams and scaling usage safely.",
+          "coverage": [
+            "Pilot rollout sequence",
+            "Training path by role",
+            "Baseline configuration checklist",
+            "Steady-state review and improvement loop"
+          ],
+          "access": {
+            "require_any": [
+              "view_settings"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

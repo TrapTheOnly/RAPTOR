@@ -1,0 +1,218 @@
+{
+  "slug": "chart-and-kpi-definitions",
+  "title": "Chart and KPI Definitions",
+  "audience": [
+    "Managers",
+    "Admins",
+    "Pentesters"
+  ],
+  "summary": "Defines exact formulas, bucket logic, event taxonomy, and scoring heuristics used by dashboard visuals.",
+  "coverage": [
+    "Metric formulas and denominator rules",
+    "Trend windows and aggregation logic",
+    "Data quality dependencies and staleness effects",
+    "Examples for common interpretation mistakes"
+  ],
+  "article": {
+    "sections": [
+      {
+        "id": "calculation-windows",
+        "title": "Calculation windows and limits",
+        "paragraphs": [
+          "Dashboard calculations use fixed windows and display limits to preserve comparability over time. Current defaults are 30 days for recent activity windows and 6 months for trend buckets.",
+          "Recent activity, top-risk assets, and tester workload lists are also capped to maintain readable visual density."
+        ],
+        "table": {
+          "columns": [
+            "Parameter",
+            "Current value"
+          ],
+          "rows": [
+            [
+              "Recent window days",
+              "`30`"
+            ],
+            [
+              "Trend month buckets",
+              "`6`"
+            ],
+            [
+              "Recent activity limit",
+              "`14` events"
+            ],
+            [
+              "Top risk limit",
+              "`8` assets"
+            ],
+            [
+              "Tester workload limit",
+              "`8` rows"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "kpi-formulas",
+        "title": "KPI formulas",
+        "paragraphs": [
+          "KPI values are computed from live record and pentest datasets. The formulas below match current frontend calculation logic."
+        ],
+        "table": {
+          "columns": [
+            "KPI",
+            "Formula",
+            "Notes"
+          ],
+          "rows": [
+            [
+              "`startedTests`",
+              "count where status is `In Progress` or `Completed`",
+              "Used in coverage percentage."
+            ],
+            [
+              "`coveragePct`",
+              "`round(startedTests / totalAssets * 100)`",
+              "Returns `0` when `totalAssets` is `0`."
+            ],
+            [
+              "`openRiskAssets`",
+              "count where `vulnerable=1` and `vulnerability_fixed!=1`",
+              "Primary open-risk asset metric."
+            ],
+            [
+              "`fixRatePct`",
+              "`round(fixedAssets / vulnerableAssets * 100)`",
+              "Returns `0` when no vulnerable assets exist."
+            ],
+            [
+              "`startedLast30d`",
+              "count with `test_start_date` within last 30 days",
+              "Time-based initiation signal."
+            ],
+            [
+              "`completedLast30d`",
+              "count completed with `test_end_date` in last 30 days",
+              "Time-based closure signal."
+            ],
+            [
+              "`averageCycleDays`",
+              "mean of `(end_date - start_date)` in days",
+              "Uses non-negative completed durations only."
+            ],
+            [
+              "`unresolvedVulnerabilityIndicators`",
+              "sum of vulnerability counts for non-fixed records",
+              "Can exceed asset count when records contain multiple findings."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "trend-series-definitions",
+        "title": "Trend series definitions",
+        "paragraphs": [
+          "Trend lines are monthly bucketed. Started and completed series track testing throughput. Detected and resolved series track vulnerability movement.",
+          "For vulnerability trend counts, RAPTOR uses parsed `vulnerabilities` arrays when available. If array data is absent and record is marked vulnerable, it contributes one indicator."
+        ],
+        "table": {
+          "columns": [
+            "Series",
+            "Bucket date source"
+          ],
+          "rows": [
+            [
+              "Started",
+              "`test_start_date`"
+            ],
+            [
+              "Completed",
+              "`test_end_date` where status is `Completed`"
+            ],
+            [
+              "Detected",
+              "`test_end_date` or fallback `test_start_date` for vulnerable records"
+            ],
+            [
+              "Resolved",
+              "`test_end_date` or fallback `test_start_date` where `vulnerability_fixed=1`"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "event-feed-definitions",
+        "title": "Recent changes event definitions",
+        "paragraphs": [
+          "Recent changes feed consolidates pentest lifecycle events and inventory scope updates. Event timestamps are rendered as relative age when recent, then compact date labels for older entries.",
+          "Event types are normalized into five categories so management review can quickly separate throughput progress from risk emergence and scope drift."
+        ],
+        "table": {
+          "columns": [
+            "Event type",
+            "Trigger condition"
+          ],
+          "rows": [
+            [
+              "`test_started`",
+              "`test_start_date` within last 30 days."
+            ],
+            [
+              "`test_completed`",
+              "status completed with `test_end_date` in last 30 days."
+            ],
+            [
+              "`vuln_detected`",
+              "record has vulnerability indicator with qualifying recent date."
+            ],
+            [
+              "`scope_updated`",
+              "record status is `updated` with recent modification timestamp."
+            ],
+            [
+              "`scope_missing`",
+              "record status is `missing` with recent modification timestamp."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "risk-and-workload-scoring",
+        "title": "Top-risk and workload scoring",
+        "paragraphs": [
+          "Top-risk assets use a composite score to prioritize attention. Workload rows are sorted first by open-risk burden, then by in-progress volume, then by total assignments.",
+          "These heuristics are intentionally simple and explainable so managers can validate prioritization without opaque scoring models."
+        ],
+        "table": {
+          "columns": [
+            "Model",
+            "Logic"
+          ],
+          "rows": [
+            [
+              "Top-risk score",
+              "`vulnerabilityCount*3 + openRisk*5 + inProgress*2 + completed*1`"
+            ],
+            [
+              "Workload sort order",
+              "Descending by `openRiskAssets`, then `inProgress`, then `total`."
+            ],
+            [
+              "App coverage",
+              "`testedApps / totalApps` using records with assigned app identity."
+            ],
+            [
+              "Unassigned asset count",
+              "Records lacking app assignment are tracked separately from app coverage denominator."
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Dashboards and Analytics: Activity Timelines and Audit Signals",
+            "to": "/docs/dashboards-and-analytics/activity-timelines-and-audit-signals"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,191 @@
+{
+  "slug": "admin-settings-map",
+  "title": "Admin Settings Map",
+  "audience": [
+    "Admins",
+    "Managers"
+  ],
+  "summary": "Provides a full index of settings panels and what each control changes in system behavior.",
+  "coverage": [
+    "Settings navigation and section purpose",
+    "Safe order for initial configuration",
+    "Dependencies between settings groups",
+    "Rollback and change verification approach"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Administration settings directly change authorization, taxonomy, and workflow behavior. Run these changes with explicit change control and verification."
+      ]
+    },
+    "sections": [
+      {
+        "id": "admin-scope-and-access",
+        "title": "Administration scope and access model",
+        "paragraphs": [
+          "The administration workspace is a control plane for user access, platform taxonomy, template governance, and maintenance actions. It is exposed through `Settings` and section visibility is computed per session using role plus effective permissions.",
+          "A section can be hidden in the UI even when related APIs exist, so operational runbooks should treat the UI visibility model as the primary control boundary for administrators and managers."
+        ]
+      },
+      {
+        "id": "section-visibility-matrix",
+        "title": "Section visibility matrix",
+        "paragraphs": [
+          "Each settings panel has a distinct permission gate and operational data scope."
+        ],
+        "table": {
+          "columns": [
+            "Section",
+            "Visibility gate",
+            "Primary data objects",
+            "Operational effect"
+          ],
+          "rows": [
+            [
+              "User Management",
+              "`admin` session only",
+              "`allowed_users`",
+              "Provision LDAP and local users, update role and optional permissions, delete accounts."
+            ],
+            [
+              "Security",
+              "`admin` session only",
+              "`admin_users`",
+              "Rotate privileged admin password under policy checks."
+            ],
+            [
+              "IP Sources",
+              "`manage_ip_sources`",
+              "`ip_sources`, `records.source`",
+              "Map IP addresses to source groups and synchronize matching records."
+            ],
+            [
+              "Vulnerability Categories",
+              "`manage_vuln_categories`",
+              "`vuln_categories`",
+              "Control category taxonomy available for pentest finding classification."
+            ],
+            [
+              "Checklist Templates",
+              "`admin` session only",
+              "`service_checklists`",
+              "Manage checklist definitions, auto-port mapping, enabled state, and canonical reset."
+            ],
+            [
+              "Report Templates",
+              "`manage_report_templates`",
+              "`report_templates`",
+              "Manage PDF template catalog, template blocks, and enabled state for generation."
+            ],
+            [
+              "Maintenance",
+              "`admin` session only",
+              "Ingestion pipeline and `pentest_data`",
+              "Run manual ingestion update and guarded pentest reset operations."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "navigation-and-subpages",
+        "title": "Navigation and subsection behavior",
+        "paragraphs": [
+          "The left settings drawer is stateful and supports subsection expansion for user workflows and report template selection. This keeps repeated admin flows on stable routes without forcing context switches.",
+          "User Management is split into three purpose-built subpages. Report Templates adds a `New Template` entry and a direct entry for each template, including disabled templates that are still manageable by authorized users."
+        ],
+        "table": {
+          "columns": [
+            "Drawer section",
+            "Sub-navigation",
+            "When to use"
+          ],
+          "rows": [
+            [
+              "User Management",
+              "`Existing Users`, `Add LDAP Users`, `Add Local Users`",
+              "Use existing users for edits and deletion, LDAP for directory onboarding, local for non-directory accounts."
+            ],
+            [
+              "Report Templates",
+              "`New Template` plus template-specific entries",
+              "Use new template to create a template from defaults and template entries for targeted edits or reset."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "first-time-setup-sequence",
+        "title": "Recommended first-time setup sequence",
+        "paragraphs": [
+          "A fixed setup sequence avoids hidden dependencies between permissions, taxonomy, and generated outputs."
+        ],
+        "orderedList": [
+          "Create or verify user accounts and assign baseline roles.",
+          "Apply optional permissions only where needed for route or action access.",
+          "Configure IP Sources so imported records inherit meaningful source labels.",
+          "Review vulnerability categories before active testing starts.",
+          "Validate checklist and report templates, then enable only approved variants.",
+          "Run a manual update and a test report generation to confirm end-to-end behavior."
+        ]
+      },
+      {
+        "id": "configuration-dependencies",
+        "title": "Configuration dependencies to track",
+        "table": {
+          "columns": [
+            "Change area",
+            "Depends on",
+            "Operational dependency"
+          ],
+          "rows": [
+            [
+              "User role changes",
+              "Role defaults plus optional permission model",
+              "Role updates can hide sections and action buttons immediately after save."
+            ],
+            [
+              "IP source mapping updates",
+              "Existing `records.ip_address` values",
+              "Adding or deleting mapping updates matching records and sets `status` to `updated`."
+            ],
+            [
+              "Vulnerability category updates",
+              "Pentest finding categorization workflow",
+              "New categories become available immediately for future finding entries."
+            ],
+            [
+              "Checklist template updates",
+              "Open ports parsing and checklist auto-enable logic",
+              "Template enablement and `auto_ports` can change checklist scope on pentest records."
+            ],
+            [
+              "Report template updates",
+              "Generated report pipeline and enabled template list",
+              "Template enabled state controls availability in report generation selector."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "change-verification-and-rollback",
+        "title": "Change verification and rollback pattern",
+        "paragraphs": [
+          "After any administration change, verify both UI and API outcomes before closing the change. For sensitive updates, preserve before-and-after snapshots of affected entities.",
+          "Rollback should be explicit. Revert permissions by role and optional grants, restore template state using canonical reset for system templates, and reapply prior taxonomy values when operationally required."
+        ],
+        "related": [
+          {
+            "label": "Administration: User Management and Authentication",
+            "to": "/docs/administration/user-management-and-authentication"
+          },
+          {
+            "label": "Administration: Customization and Taxonomies",
+            "to": "/docs/administration/customization-and-taxonomies"
+          }
+        ]
+      }
+    ]
+  }
+}

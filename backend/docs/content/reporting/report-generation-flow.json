@@ -1,0 +1,179 @@
+{
+  "slug": "report-generation-flow",
+  "title": "Report Generation Flow",
+  "audience": [
+    "Pentesters",
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Maps the report lifecycle from draft content to final PDF attachment and delivery readiness.",
+  "coverage": [
+    "Required inputs and pre-export checks",
+    "How findings, checklists, and metadata become report content",
+    "Draft/replace/delete report behavior",
+    "Versioning and verification practices"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Generated reports are built from data already saved in the database. Unsaved edits in the current browser session are not included in the PDF."
+      ]
+    },
+    "sections": [
+      {
+        "id": "flow-objective",
+        "title": "Flow objective",
+        "paragraphs": [
+          "RAPTOR supports two report tracks for each pentest record. The generated track builds a structured PDF from report templates and current pentest data. The manual track stores an uploaded PDF file as a record attachment.",
+          "Teams typically use generated reports for repeatable operational handoff and governance review, then use manual uploads only when an external document must be attached exactly as provided."
+        ]
+      },
+      {
+        "id": "generation-prerequisites",
+        "title": "Generation prerequisites and gates",
+        "paragraphs": [
+          "Report generation is permission-gated and record-gated. Every request is validated for role capability and assignment access before PDF creation starts."
+        ],
+        "table": {
+          "columns": [
+            "Requirement",
+            "Validation source",
+            "Failure behavior"
+          ],
+          "rows": [
+            [
+              "User has `export_pentests`",
+              "`@permission_required('export_pentests')` on `POST /pentest/:id/generate-report`",
+              "Request is rejected with `403 Unauthorized access`."
+            ],
+            [
+              "Record-level access policy passes",
+              "`enforce_pentest_record_access()`",
+              "Request is rejected with `403` and assignment-specific message."
+            ],
+            [
+              "Target record exists",
+              "`get_record_details_internal(record_id)`",
+              "Request returns `404 Record not found`."
+            ],
+            [
+              "Pentest data exists",
+              "`get_pentest_data_internal(record_id)`",
+              "Request returns `404 Pentest data not found`."
+            ],
+            [
+              "Template id is valid and enabled",
+              "`report_templates` lookup + enabled checks",
+              "Request returns `400` or `404` depending on failure cause."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "generation-pipeline",
+        "title": "How report content is assembled",
+        "paragraphs": [
+          "The PDF renderer builds a report model from record metadata, pentest lifecycle fields, vulnerability payload, checklist states, and open ports. It then resolves placeholder tokens and renders template blocks in order.",
+          "Checklist coverage is derived from selected checklists plus auto-enabled templates triggered by open ports. Vulnerability severity is derived from CVSS base score and used in both metrics and chart output."
+        ],
+        "table": {
+          "columns": [
+            "Data source",
+            "Used in output",
+            "Notes"
+          ],
+          "rows": [
+            [
+              "`records.description`",
+              "`markdown` block when field is `description`",
+              "Supports headings, lists, inline code, links, and embedded pentest images."
+            ],
+            [
+              "`pentest_data.notes`",
+              "`markdown` block when field is `notes`",
+              "Common location for analyst narrative and remediation context."
+            ],
+            [
+              "`pentest_data.open_ports`",
+              "`open_ports` block and metrics",
+              "Ports are normalized and mapped to likely service names."
+            ],
+            [
+              "`pentest_data.checklist_states` + enabled templates",
+              "`checklists` block and checklist metrics",
+              "Completion, irrelevant, and unstarted counts are computed per template."
+            ],
+            [
+              "`pentest_data.vulnerabilities`",
+              "`vulnerabilities` block, severity chart, risk metrics",
+              "Each finding includes severity, CVSS score, and optional detailed description."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "operator-sequence",
+        "title": "Operator sequence in Pentest Record",
+        "paragraphs": [
+          "Use the Overview tab in the pentest record workspace for report operations. The generated report flow is deterministic and should be followed in a fixed order to avoid stale output."
+        ],
+        "orderedList": [
+          "Update status, vulnerability flags, dates, notes, checklist states, and findings.",
+          "Click `Save Progress` to persist the latest record state.",
+          "Choose a template from `Report Template` in `Generated Report`.",
+          "Click `Generate Report` and wait for success confirmation.",
+          "Validate `Last generated` timestamp and use `Download Generated` for review or distribution."
+        ],
+        "tip": {
+          "variant": "tip",
+          "title": "TIP",
+          "paragraphs": [
+            "If the generated report does not reflect your latest edits, save again and regenerate. Generation always reads persisted state, not unsaved editor state."
+          ]
+        }
+      },
+      {
+        "id": "file-lifecycle",
+        "title": "File lifecycle and replacement behavior",
+        "paragraphs": [
+          "Generated and manual report files are stored separately. Regenerating replaces the generated artifact pointer and attempts cleanup of the previous generated file. Manual PDF upload updates the manual `report_file` pointer when the record is saved.",
+          "A record can hold both files at the same time. Download actions are separate so teams can compare a template-generated package with an externally authored PDF when required."
+        ],
+        "table": {
+          "columns": [
+            "Artifact",
+            "Write path",
+            "Read path",
+            "Delete path"
+          ],
+          "rows": [
+            [
+              "Generated PDF",
+              "`POST /pentest/:id/generate-report`",
+              "`GET /pentest/:id/generated-report`",
+              "`DELETE /pentest/:id/generated-report`"
+            ],
+            [
+              "Manual PDF",
+              "`POST /pentest/:id` with multipart `report`",
+              "`GET /pentest/:id/report`",
+              "`DELETE /pentest/:id/report`"
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Reporting: Report Templates and Branding",
+            "to": "/docs/reporting/report-templates-and-branding"
+          },
+          {
+            "label": "Reporting: Distribution and Sharing Controls",
+            "to": "/docs/reporting/distribution-and-sharing-controls"
+          }
+        ]
+      }
+    ]
+  }
+}

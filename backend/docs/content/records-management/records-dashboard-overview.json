@@ -1,0 +1,142 @@
+{
+  "slug": "records-dashboard-overview",
+  "title": "Records Dashboard Overview",
+  "audience": [
+    "Users",
+    "Managers",
+    "Admins"
+  ],
+  "summary": "Defines inventory semantics, grouping behavior, and record card interpretation for daily operations.",
+  "coverage": [
+    "Record grouping by application",
+    "Record card fields and status signals",
+    "Data freshness and sort logic",
+    "When to use grouped vs flat list view"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "Records is the source of truth for internet-facing inventory metadata in RAPTOR. Dashboard and security interpretations depend on record quality and ownership completeness."
+      ]
+    },
+    "sections": [
+      {
+        "id": "inventory-purpose",
+        "title": "Inventory purpose",
+        "paragraphs": [
+          "The Records dashboard is the operational inventory layer for all tracked internet-facing assets. It centralizes DNS asset metadata, ownership context, and application grouping so operators can maintain an accurate, actionable view of external exposure.",
+          "Use this page as the primary entry point for metadata validation, lifecycle cleanup, and ownership correction. Do not treat it as a static reference. It is designed for continuous operational maintenance."
+        ]
+      },
+      {
+        "id": "list-organization-model",
+        "title": "List organization model",
+        "paragraphs": [
+          "Records can be displayed in grouped mode or flat mode. Grouped mode organizes entries by application and is best for ownership and service-level review. Flat mode is best for rapid multi-record triage or broad search validation.",
+          "Sort order follows recent modification and creation timestamps so current operational changes appear first."
+        ],
+        "table": {
+          "columns": [
+            "View mode",
+            "Best use case",
+            "Operational advantage"
+          ],
+          "rows": [
+            [
+              "Group by application",
+              "Application-level ownership, governance review, release impact checks.",
+              "Shows service context and record concentration by app boundary."
+            ],
+            [
+              "Flat list",
+              "Large filter result triage and rapid metadata correction.",
+              "Reduces navigation overhead for high-volume edits."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "record-card-semantics",
+        "title": "Record card semantics",
+        "paragraphs": [
+          "Each record card represents a single DNS asset and exposes core metadata fields needed by operators, security teams, and managers. Expand the card to inspect details and edit permitted fields.",
+          "The record card is intentionally compact in collapsed state and operational in expanded state. This allows fast scanning while preserving full edit capability where needed."
+        ],
+        "table": {
+          "columns": [
+            "Field",
+            "Meaning",
+            "Why it matters operationally"
+          ],
+          "rows": [
+            [
+              "`domain`",
+              "Canonical DNS record identifier.",
+              "Primary key for handoff, audit, and testing context."
+            ],
+            [
+              "`source`",
+              "Asset source classification.",
+              "Indicates acquisition or environment lineage for governance."
+            ],
+            [
+              "`application_name`",
+              "App grouping label.",
+              "Connects technical assets to business service scope."
+            ],
+            [
+              "`application_owner`",
+              "Business accountability owner.",
+              "Defines who accepts risk and remediation priority."
+            ],
+            [
+              "`maintainer`",
+              "Operational maintainer contact.",
+              "Defines who executes technical change and remediation updates."
+            ],
+            [
+              "`open_ports`",
+              "Observed externally exposed ports.",
+              "Provides initial attack surface context for testing and review."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "operational-review-rhythm",
+        "title": "Operational review rhythm",
+        "paragraphs": [
+          "For healthy inventory operations, run record review as a repeatable cycle. Teams should validate newly changed records first, then resolve missing ownership and stale technical metadata.",
+          "A practical weekly sequence is to filter by recent changes, validate assignment fields, verify open ports formatting, and export exceptions for cross-team follow-up."
+        ],
+        "tip": {
+          "variant": "tip",
+          "title": "TIP",
+          "paragraphs": [
+            "When using grouped mode, collapse stable applications and focus only on groups with recent changes or ownership gaps to reduce review time."
+          ]
+        }
+      },
+      {
+        "id": "cross-module-impact",
+        "title": "Cross-module impact",
+        "paragraphs": [
+          "Record quality directly affects security workflow prioritization and dashboard interpretation. Missing or inaccurate ownership metadata weakens escalation and delays remediation decisions.",
+          "Treat record corrections as first-order risk reduction. The Security and Dashboard modules become materially more useful when Records data stays current."
+        ],
+        "related": [
+          {
+            "label": "Record Management: Record Lifecycle and Editing",
+            "to": "/docs/records-management/record-lifecycle-and-editing"
+          },
+          {
+            "label": "Dashboards and Analytics: Chart and KPI Definitions",
+            "to": "/docs/dashboards-and-analytics/chart-and-kpi-definitions"
+          }
+        ]
+      }
+    ]
+  }
+}
