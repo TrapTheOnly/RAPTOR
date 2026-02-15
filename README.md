@@ -41,7 +41,7 @@ scripts/
 
 ### 1) Create a root `.env`
 
-Create `C:\Users\Ismail\Documents\Codes\RAPTOR\.env` with at least:
+Create `RAPTOR_LOCATION\.env` with at least:
 
 ```env
 # Core app
@@ -167,14 +167,14 @@ docker compose -f docker-compose.prod.yml up -d --build
 ### Option A: Integrated local run (recommended in this repo)
 
 ```powershell
-cd C:\Users\Ismail\Documents\Codes\RAPTOR
+cd RAPTOR_LOCATION
 .\scripts\dev.ps1 -Install
 ```
 
 Prerequisite (first time only): create `backend/env` and install backend dependencies once.
 
 ```powershell
-cd C:\Users\Ismail\Documents\Codes\RAPTOR\backend
+cd RAPTOR_LOCATION\backend
 python -m venv env
 env\Scripts\activate
 pip install -r requirements.txt
@@ -187,7 +187,7 @@ Then run `.\scripts\dev.ps1 -Install`. The script installs/builds frontend, copi
 Backend:
 
 ```powershell
-cd C:\Users\Ismail\Documents\Codes\RAPTOR\backend
+cd RAPTOR_LOCATION\backend
 python -m venv env
 env\Scripts\activate
 pip install -r requirements.txt
@@ -197,7 +197,7 @@ python main.py
 Frontend-only dev server (UI work):
 
 ```powershell
-cd C:\Users\Ismail\Documents\Codes\RAPTOR\frontend
+cd RAPTOR_LOCATION\frontend
 npm install
 npm start
 ```
