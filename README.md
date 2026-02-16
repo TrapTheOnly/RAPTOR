@@ -15,7 +15,7 @@ RAPTOR (Reconnaissance, Assessment, Penetration Testing, Operations, and Reporti
 
 - Frontend: React 19 + MUI 6 (`frontend/`)
 - Backend: Flask (`backend/main.py` + `backend/modules/`)
-- Database: SQLite (`DATA_PATH/database.db`)
+- Database: PostgreSQL (runtime), with one-time SQLite migration support
 - Auth: Local admin + local users + LDAP/AD users
 - File/report storage: FTP service for uploaded/generated report assets
 - Packaging: Multi-stage Docker build with Compose for dev/prod
@@ -45,13 +45,13 @@ Create `RAPTOR_LOCATION\.env` with at least:
 
 ```env
 # Core app
-APP_PORT=3000
+APP_PORT=5000
 SECRET_KEY=replace-with-a-random-secret
 ADMIN_USERNAME=awadmin
-DB_BACKEND=sqlite
-# For PostgreSQL mode:
-# DB_BACKEND=postgres
-# DATABASE_URL=postgresql://user:password@postgres:5432/raptor
+DATABASE_URL=postgresql://user:password@postgres:5432/raptor
+POSTGRES_DB=raptor
+POSTGRES_USER=raptor
+POSTGRES_PASSWORD=replace-with-a-strong-password
 
 # Storage paths used by backend
 DATA_PATH=/appdata/data
@@ -72,7 +72,7 @@ LDAP_USER=svc_account@example.com
 LDAP_PASS=replace-me
 
 # FTP (used by pentest report/image storage)
-FTP_USER=dnsradar_ftp_user
+FTP_USER=raptor_ftp_user
 FTP_PASS=replace-me
 
 # TLS (needed when APP_PORT=5000 mode is used)
@@ -83,6 +83,8 @@ KEY_FILE=/certs/key.pem
 FAILED_LOGIN_ATTEMPT_LIMIT=5
 LOGIN_LOCKOUT_BASE_MINUTES=1
 LOGIN_LOCKOUT_MAX_MINUTES=0
+REQUIRE_MIGRATION_MARKER_IF_SQLITE=true
+SQLITE_MIGRATION_SOURCE=/appdata/data/database.db
 ```
 
 ### 2) Start the dev stack
@@ -94,32 +96,12 @@ docker compose -f docker-compose.dev.yml up -d --build
 Default dev access:
 
 - URL: `http://localhost:1337`
-- App container port mapping: `1337 -> APP_PORT` (commonly `3000` in dev)
+- App container port mapping: `1337 -> APP_PORT` (commonly `5000`)
 - SFTP sidecar: `localhost:2222`
 
-### 2.1) Enable PostgreSQL mode (migration in progress)
+### 2.1) One-time SQLite -> PostgreSQL data migration
 
-To start testing PostgreSQL backend compatibility:
-
-```env
-DB_BACKEND=postgres
-DATABASE_URL=postgresql://raptor:raptor@postgres:5432/raptor
-POSTGRES_DB=raptor
-POSTGRES_USER=raptor
-POSTGRES_PASSWORD=raptor
-```
-
-Start with the Postgres profile enabled:
-
-```bash
-docker compose -f docker-compose.dev.yml --profile postgres up -d --build
-```
-
-The app defaults to SQLite when `DB_BACKEND` is not set to `postgres`.
-
-### 2.2) One-time SQLite -> PostgreSQL data migration
-
-After the Postgres container is up and reachable, run:
+For legacy deployments that still have `DATA_PATH/database.db`, run migration once:
 
 ```bash
 python scripts/migrate_sqlite_to_postgres.py \
@@ -135,14 +117,18 @@ Useful flags:
 - `--data-only` copies rows only (assumes schema already exists).
 - `--skip-if-marked` skips work when `app_meta.sqlite_to_postgres_migrated_v1` exists.
 
-CI/CD production deploy (`main` branch) now runs this migration automatically via the one-shot
-`db-migrate` Compose service before starting `app` in Postgres mode.
+Both `docker-compose.dev.yml` and `docker-compose.prod.yml` run one-shot `db-migrate` and `db-verify`
+services before the app is started.
 
 The pipeline also runs a `db-verify` step (marker + row-count checks) and an app health check
 against `/session-status`; deployment fails automatically if either check fails.
 
 Important: the migration script is mounted only into the transient `db-migrate` container
 (`./scripts:/scripts:ro`) and is not part of the long-running app container runtime path.
+
+Runtime is PostgreSQL-only. If `DATABASE_URL` is missing, the backend exits at startup.
+If a legacy SQLite source file is detected at `SQLITE_MIGRATION_SOURCE` and migration marker
+`app_meta.sqlite_to_postgres_migrated_v1` is missing, startup is blocked until migration succeeds.
 
 ### 3) Initial admin credentials
 
@@ -160,7 +146,7 @@ Use:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-`docker-compose.prod.yml` maps host `1337` to container `5000` and expects TLS cert/key paths when running in HTTPS mode.
+`docker-compose.prod.yml` maps host `1337` to container `5000`, starts PostgreSQL + migration/verification services, and expects TLS cert/key paths when running in HTTPS mode.
 
 ## Local Development (Without Docker)
 
@@ -181,6 +167,7 @@ pip install -r requirements.txt
 ```
 
 Then run `.\scripts\dev.ps1 -Install`. The script installs/builds frontend, copies build output into `backend/static`, activates `backend/env`, then starts `python main.py`.
+Set `DATABASE_URL` in your environment before running backend locally.
 
 ### Option B: Manual split workflow
 
@@ -193,6 +180,8 @@ env\Scripts\activate
 pip install -r requirements.txt
 python main.py
 ```
+
+Set `DATABASE_URL` (and related Postgres credentials) in your shell or `.env` first.
 
 Frontend-only dev server (UI work):
 
@@ -263,7 +252,8 @@ Admin and taxonomy:
 ## Operations and Troubleshooting
 
 - App logs: `DATA_PATH/application.log`
-- Database: `DATA_PATH/database.db`
+- Runtime database: PostgreSQL (`DATABASE_URL`)
+- Legacy migration source (optional): `DATA_PATH/database.db`
 - Zone-file backups: `BACKUP_FOLDER/<domain>/...`
 - If no assets appear, verify `SHARED_PATH` contains valid `*_A_Records` files and run `POST /manual-update`.
 

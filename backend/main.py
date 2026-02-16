@@ -17,9 +17,10 @@ import threading
 import hashlib
 from flask_cors import CORS
 from datetime import timedelta
-from modules.db_backend import ensure_db_backend
+from modules.db_backend import ensure_db_backend, assert_migration_marker_if_sqlite_present
 
 ensure_db_backend()
+assert_migration_marker_if_sqlite_present()
 from modules.user import *
 from modules.admin import *
 from modules.offsec import *

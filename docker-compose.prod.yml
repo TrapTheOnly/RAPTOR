@@ -6,8 +6,8 @@ services:
       args:
         - http_proxy=${HTTP_PROXY}
         - https_proxy=${HTTP_PROXY}
-    image: dnsradar-prod
-    container_name: dnsradar-prod
+    image: raptor-prod
+    container_name: raptor-prod
     ports:
       - "1337:5000"
     networks:
@@ -21,8 +21,7 @@ services:
       - ENVIRONMENT=development
       - CORS_ORIGINS
       - UPDATE_TIME
-      - DB_BACKEND
-      - DATABASE_URL
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
       - DATA_PATH
       - SHARED_PATH
       - BACKUP_FOLDER
@@ -35,25 +34,34 @@ services:
       - APP_PORT
       - CERT_FILE
       - KEY_FILE
-      - FTP_USER
-      - FTP_PASS
-      - FTP_HOST=ftp 
+      - REQUIRE_MIGRATION_MARKER_IF_SQLITE=true
+      - SQLITE_MIGRATION_SOURCE=/appdata/database.db
+      - FTP_USER=${FTP_USER:?FTP_USER must be set}
+      - FTP_PASS=${FTP_PASS:?FTP_PASS must be set}
+      - FTP_HOST=ftp
     depends_on:
-      - ftp
+      ftp:
+        condition: service_started
+      postgres:
+        condition: service_started
+      db-migrate:
+        condition: service_completed_successfully
+      db-verify:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   ftp:
     image: akogut/docker-pyftpdlib
-    container_name: dnsradar-ftp-prod
+    container_name: raptor-ftp-prod
     volumes:
-      - ftp_volume:/ftp_root/dnsradar_ftp_user
+      - ftp_volume:/ftp_root/raptor_ftp_user
     environment:
-      - FTP_USER=${FTP_USER}
-      - FTP_PASS=${FTP_PASS}
+      - FTP_USER=${FTP_USER:?FTP_USER must be set}
+      - FTP_PASS=${FTP_PASS:?FTP_PASS must be set}
     command: [
       "python", "ftpd.py",
-      "--user", "${FTP_USER}",
-      "--password", "${FTP_PASS}"
+      "--user", "${FTP_USER:?FTP_USER must be set}",
+      "--password", "${FTP_PASS:?FTP_PASS must be set}"
     ]
     networks:
         - app_network
@@ -66,8 +74,8 @@ services:
       args:
         - DNS_SERVER_SSH_PUBKEY=${DNS_SERVER_SSH_PUBKEY}
         - http_proxy=${HTTP_PROXY}
-    image: dnsradar-sftp-prod
-    container_name: dnsradar-sftp-prod
+    image: raptor-sftp-prod
+    container_name: raptor-sftp-prod
     ports:
       - "2222:22"
     volumes:
@@ -76,12 +84,11 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: dnsradar-postgres-prod
-    profiles: ["postgres"]
+    container_name: raptor-postgres-prod
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-raptor}
-      - POSTGRES_USER=${POSTGRES_USER:-raptor}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-raptor}
+      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB must be set}
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER must be set}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     volumes:
       - postgres_data_volume:/var/lib/postgresql/data
     networks:
@@ -89,12 +96,12 @@ services:
     restart: unless-stopped
 
   db-migrate:
-    image: dnsradar-prod
-    profiles: ["postgres"]
+    image: raptor-prod
     depends_on:
-      - postgres
+      postgres:
+        condition: service_started
     environment:
-      - DATABASE_URL
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
     volumes:
       - db_and_backups_volume:/appdata
       - ./scripts:/scripts:ro
@@ -105,7 +112,7 @@ services:
         "--sqlite-path",
         "/appdata/data/database.db",
         "--postgres-url",
-        "${DATABASE_URL:-postgresql://raptor:raptor@postgres:5432/raptor}",
+        "${DATABASE_URL}",
         "--allow-missing-sqlite",
         "--skip-if-marked"
       ]
@@ -114,12 +121,14 @@ services:
     restart: "no"
 
   db-verify:
-    image: dnsradar-prod
-    profiles: ["postgres"]
+    image: raptor-prod
     depends_on:
-      - postgres
+      postgres:
+        condition: service_started
+      db-migrate:
+        condition: service_completed_successfully
     environment:
-      - DATABASE_URL
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
     volumes:
       - db_and_backups_volume:/appdata
       - ./scripts:/scripts:ro
@@ -130,7 +139,7 @@ services:
         "--sqlite-path",
         "/appdata/data/database.db",
         "--postgres-url",
-        "${DATABASE_URL:-postgresql://raptor:raptor@postgres:5432/raptor}",
+        "${DATABASE_URL}",
         "--allow-missing-sqlite",
         "--require-marker-if-sqlite",
         "--count-mode",

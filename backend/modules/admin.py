@@ -84,47 +84,46 @@ def validate_password_nist(password, username=None):
 
 def init_admin_db():
     """Initializes the admin database with a static admin user."""
-    if os.path.exists(DB_PATH):
-        with sqlite3.connect(DB_PATH) as conn:
-            c = conn.cursor()
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS admin_users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL UNIQUE,
-                    password TEXT NOT NULL,
-                    must_reset INTEGER NOT NULL DEFAULT 0
-                )
-            """)
-            # Ensure must_reset column exists for older DBs
-            c.execute("PRAGMA table_info(admin_users)")
-            columns = {row[1] for row in c.fetchall()}
-            if "must_reset" not in columns:
-                c.execute("ALTER TABLE admin_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS admin_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL,
+                must_reset INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        # Ensure must_reset column exists for older DBs
+        c.execute("PRAGMA table_info(admin_users)")
+        columns = {row[1] for row in c.fetchall()}
+        if "must_reset" not in columns:
+            c.execute("ALTER TABLE admin_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
 
-            static_username, static_password = ADMIN_USERNAME, secrets.token_urlsafe(16)
-            hashed_password = bcrypt.hashpw(static_password.encode(), bcrypt.gensalt())
-            c.execute("SELECT * FROM admin_users WHERE username = ?", (static_username,))
-            if c.fetchone() is None:
-                logger.info("no admin")
-                c.execute(
-                    "INSERT INTO admin_users (username, password, must_reset) VALUES (?, ?, 1)",
-                    (static_username, hashed_password)
+        static_username, static_password = ADMIN_USERNAME, secrets.token_urlsafe(16)
+        hashed_password = bcrypt.hashpw(static_password.encode(), bcrypt.gensalt())
+        c.execute("SELECT * FROM admin_users WHERE username = ?", (static_username,))
+        if c.fetchone() is None:
+            logger.info("no admin")
+            c.execute(
+                "INSERT INTO admin_users (username, password, must_reset) VALUES (?, ?, 1)",
+                (static_username, hashed_password)
+            )
+            credentials_path = _write_initial_admin_credentials(static_username, static_password)
+            if credentials_path:
+                logger.warning(
+                    "Created admin user '%s'. Initial password stored at '%s'.",
+                    static_username,
+                    credentials_path
                 )
-                credentials_path = _write_initial_admin_credentials(static_username, static_password)
-                if credentials_path:
-                    logger.warning(
-                        "Created admin user '%s'. Initial password stored at '%s'.",
-                        static_username,
-                        credentials_path
-                    )
-                else:
-                    logger.warning(
-                        "Created admin user '%s'. Initial password could not be stored to file.",
-                        static_username
-                    )
             else:
-                logger.info("Admin user already exists. Skipping creation.")
-            conn.commit()
+                logger.warning(
+                    "Created admin user '%s'. Initial password could not be stored to file.",
+                    static_username
+                )
+        else:
+            logger.info("Admin user already exists. Skipping creation.")
+        conn.commit()
 
 def admin_login(username, password):
     """Handles admin login by verifying credentials."""

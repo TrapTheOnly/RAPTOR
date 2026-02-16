@@ -38,8 +38,15 @@ deploy_dev:
   when: on_success
   script:
   - echo "Deploying DEV environment on callisto..."
+  - : "${DATABASE_URL:?DATABASE_URL must be set}"
+  - : "${POSTGRES_DB:?POSTGRES_DB must be set}"
+  - : "${POSTGRES_USER:?POSTGRES_USER must be set}"
+  - : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
   - docker compose -f $COMPOSE_FILE_DEV down || true
-  - docker compose -f $COMPOSE_FILE_DEV up -d
+  - docker compose -f $COMPOSE_FILE_DEV up -d postgres ftp sftp
+  - docker compose -f $COMPOSE_FILE_DEV run --rm db-migrate
+  - docker compose -f $COMPOSE_FILE_DEV run --rm db-verify
+  - docker compose -f $COMPOSE_FILE_DEV up -d app
   - echo "DEV environment is running."
   tags:
   - callisto
@@ -56,7 +63,7 @@ build_prod:
   - main
   script:
   - echo "Building Docker images for PROD..."
-  - docker compose -f $COMPOSE_FILE_PROD --profile postgres build
+  - docker compose -f $COMPOSE_FILE_PROD build
   - echo "Docker images built locally on kali01."
   tags:
   - prod-kali
@@ -68,16 +75,17 @@ deploy_prod:
   when: on_success
   script:
   - echo "Deploying PROD environment on kali01..."
-  - export DB_BACKEND=postgres
-  - export DATABASE_URL=${DATABASE_URL:-postgresql://raptor:raptor@postgres:5432/raptor}
-  - export POSTGRES_DB=${POSTGRES_DB:-raptor}
-  - export POSTGRES_USER=${POSTGRES_USER:-raptor}
-  - export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-raptor}
-  - docker compose -f $COMPOSE_FILE_PROD --profile postgres down || true
-  - docker compose -f $COMPOSE_FILE_PROD --profile postgres up -d postgres ftp sftp
-  - docker compose -f $COMPOSE_FILE_PROD --profile postgres run --rm db-migrate
-  - docker compose -f $COMPOSE_FILE_PROD --profile postgres run --rm db-verify
-  - docker compose -f $COMPOSE_FILE_PROD --profile postgres up -d app
+  - : "${DATABASE_URL:?DATABASE_URL must be set}"
+  - : "${POSTGRES_DB:?POSTGRES_DB must be set}"
+  - : "${POSTGRES_USER:?POSTGRES_USER must be set}"
+  - : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+  - : "${FTP_USER:?FTP_USER must be set}"
+  - : "${FTP_PASS:?FTP_PASS must be set}"
+  - docker compose -f $COMPOSE_FILE_PROD down || true
+  - docker compose -f $COMPOSE_FILE_PROD up -d postgres ftp sftp
+  - docker compose -f $COMPOSE_FILE_PROD run --rm db-migrate
+  - docker compose -f $COMPOSE_FILE_PROD run --rm db-verify
+  - docker compose -f $COMPOSE_FILE_PROD up -d app
   - |
     echo "Running application health check..."
     ok=0

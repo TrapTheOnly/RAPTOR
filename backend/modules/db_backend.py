@@ -5,43 +5,58 @@ import threading
 
 try:
     import psycopg2
-except Exception:  # pragma: no cover - optional dependency for sqlite-only mode
+except Exception:  # pragma: no cover - optional dependency for environments missing postgres libs
     psycopg2 = None
 
 
 _PATCH_LOCK = threading.Lock()
 _PATCHED = False
-
-
-def _db_backend_name():
-    return (os.getenv("DB_BACKEND", "sqlite") or "sqlite").strip().lower()
+MIGRATION_MARK_KEY = "sqlite_to_postgres_migrated_v1"
 
 
 def _database_url():
     return (os.getenv("DATABASE_URL", "") or "").strip()
 
 
-def using_postgres():
-    backend = _db_backend_name()
-    if backend == "postgres":
-        return True
-    if backend == "auto":
-        return bool(_database_url())
-    return False
+def _env_flag(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _sqlite_migration_source():
+    return (
+        os.getenv("SQLITE_MIGRATION_SOURCE", "/appdata/data/database.db")
+        or "/appdata/data/database.db"
+    ).strip()
+
+
+def _migration_mark_key():
+    return (os.getenv("SQLITE_MIGRATION_MARK_KEY", MIGRATION_MARK_KEY) or MIGRATION_MARK_KEY).strip()
+
+
+def _looks_like_sqlite_file(path):
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        if os.path.getsize(path) < 100:
+            return False
+        with open(path, "rb") as handle:
+            return handle.read(16) == b"SQLite format 3\x00"
+    except OSError:
+        return False
 
 
 def ensure_db_backend():
     """
-    Patch sqlite3.connect to route through PostgreSQL compatibility layer
-    when DB_BACKEND=postgres (or DB_BACKEND=auto with DATABASE_URL set).
+    Patch sqlite3.connect to route through PostgreSQL compatibility layer.
+    PostgreSQL is mandatory; the application no longer supports SQLite runtime mode.
     """
     global _PATCHED
 
-    if not using_postgres():
-        return False
-
     if not _database_url():
-        raise RuntimeError("DB_BACKEND is set to postgres but DATABASE_URL is empty.")
+        raise RuntimeError("DATABASE_URL is required. SQLite runtime mode is not supported.")
 
     if psycopg2 is None:
         raise RuntimeError(
@@ -56,6 +71,38 @@ def ensure_db_backend():
         sqlite3.connect = _postgres_connect  # type: ignore[assignment]
         _PATCHED = True
     return True
+
+
+def assert_migration_marker_if_sqlite_present():
+    """
+    Guard against accidentally starting against an empty PostgreSQL DB while
+    legacy SQLite data still exists but has not been migrated.
+    """
+    if not _env_flag("REQUIRE_MIGRATION_MARKER_IF_SQLITE", True):
+        return
+
+    sqlite_source = _sqlite_migration_source()
+    if not _looks_like_sqlite_file(sqlite_source):
+        return
+
+    mark_key = _migration_mark_key()
+    with psycopg2.connect(_database_url()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
+            )
+            conn.commit()
+            cur.execute("SELECT 1 FROM app_meta WHERE key = %s", (mark_key,))
+            if cur.fetchone() is None:
+                raise RuntimeError(
+                    "SQLite migration marker is missing in PostgreSQL while migration source "
+                    f"file exists at '{sqlite_source}'. Run migration before starting the app."
+                )
 
 
 def _postgres_connect(_database, *args, **kwargs):
@@ -394,4 +441,3 @@ def _maybe_add_returning_id(query, connection):
     if has_semicolon:
         stripped += ";"
     return stripped, True
-
