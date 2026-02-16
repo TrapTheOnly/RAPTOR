@@ -160,7 +160,14 @@ class SQLiteCompatCursor:
             self._connection,
         )
 
-        self._cursor.execute(transformed_query, transformed_params)
+        try:
+            self._cursor.execute(transformed_query, transformed_params)
+        except Exception as exc:
+            try:
+                self._connection.rollback()
+            except Exception:
+                pass
+            _raise_as_sqlite_error(exc)
 
         if capture_lastrowid:
             inserted = self._cursor.fetchone()
@@ -176,7 +183,14 @@ class SQLiteCompatCursor:
         transformed_query = _convert_qmark_placeholders(transformed_query)
         params_list = [_normalize_params(p) for p in seq_of_params]
 
-        self._cursor.executemany(transformed_query, params_list)
+        try:
+            self._cursor.executemany(transformed_query, params_list)
+        except Exception as exc:
+            try:
+                self._connection.rollback()
+            except Exception:
+                pass
+            _raise_as_sqlite_error(exc)
         return self
 
     def fetchone(self):
@@ -269,6 +283,23 @@ def _normalize_params(params):
     return params
 
 
+def _raise_as_sqlite_error(exc):
+    if psycopg2 is None:
+        raise exc
+    mapping = (
+        (psycopg2.IntegrityError, sqlite3.IntegrityError),
+        (psycopg2.OperationalError, sqlite3.OperationalError),
+        (psycopg2.ProgrammingError, sqlite3.ProgrammingError),
+        (psycopg2.DataError, sqlite3.DataError),
+        (psycopg2.InterfaceError, sqlite3.InterfaceError),
+        (psycopg2.DatabaseError, sqlite3.DatabaseError),
+    )
+    for source_exc, target_exc in mapping:
+        if isinstance(exc, source_exc):
+            raise target_exc(str(exc)) from exc
+    raise exc
+
+
 def _append_on_conflict_do_nothing(query):
     stripped = query.rstrip()
     has_semicolon = stripped.endswith(";")
@@ -282,6 +313,8 @@ def _append_on_conflict_do_nothing(query):
 
 def _transform_sqlite_query(query):
     transformed = query
+
+    transformed = re.sub(r"\bBLOB\b", "BYTEA", transformed, flags=re.IGNORECASE)
 
     transformed = re.sub(
         r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b",

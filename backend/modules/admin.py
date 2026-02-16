@@ -33,6 +33,40 @@ COMMON_PASSWORDS = {
 }
 
 
+def _normalize_password_hash(value):
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        return value.tobytes()
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    try:
+        return bytes(value)
+    except Exception:
+        return None
+
+
+def _admin_password_column_type(cursor):
+    cursor.execute("PRAGMA table_info(admin_users)")
+    rows = cursor.fetchall()
+    for row in rows:
+        if str(row[1]).strip().lower() == "password":
+            return str(row[2] or "").strip().lower()
+    return ""
+
+
+def _prepare_password_for_storage(password_hash, column_type):
+    if not password_hash:
+        return password_hash
+    if "text" in (column_type or ""):
+        return password_hash.decode("utf-8")
+    return password_hash
+
+
 def _write_initial_admin_credentials(username, password):
     """
     Persist bootstrap admin credentials to a local file with restrictive permissions.
@@ -90,13 +124,19 @@ def init_admin_db():
             CREATE TABLE IF NOT EXISTS admin_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
+                password BLOB NOT NULL,
                 must_reset INTEGER NOT NULL DEFAULT 0
             )
         """)
         # Ensure must_reset column exists for older DBs
         c.execute("PRAGMA table_info(admin_users)")
-        columns = {row[1] for row in c.fetchall()}
+        pragma_rows = c.fetchall()
+        columns = {row[1] for row in pragma_rows}
+        password_column_type = ""
+        for row in pragma_rows:
+            if str(row[1]).strip().lower() == "password":
+                password_column_type = str(row[2] or "").strip().lower()
+                break
         if "must_reset" not in columns:
             c.execute("ALTER TABLE admin_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
 
@@ -107,7 +147,10 @@ def init_admin_db():
             logger.info("no admin")
             c.execute(
                 "INSERT INTO admin_users (username, password, must_reset) VALUES (?, ?, 1)",
-                (static_username, hashed_password)
+                (
+                    static_username,
+                    _prepare_password_for_storage(hashed_password, password_column_type),
+                )
             )
             credentials_path = _write_initial_admin_credentials(static_username, static_password)
             if credentials_path:
@@ -132,7 +175,8 @@ def admin_login(username, password):
             c = conn.cursor()
             c.execute("SELECT password FROM admin_users WHERE username = ?", (username,))
             result = c.fetchone()
-            if result and bcrypt.checkpw(password.encode(), result[0]):
+            existing_hash = _normalize_password_hash(result[0]) if result else None
+            if existing_hash and bcrypt.checkpw(password.encode(), existing_hash):
                 return True
             return False
     except Exception as e:
@@ -159,7 +203,8 @@ def check_current_admin_password(current_password):
             c = conn.cursor()
             c.execute("SELECT password FROM admin_users WHERE username = ?", (ADMIN_USERNAME,))
             result = c.fetchone()
-            return bool(result and bcrypt.checkpw(current_password.encode(), result[0]))
+            existing_hash = _normalize_password_hash(result[0]) if result else None
+            return bool(existing_hash and bcrypt.checkpw(current_password.encode(), existing_hash))
     except Exception as e:
         logger.error(f"Error verifying current password: {e}")
         return False
@@ -178,12 +223,17 @@ def change_admin_password(current_password, new_password):
             result = c.fetchone()
             if not result:
                 return {"error": "Admin user not found."}, 404
-            if bcrypt.checkpw(new_password.encode(), result[0]):
+            existing_hash = _normalize_password_hash(result[0])
+            if existing_hash and bcrypt.checkpw(new_password.encode(), existing_hash):
                 return {"error": "New password must be different from the current password."}, 400
             hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+            password_column_type = _admin_password_column_type(c)
             c.execute(
                 "UPDATE admin_users SET password = ?, must_reset = 0 WHERE username = ?",
-                (hashed_password, ADMIN_USERNAME)
+                (
+                    _prepare_password_for_storage(hashed_password, password_column_type),
+                    ADMIN_USERNAME,
+                )
             )
             conn.commit()
         return {"message": "Password changed successfully."}, 200
@@ -203,12 +253,17 @@ def reset_admin_password(new_password):
             result = c.fetchone()
             if not result:
                 return {"error": "Admin user not found."}, 404
-            if bcrypt.checkpw(new_password.encode(), result[0]):
+            existing_hash = _normalize_password_hash(result[0])
+            if existing_hash and bcrypt.checkpw(new_password.encode(), existing_hash):
                 return {"error": "New password must be different from the temporary password."}, 400
             hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+            password_column_type = _admin_password_column_type(c)
             c.execute(
                 "UPDATE admin_users SET password = ?, must_reset = 0 WHERE username = ?",
-                (hashed_password, ADMIN_USERNAME)
+                (
+                    _prepare_password_for_storage(hashed_password, password_column_type),
+                    ADMIN_USERNAME,
+                )
             )
             if c.rowcount == 0:
                 return {"error": "Admin user not found."}, 404

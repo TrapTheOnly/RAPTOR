@@ -89,6 +89,23 @@ def parse_json_object():
     return data if isinstance(data, dict) else {}
 
 
+def normalize_password_hash(value):
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        return value.tobytes()
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    try:
+        return bytes(value)
+    except Exception:
+        return None
+
+
 def normalize_auth_key(username):
     return str(username or "").strip().lower()
 
@@ -1750,7 +1767,8 @@ def api_user_reset_password():
         if not result or not result[0]:
             conn.close()
             return jsonify({"error": "User not found."}), 404
-        if bcrypt.checkpw(new_password.encode(), result[0]):
+        existing_hash = normalize_password_hash(result[0])
+        if existing_hash and bcrypt.checkpw(new_password.encode(), existing_hash):
             conn.close()
             return jsonify({"error": "New password must be different from the temporary password."}), 400
         hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
@@ -2206,7 +2224,7 @@ def login():
     if user:
         user_role = user[1] if user[1] else 'user'
         auth_type = user[2] if user[2] else 'ldap'
-        password_hash = user[3]
+        password_hash = normalize_password_hash(user[3])
         must_reset = bool(user[4])
 
         if auth_type == 'local':

@@ -44,6 +44,28 @@ deploy_dev:
   - : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
   - docker compose -f $COMPOSE_FILE_DEV down || true
   - docker compose -f $COMPOSE_FILE_DEV up -d postgres ftp sftp app
+  - |
+    echo "Running DEV application health check..."
+    ok=0
+    for i in $(seq 1 30); do
+      code_https=$(curl -k -s -o /dev/null -w "%{http_code}" https://localhost:1337/session-status || true)
+      if [ "$code_https" = "200" ] || [ "$code_https" = "401" ]; then
+        echo "DEV health check passed over HTTPS with status $code_https"
+        ok=1
+        break
+      fi
+      code_http=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:1337/session-status || true)
+      if [ "$code_http" = "200" ] || [ "$code_http" = "401" ]; then
+        echo "DEV health check passed over HTTP with status $code_http"
+        ok=1
+        break
+      fi
+      sleep 2
+    done
+    if [ "$ok" -ne 1 ]; then
+      echo "DEV health check failed: /session-status did not return 200/401 in time"
+      exit 1
+    fi
   - echo "DEV environment is running."
   tags:
   - callisto
