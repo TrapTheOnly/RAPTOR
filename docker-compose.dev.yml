@@ -34,8 +34,6 @@ services:
       - APP_PORT
       - CERT_FILE
       - KEY_FILE
-      - REQUIRE_MIGRATION_MARKER_IF_SQLITE=true
-      - SQLITE_MIGRATION_SOURCE=/appdata/database.db
       - FTP_USER=${FTP_USER:-raptor_ftp_user}
       - FTP_PASS=${FTP_PASS:-raptor_ftp_pass}
       - FTP_HOST=ftp
@@ -44,10 +42,6 @@ services:
         condition: service_started
       postgres:
         condition: service_started
-      db-migrate:
-        condition: service_completed_successfully
-      db-verify:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   ftp:
@@ -97,60 +91,6 @@ services:
     networks:
       - app_network
     restart: unless-stopped
-
-  db-migrate:
-    image: raptor-dev
-    depends_on:
-      postgres:
-        condition: service_started
-    environment:
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
-    volumes:
-      - db_and_backups_volume:/appdata
-      - ./scripts:/scripts:ro
-    command:
-      [
-        "python",
-        "/scripts/migrate_sqlite_to_postgres.py",
-        "--sqlite-path",
-        "/appdata/database.db",
-        "--postgres-url",
-        "${DATABASE_URL}",
-        "--allow-missing-sqlite",
-        "--skip-if-marked"
-      ]
-    networks:
-      - app_network
-    restart: "no"
-
-  db-verify:
-    image: raptor-dev
-    depends_on:
-      postgres:
-        condition: service_started
-      db-migrate:
-        condition: service_completed_successfully
-    environment:
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
-    volumes:
-      - db_and_backups_volume:/appdata
-      - ./scripts:/scripts:ro
-    command:
-      [
-        "python",
-        "/scripts/verify_postgres_migration.py",
-        "--sqlite-path",
-        "/appdata/database.db",
-        "--postgres-url",
-        "${DATABASE_URL}",
-        "--allow-missing-sqlite",
-        "--require-marker-if-sqlite",
-        "--count-mode",
-        "ge"
-      ]
-    networks:
-      - app_network
-    restart: "no"
 
 volumes:
   db_and_backups_volume:

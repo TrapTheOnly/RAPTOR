@@ -43,10 +43,7 @@ deploy_dev:
   - : "${POSTGRES_USER:?POSTGRES_USER must be set}"
   - : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
   - docker compose -f $COMPOSE_FILE_DEV down || true
-  - docker compose -f $COMPOSE_FILE_DEV up -d postgres ftp sftp
-  - docker compose -f $COMPOSE_FILE_DEV run --rm db-migrate
-  - docker compose -f $COMPOSE_FILE_DEV run --rm db-verify
-  - docker compose -f $COMPOSE_FILE_DEV up -d app
+  - docker compose -f $COMPOSE_FILE_DEV up -d postgres ftp sftp app
   - echo "DEV environment is running."
   tags:
   - callisto
@@ -82,10 +79,7 @@ deploy_prod:
   - : "${FTP_USER:?FTP_USER must be set}"
   - : "${FTP_PASS:?FTP_PASS must be set}"
   - docker compose -f $COMPOSE_FILE_PROD down || true
-  - docker compose -f $COMPOSE_FILE_PROD up -d postgres ftp sftp
-  - docker compose -f $COMPOSE_FILE_PROD run --rm db-migrate
-  - docker compose -f $COMPOSE_FILE_PROD run --rm db-verify
-  - docker compose -f $COMPOSE_FILE_PROD up -d app
+  - docker compose -f $COMPOSE_FILE_PROD up -d postgres ftp sftp app
   - |
     echo "Running application health check..."
     ok=0

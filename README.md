@@ -83,8 +83,6 @@ KEY_FILE=/certs/key.pem
 FAILED_LOGIN_ATTEMPT_LIMIT=5
 LOGIN_LOCKOUT_BASE_MINUTES=1
 LOGIN_LOCKOUT_MAX_MINUTES=0
-REQUIRE_MIGRATION_MARKER_IF_SQLITE=true
-SQLITE_MIGRATION_SOURCE=/appdata/data/database.db
 ```
 
 ### 2) Start the dev stack
@@ -101,34 +99,19 @@ Default dev access:
 
 ### 2.1) One-time SQLite -> PostgreSQL data migration
 
-For legacy deployments that still have `DATA_PATH/database.db`, run migration once:
+Automatic migration is disabled in Compose/CI.  
+For legacy deployments that still have a SQLite database, run:
 
 ```bash
-python scripts/migrate_sqlite_to_postgres.py \
-  --sqlite-path backend/data/database.db \
-  --postgres-url "postgresql://raptor:raptor@localhost:5432/raptor" \
-  --truncate
+DATABASE_URL=postgresql://user:password@postgres:5432/raptor \
+POSTGRES_DB=raptor \
+POSTGRES_USER=raptor \
+POSTGRES_PASSWORD=replace-with-a-strong-password \
+./scripts/manual_migrate_to_postgres.sh docker-compose.prod.yml
 ```
 
-Useful flags:
-
-- `--dry-run` shows source tables and row counts only.
-- `--schema-only` creates/updates destination tables without copying data.
-- `--data-only` copies rows only (assumes schema already exists).
-- `--skip-if-marked` skips work when `app_meta.sqlite_to_postgres_migrated_v1` exists.
-
-Both `docker-compose.dev.yml` and `docker-compose.prod.yml` run one-shot `db-migrate` and `db-verify`
-services before the app is started.
-
-The pipeline also runs a `db-verify` step (marker + row-count checks) and an app health check
-against `/session-status`; deployment fails automatically if either check fails.
-
-Important: the migration script is mounted only into the transient `db-migrate` container
-(`./scripts:/scripts:ro`) and is not part of the long-running app container runtime path.
-
-Runtime is PostgreSQL-only. If `DATABASE_URL` is missing, the backend exits at startup.
-If a legacy SQLite source file is detected at `SQLITE_MIGRATION_SOURCE` and migration marker
-`app_meta.sqlite_to_postgres_migrated_v1` is missing, startup is blocked until migration succeeds.
+The script runs both migration and verification once, then prints the restart command.
+Runtime remains PostgreSQL-only. If `DATABASE_URL` is missing, the backend exits at startup.
 
 ### 3) Initial admin credentials
 
@@ -146,7 +129,7 @@ Use:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-`docker-compose.prod.yml` maps host `1337` to container `5000`, starts PostgreSQL + migration/verification services, and expects TLS cert/key paths when running in HTTPS mode.
+`docker-compose.prod.yml` maps host `1337` to container `5000` and expects TLS cert/key paths when running in HTTPS mode.
 
 ## Local Development (Without Docker)
 
