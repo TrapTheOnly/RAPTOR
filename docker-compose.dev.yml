@@ -9,8 +9,7 @@ services:
     image: wams-dev
     container_name: wams-dev
     ports:
-      # - "1337:5000"
-      - "1337:3000"
+      - "1337:5000"
     networks:
         - app_network
     volumes:
