@@ -6,8 +6,8 @@ services:
       args:
         HTTP_PROXY: ${HTTP_PROXY:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
-    image: wams-dev
-    container_name: wams-dev
+    image: raptor-dev
+    container_name: raptor-dev
     ports:
       - "1337:5000"
     networks:
@@ -21,8 +21,7 @@ services:
       - ENVIRONMENT=development
       - CORS_ORIGINS
       - UPDATE_TIME
-      - DB_BACKEND
-      - DATABASE_URL
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
       - DATA_PATH
       - SHARED_PATH
       - BACKUP_FOLDER
@@ -35,25 +34,28 @@ services:
       - APP_PORT
       - CERT_FILE
       - KEY_FILE
-      - FTP_USER=${FTP_USER:-dnsradar_ftp_user}
-      - FTP_PASS=${FTP_PASS:-dnsradar_ftp_pass}
+      - FTP_USER=${FTP_USER:-raptor_ftp_user}
+      - FTP_PASS=${FTP_PASS:-raptor_ftp_pass}
       - FTP_HOST=ftp
     depends_on:
-      - ftp
+      ftp:
+        condition: service_started
+      postgres:
+        condition: service_started
     restart: unless-stopped
 
   ftp:
     image: akogut/docker-pyftpdlib
-    container_name: wams-ftp-dev
+    container_name: raptor-ftp-dev
     volumes:
-      - ftp_volume:/ftp_root/dnsradar_ftp_user
+      - ftp_volume:/ftp_root/raptor_ftp_user
     environment:
-      - FTP_USER=${FTP_USER:-dnsradar_ftp_user}
-      - FTP_PASS=${FTP_PASS:-dnsradar_ftp_pass}
+      - FTP_USER=${FTP_USER:-raptor_ftp_user}
+      - FTP_PASS=${FTP_PASS:-raptor_ftp_pass}
     command: [
       "python", "ftpd.py",
-      "--user", "${FTP_USER:-dnsradar_ftp_user}",
-      "--password", "${FTP_PASS:-dnsradar_ftp_pass}"
+      "--user", "${FTP_USER:-raptor_ftp_user}",
+      "--password", "${FTP_PASS:-raptor_ftp_pass}"
     ]
     networks:
         - app_network
@@ -67,8 +69,8 @@ services:
         DNS_SERVER_SSH_PUBKEY: ${DNS_SERVER_SSH_PUBKEY:-}
         HTTP_PROXY: ${HTTP_PROXY:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
-    image: wams-sftp-dev
-    container_name: wams-sftp-dev
+    image: raptor-sftp-dev
+    container_name: raptor-sftp-dev
     ports:
       - "2222:22"
     volumes:
@@ -77,71 +79,18 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: wams-postgres-dev
-    profiles: ["postgres"]
+    container_name: raptor-postgres-dev
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-raptor}
-      - POSTGRES_USER=${POSTGRES_USER:-raptor}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-raptor}
+      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB must be set}
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER must be set}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     volumes:
       - postgres_data_volume:/var/lib/postgresql/data
     networks:
       - app_network
     restart: unless-stopped
-
-  db-migrate:
-    image: wams-dev
-    profiles: ["postgres"]
-    depends_on:
-      - postgres
-    environment:
-      - DATABASE_URL
-    volumes:
-      - db_and_backups_volume:/appdata
-      - ./scripts:/scripts:ro
-    command:
-      [
-        "python",
-        "/scripts/migrate_sqlite_to_postgres.py",
-        "--sqlite-path",
-        "/appdata/data/database.db",
-        "--postgres-url",
-        "${DATABASE_URL:-postgresql://raptor:raptor@postgres:5432/raptor}",
-        "--allow-missing-sqlite",
-        "--skip-if-marked"
-      ]
-    networks:
-      - app_network
-    restart: "no"
-
-  db-verify:
-    image: wams-dev
-    profiles: ["postgres"]
-    depends_on:
-      - postgres
-    environment:
-      - DATABASE_URL
-    volumes:
-      - db_and_backups_volume:/appdata
-      - ./scripts:/scripts:ro
-    command:
-      [
-        "python",
-        "/scripts/verify_postgres_migration.py",
-        "--sqlite-path",
-        "/appdata/data/database.db",
-        "--postgres-url",
-        "${DATABASE_URL:-postgresql://raptor:raptor@postgres:5432/raptor}",
-        "--allow-missing-sqlite",
-        "--require-marker-if-sqlite",
-        "--count-mode",
-        "ge"
-      ]
-    networks:
-      - app_network
-    restart: "no"
 
 volumes:
   db_and_backups_volume:
