@@ -1,0 +1,36 @@
+import logging
+import os
+from typing import Optional
+
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATA_PATH = os.getenv("DATA_PATH", os.path.join(BASE_DIR, "data"))
+SHARED_PATH = os.getenv("SHARED_PATH", os.path.join(BASE_DIR, "shared"))
+BACKUP_FOLDER = os.getenv("BACKUP_FOLDER", os.path.join(BASE_DIR, "backups"))
+DB_PATH = os.path.join(DATA_PATH, "database.db")
+
+FAILED_LOGIN_ATTEMPT_LIMIT = max(1, int(os.getenv("FAILED_LOGIN_ATTEMPT_LIMIT", "5")))
+LOGIN_LOCKOUT_BASE_MINUTES = max(1, int(os.getenv("LOGIN_LOCKOUT_BASE_MINUTES", "1")))
+LOGIN_LOCKOUT_MAX_MINUTES = max(0, int(os.getenv("LOGIN_LOCKOUT_MAX_MINUTES", "0")))
+
+
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def configure_logging(db_path: Optional[str] = None) -> None:
+    target_db_path = db_path or DB_PATH
+    log_folder = os.path.dirname(target_db_path)
+    os.makedirs(log_folder, exist_ok=True)
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        handlers=[
+            logging.FileHandler(os.path.join(log_folder, "application.log"), mode="w"),
+            logging.StreamHandler(),
+        ],
+        force=True,
+    )

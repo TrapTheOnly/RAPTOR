@@ -1,0 +1,49 @@
+import logging
+import os
+import sqlite3
+
+from app.bootstrap.schema_setup import (
+    create_allowed_users_table,
+    create_app_meta_table,
+    create_applications_table,
+    create_auth_lockout_table,
+    create_ip_sources_table,
+    create_pentest_table,
+    create_record_history_table,
+    create_records_table,
+    create_report_templates_table,
+    create_service_checklists_table,
+    repair_legacy_application_mapping,
+)
+from app.bootstrap.seed_orchestrator import run_seed_routines
+from app.config import DB_PATH
+
+logger = logging.getLogger(__name__)
+
+
+def init_db(db_path: str = DB_PATH) -> None:
+    logger.info("Initializing database...")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+
+    record_columns = create_records_table(c)
+    create_allowed_users_table(c)
+    create_applications_table(c)
+    repair_legacy_application_mapping(c, record_columns)
+    create_ip_sources_table(c)
+    create_record_history_table(c)
+    create_pentest_table(c)
+    create_service_checklists_table(c)
+    create_report_templates_table(c)
+    create_app_meta_table(c)
+    create_auth_lockout_table(c)
+    run_seed_routines(c)
+
+    conn.commit()
+    conn.close()
+    logger.info("Database initialized successfully.")
+
+
+__all__ = ["init_db"]
