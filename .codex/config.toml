@@ -1,5 +1,0 @@
-[mcp_servers]
-
-[mcp_servers.echovault]
-command = "memory"
-args = ["mcp"]
