@@ -1,7 +1,7 @@
-import sqlite3
 from typing import Any, Dict, List, Optional
 
 from app.config import DB_PATH
+from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
 from app.repositories.records_row_mapper import (
     RECORD_WITH_PENTEST_AND_APP_SELECT,
     rows_to_dicts,
@@ -9,7 +9,7 @@ from app.repositories.records_row_mapper import (
 
 
 def determine_source(ip: str, db_path: str = DB_PATH) -> str:
-    conn = sqlite3.connect(db_path)
+    conn = get_db_connection(db_path)
     c = conn.cursor()
     c.execute("SELECT source_name FROM ip_sources WHERE ip_address = ?", (ip,))
     row = c.fetchone()
@@ -18,8 +18,8 @@ def determine_source(ip: str, db_path: str = DB_PATH) -> str:
 
 
 def fetch_dashboard_data(db_path: str = DB_PATH) -> Dict[str, List[Dict[str, Any]]]:
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
 
         c.execute(
@@ -65,8 +65,8 @@ def fetch_dashboard_data(db_path: str = DB_PATH) -> Dict[str, List[Dict[str, Any
 
 
 def fetch_records(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection(db_path)
+    conn.row_factory = ROW_AS_DICT
     c = conn.cursor()
     c.execute(RECORD_WITH_PENTEST_AND_APP_SELECT)
     rows = c.fetchall()
@@ -75,8 +75,8 @@ def fetch_records(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
 
 
 def fetch_record_history(record_id: int, db_path: str = DB_PATH) -> List[Dict[str, Any]]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection(db_path)
+    conn.row_factory = ROW_AS_DICT
     c = conn.cursor()
     c.execute("SELECT * FROM record_history WHERE record_id = ? ORDER BY timestamp DESC", (record_id,))
     rows = c.fetchall()
@@ -85,8 +85,8 @@ def fetch_record_history(record_id: int, db_path: str = DB_PATH) -> List[Dict[st
 
 
 def fetch_record_by_id(record_id: int, db_path: str = DB_PATH) -> Optional[Dict[str, Any]]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection(db_path)
+    conn.row_factory = ROW_AS_DICT
     c = conn.cursor()
     c.execute(RECORD_WITH_PENTEST_AND_APP_SELECT + " WHERE r.id = ?", (record_id,))
     row = c.fetchone()
@@ -95,8 +95,8 @@ def fetch_record_by_id(record_id: int, db_path: str = DB_PATH) -> Optional[Dict[
 
 
 def fetch_record_by_domain(domain: str, db_path: str = DB_PATH) -> Optional[Dict[str, Any]]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection(db_path)
+    conn.row_factory = ROW_AS_DICT
     c = conn.cursor()
     c.execute(
         """

@@ -1,9 +1,9 @@
 import logging
-import sqlite3
 
 from flask import session
 
 from app.domain.offsec.shared import DB_PATH
+from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
 from app.services.authorization_service import user_has_permission
 
 logger = logging.getLogger(__name__)
@@ -30,8 +30,8 @@ def get_pentest_data_internal(record_id=None):
         "vulnerabilities": "",
     }
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
 
             if record_id is not None:
@@ -123,8 +123,8 @@ def get_pentest_data_internal(record_id=None):
 def get_record_details_internal(record_id):
     """Internal function to fetch record details."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute("SELECT * FROM records WHERE id = ?", (record_id,))
             return c.fetchone()
@@ -136,8 +136,8 @@ def get_record_details_internal(record_id):
 def get_pentest_users_internal():
     """Fetches users with the 'pentest' role from the database."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             users = c.execute(
                 "SELECT id, username FROM allowed_users WHERE role IN ('pentester', 'manager')"
@@ -150,8 +150,8 @@ def get_pentest_users_internal():
 
 def get_pentest_row(record_id):
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute("SELECT * FROM pentest_data WHERE record_id = ?", (record_id,))
             return c.fetchone()

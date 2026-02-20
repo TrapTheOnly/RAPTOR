@@ -1,11 +1,11 @@
 import json
 import logging
-import sqlite3
 import secrets
 from typing import Any, Callable, Dict, Tuple
 
 import bcrypt
 
+from app.integrations.db.connection import IntegrityError
 from app.http.request_utils import normalize_auth_key
 from app.repositories.users_repository import (
     add_allowed_user,
@@ -46,7 +46,7 @@ def add_user_to_system(
             permissions_json=json.dumps(sanitized_permissions),
         )
         logger.info(f"User {username} added to the system with role {role}.")
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         raise ValueError(f"User {username} already exists in the system.")
     except Exception as e:
         raise RuntimeError(f"Error adding user {username}: {e}")

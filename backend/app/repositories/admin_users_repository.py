@@ -1,12 +1,12 @@
 import json
 import logging
 import os
-import sqlite3
 from datetime import datetime
 
 import bcrypt
 
-from app.config import DB_PATH
+from app.config import DATA_PATH, DB_PATH
+from app.integrations.db.connection import ROW_AS_DICT, get_db_connection, get_table_columns
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +36,22 @@ def normalize_password_hash(value):
 
 
 def _admin_password_column_type(cursor):
-    cursor.execute("PRAGMA table_info(admin_users)")
-    rows = cursor.fetchall()
-    for row in rows:
-        if str(row[1]).strip().lower() == "password":
-            return str(row[2] or "").strip().lower()
-    return ""
+    cursor.execute(
+        """
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'admin_users'
+          AND column_name = 'password'
+        LIMIT 1
+        """
+    )
+    row = cursor.fetchone()
+    if not row:
+        return ""
+    if isinstance(row, dict):
+        return str(row.get("data_type") or "").strip().lower()
+    return str(row[0] or "").strip().lower()
 
 
 def _prepare_password_for_storage(password_hash, column_type):
@@ -55,7 +65,7 @@ def _prepare_password_for_storage(password_hash, column_type):
 def _write_initial_admin_credentials(username, password):
     target_path = os.getenv(
         "INITIAL_ADMIN_PASSWORD_FILE",
-        os.path.join(os.path.dirname(DB_PATH), "initial_admin_credentials.txt"),
+        os.path.join(DATA_PATH, "initial_admin_credentials.txt"),
     )
     try:
         absolute_target = os.path.abspath(target_path)
@@ -84,26 +94,20 @@ def _write_initial_admin_credentials(username, password):
 
 
 def ensure_admin_user_exists():
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection(DB_PATH) as conn:
         c = conn.cursor()
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS admin_users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL UNIQUE,
-                password BLOB NOT NULL,
+                password BYTEA NOT NULL,
                 must_reset INTEGER NOT NULL DEFAULT 0
             )
             """
         )
-        c.execute("PRAGMA table_info(admin_users)")
-        pragma_rows = c.fetchall()
-        columns = {row[1] for row in pragma_rows}
-        password_column_type = ""
-        for row in pragma_rows:
-            if str(row[1]).strip().lower() == "password":
-                password_column_type = str(row[2] or "").strip().lower()
-                break
+        columns = get_table_columns(c, "admin_users")
+        password_column_type = _admin_password_column_type(c)
         if "must_reset" not in columns:
             c.execute("ALTER TABLE admin_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
 
@@ -140,7 +144,7 @@ def secrets_token():
 
 def admin_login(username, password):
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT password FROM admin_users WHERE username = ?", (username,))
             result = c.fetchone()
@@ -153,7 +157,7 @@ def admin_login(username, password):
 
 def admin_requires_password_reset(username):
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT must_reset FROM admin_users WHERE username = ?", (username,))
             result = c.fetchone()
@@ -165,7 +169,7 @@ def admin_requires_password_reset(username):
 
 def check_current_admin_password(current_password):
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT password FROM admin_users WHERE username = ?", (ADMIN_USERNAME,))
             result = c.fetchone()
@@ -177,7 +181,7 @@ def check_current_admin_password(current_password):
 
 
 def update_admin_password(new_password):
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("SELECT password FROM admin_users WHERE username = ?", (ADMIN_USERNAME,))
         result = c.fetchone()
@@ -201,8 +205,8 @@ def update_admin_password(new_password):
 
 def get_existing_users():
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute("SELECT username, email, added_date, role, auth_type, permissions FROM allowed_users")
             users = []
@@ -225,7 +229,7 @@ def get_existing_users():
 
 def delete_user(username):
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT username FROM allowed_users WHERE username = ?", (username,))
             if not c.fetchone():

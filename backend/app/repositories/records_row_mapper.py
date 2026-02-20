@@ -1,12 +1,11 @@
-import sqlite3
 from typing import Any, Dict, List
 
 
-def rows_to_dicts(rows: List[sqlite3.Row]) -> List[Dict[str, Any]]:
+def rows_to_dicts(rows: List[Any]) -> List[Dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def determine_source_with_cursor(cursor: sqlite3.Cursor, ip: str) -> str:
+def determine_source_with_cursor(cursor: Any, ip: str) -> str:
     cursor.execute("SELECT source_name FROM ip_sources WHERE ip_address = ?", (ip,))
     row = cursor.fetchone()
     return row[0] if row else "Other"

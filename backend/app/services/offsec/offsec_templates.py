@@ -1,5 +1,5 @@
 import logging
-import sqlite3
+from app.integrations.db.connection import IntegrityError, ROW_AS_DICT, get_db_connection
 
 from flask import jsonify, request, session
 
@@ -33,8 +33,8 @@ def get_checklist_templates():
         }
         include_disabled = include_disabled_requested and session.get("user_type") == "admin"
 
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             query = """
                 SELECT id, key, name, service, source, auto_ports, sections, enabled,
@@ -44,7 +44,7 @@ def get_checklist_templates():
             """
             if not include_disabled:
                 query += " WHERE enabled = 1"
-            query += " ORDER BY name COLLATE NOCASE ASC"
+            query += " ORDER BY LOWER(name) ASC"
             c.execute(query)
             rows = c.fetchall()
         templates = [serialize_checklist_template(row) for row in rows]
@@ -64,7 +64,7 @@ def create_checklist_template():
 
     created_by = session.get("username", "admin")
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute(
                 """
@@ -72,7 +72,8 @@ def create_checklist_template():
                     key, name, service, source, auto_ports, sections, enabled,
                     is_system, is_customized, system_revision,
                     created_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, datetime('now', '+4 hours'), datetime('now', '+4 hours'))
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, (NOW() + INTERVAL '4 hours'), (NOW() + INTERVAL '4 hours'))
+                RETURNING id
                 """,
                 (
                     normalized["key"],
@@ -85,10 +86,13 @@ def create_checklist_template():
                     created_by,
                 ),
             )
-            template_id = c.lastrowid
+            inserted = c.fetchone()
+            template_id = inserted[0] if inserted else None
+            if template_id is None:
+                raise RuntimeError("Failed to create checklist template.")
             conn.commit()
         return jsonify({"message": "Checklist template created.", "id": template_id}), 200
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return jsonify({"error": "Template key already exists."}), 400
     except Exception as e:
         logger.error(f"Error creating checklist template: {e}")
@@ -101,8 +105,8 @@ def update_checklist_template(template_id):
     payload = request.get_json(silent=True) or {}
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute(
                 """
@@ -142,7 +146,7 @@ def update_checklist_template(template_id):
                 UPDATE service_checklists
                 SET key = ?, name = ?, service = ?, source = ?, auto_ports = ?, sections = ?, enabled = ?,
                     is_customized = ?,
-                    updated_at = datetime('now', '+4 hours')
+                    updated_at = (NOW() + INTERVAL '4 hours')
                 WHERE id = ?
                 """,
                 (
@@ -159,7 +163,7 @@ def update_checklist_template(template_id):
             )
             conn.commit()
         return jsonify({"message": "Checklist template updated."}), 200
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return jsonify({"error": "Template key already exists."}), 400
     except Exception as e:
         logger.error(f"Error updating checklist template {template_id}: {e}")
@@ -170,8 +174,8 @@ def update_checklist_template(template_id):
 def delete_checklist_template(template_id):
     """DELETE /checklist-templates/<id>: Delete a checklist template."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute("SELECT is_system FROM service_checklists WHERE id = ?", (template_id,))
             existing = c.fetchone()
@@ -192,8 +196,8 @@ def delete_checklist_template(template_id):
 def reset_checklist_template_to_canonical(template_id):
     """POST /checklist-templates/<id>/reset: Reset system template to canonical definition."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute(
                 """
@@ -223,7 +227,7 @@ def reset_checklist_template_to_canonical(template_id):
                 UPDATE service_checklists
                 SET name = ?, service = ?, source = ?, auto_ports = ?, sections = ?, enabled = 1,
                     is_customized = 0, system_revision = ?,
-                    updated_at = datetime('now', '+4 hours')
+                    updated_at = (NOW() + INTERVAL '4 hours')
                 WHERE id = ?
                 """,
                 (
@@ -259,8 +263,8 @@ def get_report_templates():
         )
         include_disabled = include_disabled_requested and can_manage_templates
 
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             query = """
                 SELECT id, key, name, description, template_json, enabled,
@@ -270,7 +274,7 @@ def get_report_templates():
             """
             if not include_disabled:
                 query += " WHERE enabled = 1"
-            query += " ORDER BY name COLLATE NOCASE ASC"
+            query += " ORDER BY LOWER(name) ASC"
             c.execute(query)
             rows = c.fetchall()
 
@@ -291,7 +295,7 @@ def create_report_template():
 
     created_by = session.get("username", "admin")
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute(
                 """
@@ -299,7 +303,8 @@ def create_report_template():
                     key, name, description, template_json, enabled,
                     is_system, is_customized, system_revision,
                     created_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, ?, datetime('now', '+4 hours'), datetime('now', '+4 hours'))
+                ) VALUES (?, ?, ?, ?, ?, 0, 0, NULL, ?, (NOW() + INTERVAL '4 hours'), (NOW() + INTERVAL '4 hours'))
+                RETURNING id
                 """,
                 (
                     normalized["key"],
@@ -310,10 +315,13 @@ def create_report_template():
                     created_by,
                 ),
             )
-            template_id = c.lastrowid
+            inserted = c.fetchone()
+            template_id = inserted[0] if inserted else None
+            if template_id is None:
+                raise RuntimeError("Failed to create report template.")
             conn.commit()
         return jsonify({"message": "Report template created.", "id": template_id}), 200
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return jsonify({"error": "Template key already exists."}), 400
     except Exception as e:
         logger.error(f"Error creating report template: {e}")
@@ -326,8 +334,8 @@ def update_report_template(template_id):
     payload = request.get_json(silent=True) or {}
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute(
                 """
@@ -364,7 +372,7 @@ def update_report_template(template_id):
                 UPDATE report_templates
                 SET key = ?, name = ?, description = ?, template_json = ?, enabled = ?,
                     is_customized = ?,
-                    updated_at = datetime('now', '+4 hours')
+                    updated_at = (NOW() + INTERVAL '4 hours')
                 WHERE id = ?
                 """,
                 (
@@ -379,7 +387,7 @@ def update_report_template(template_id):
             )
             conn.commit()
         return jsonify({"message": "Report template updated."}), 200
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return jsonify({"error": "Template key already exists."}), 400
     except Exception as e:
         logger.error(f"Error updating report template {template_id}: {e}")
@@ -390,8 +398,8 @@ def update_report_template(template_id):
 def delete_report_template(template_id):
     """DELETE /report-templates/<id>: Delete a report template."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute("SELECT is_system FROM report_templates WHERE id = ?", (template_id,))
             existing = c.fetchone()
@@ -412,8 +420,8 @@ def delete_report_template(template_id):
 def reset_report_template_to_canonical(template_id):
     """POST /report-templates/<id>/reset: Reset system template to canonical definition."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
             c.execute(
                 """
@@ -449,7 +457,7 @@ def reset_report_template_to_canonical(template_id):
                 UPDATE report_templates
                 SET name = ?, description = ?, template_json = ?, enabled = 1,
                     is_customized = 0, system_revision = ?,
-                    updated_at = datetime('now', '+4 hours')
+                    updated_at = (NOW() + INTERVAL '4 hours')
                 WHERE id = ?
                 """,
                 (

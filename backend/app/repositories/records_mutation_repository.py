@@ -1,15 +1,15 @@
 import logging
-import sqlite3
 from typing import Any, Dict, List, Optional
 
 from app.config import DB_PATH
+from app.integrations.db.connection import get_db_connection
 from app.repositories.records_row_mapper import determine_source_with_cursor
 
 logger = logging.getLogger(__name__)
 
 
 def store_records_in_db(records: List[Dict[str, Any]], db_path: str = DB_PATH) -> None:
-    conn = sqlite3.connect(db_path)
+    conn = get_db_connection(db_path)
     c = conn.cursor()
 
     c.execute("SELECT id, name, ip_address, source, maintainer FROM records")
@@ -46,7 +46,7 @@ def store_records_in_db(records: List[Dict[str, Any]], db_path: str = DB_PATH) -
                 c.execute(
                     """
                     UPDATE records
-                    SET ip_address = ?, source = ?, status = 'updated', last_modification_date = datetime('now', '+4 hours')
+                    SET ip_address = ?, source = ?, status = 'updated', last_modification_date = (NOW() + INTERVAL '4 hours')
                     WHERE name = ?
                     """,
                     (record["ip_address"], new_source, record["name"]),
@@ -58,7 +58,7 @@ def store_records_in_db(records: List[Dict[str, Any]], db_path: str = DB_PATH) -
                                                old_ip_address, new_ip_address,
                                                old_source, new_source,
                                                old_maintainer, new_maintainer)
-                    VALUES (?, 'updated', datetime('now', '+4 hours'), ?,
+                    VALUES (?, 'updated', (NOW() + INTERVAL '4 hours'), ?,
                             ?, ?,
                             ?, ?,
                             ?, ?)
@@ -88,20 +88,24 @@ def store_records_in_db(records: List[Dict[str, Any]], db_path: str = DB_PATH) -
             c.execute(
                 """
                 INSERT INTO records (name, ip_address, source, status, creation_date, application_owner, maintainer, description)
-                VALUES (?, ?, ?, 'unchanged', datetime('now', '+4 hours'), '', '', '')
+                VALUES (?, ?, ?, 'unchanged', (NOW() + INTERVAL '4 hours'), '', '', '')
+                RETURNING id
                 """,
                 (record["name"], record["ip_address"], new_source),
             )
             logger.info(f"Inserted new record for {record['name']}")
 
-            new_record_id = c.lastrowid
+            inserted = c.fetchone()
+            new_record_id = inserted[0] if inserted else None
+            if new_record_id is None:
+                raise RuntimeError("Failed to create record id while storing records.")
             c.execute(
                 """
                 INSERT INTO record_history (record_id, action, timestamp, username,
                                            old_ip_address, new_ip_address,
                                            old_source, new_source,
                                            old_maintainer, new_maintainer)
-                VALUES (?, 'created', datetime('now', '+4 hours'), ?,
+                VALUES (?, 'created', (NOW() + INTERVAL '4 hours'), ?,
                         NULL, ?,
                         NULL, ?,
                         NULL, NULL)
@@ -139,7 +143,7 @@ def store_records_in_db(records: List[Dict[str, Any]], db_path: str = DB_PATH) -
                                         old_ip_address, new_ip_address,
                                         old_source, new_source,
                                         old_maintainer, new_maintainer)
-            SELECT id, 'deleted', datetime('now', '+4 hours'), 'system',
+            SELECT id, 'deleted', (NOW() + INTERVAL '4 hours'), 'system',
                     ip_address, NULL,
                     source, NULL,
                     maintainer, NULL
@@ -163,7 +167,7 @@ def update_record(
     username: str,
     db_path: str = DB_PATH,
 ) -> Optional[str]:
-    conn = sqlite3.connect(db_path)
+    conn = get_db_connection(db_path)
     c = conn.cursor()
 
     if application_id is not None:
@@ -187,7 +191,7 @@ def update_record(
             maintainer = ?,
             description = ?,
             application_id = ?,
-            last_modification_date = datetime('now', '+4 hours')
+            last_modification_date = (NOW() + INTERVAL '4 hours')
         WHERE id = ?
         """,
         (application_owner, maintainer, description, application_id, record_id),
@@ -224,7 +228,7 @@ def update_record(
                                        old_ip_address, new_ip_address,
                                        old_source, new_source,
                                        old_maintainer, new_maintainer)
-            VALUES (?, 'updated', datetime('now', '+4 hours'), ?,
+            VALUES (?, 'updated', (NOW() + INTERVAL '4 hours'), ?,
                     NULL, NULL,
                     NULL, NULL,
                     ?, ?)
@@ -238,7 +242,7 @@ def update_record(
 
 
 def delete_record(record_id: int, username: str, db_path: str = DB_PATH) -> bool:
-    conn = sqlite3.connect(db_path)
+    conn = get_db_connection(db_path)
     c = conn.cursor()
 
     c.execute("SELECT ip_address, source, maintainer FROM records WHERE id = ?", (record_id,))
@@ -255,7 +259,7 @@ def delete_record(record_id: int, username: str, db_path: str = DB_PATH) -> bool
                                    old_ip_address, new_ip_address,
                                    old_source, new_source,
                                    old_maintainer, new_maintainer)
-        VALUES (?, 'deleted', datetime('now', '+4 hours'), ?,
+        VALUES (?, 'deleted', (NOW() + INTERVAL '4 hours'), ?,
                 ?, NULL,
                 ?, NULL,
                 ?, NULL)

@@ -1,12 +1,12 @@
-import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import DB_PATH
+from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
 
 
 def fetch_ip_sources(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection(db_path)
+    conn.row_factory = ROW_AS_DICT
     c = conn.cursor()
     c.execute("SELECT id, source_name, ip_address FROM ip_sources")
     rows = c.fetchall()
@@ -15,7 +15,7 @@ def fetch_ip_sources(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
 
 
 def add_ip_source(source_name: str, ip_address: str, db_path: str = DB_PATH) -> int:
-    conn = sqlite3.connect(db_path)
+    conn = get_db_connection(db_path)
     c = conn.cursor()
 
     c.execute(
@@ -32,7 +32,7 @@ def add_ip_source(source_name: str, ip_address: str, db_path: str = DB_PATH) -> 
         UPDATE records
         SET source = ?,
             status = 'updated',
-            last_modification_date = datetime('now', '+4 hours')
+            last_modification_date = (NOW() + INTERVAL '4 hours')
         WHERE ip_address = ?
         """,
         (source_name, ip_address),
@@ -45,7 +45,7 @@ def add_ip_source(source_name: str, ip_address: str, db_path: str = DB_PATH) -> 
 
 
 def delete_ip_source(ip_address: str, db_path: str = DB_PATH) -> Optional[Tuple[str, int]]:
-    conn = sqlite3.connect(db_path)
+    conn = get_db_connection(db_path)
     c = conn.cursor()
 
     c.execute("SELECT source_name FROM ip_sources WHERE ip_address = ?", (ip_address,))
@@ -63,7 +63,7 @@ def delete_ip_source(ip_address: str, db_path: str = DB_PATH) -> Optional[Tuple[
         UPDATE records
         SET source = 'Other',
             status = 'updated',
-            last_modification_date = datetime('now', '+4 hours')
+            last_modification_date = (NOW() + INTERVAL '4 hours')
         WHERE ip_address = ?
         """,
         (ip_address,),

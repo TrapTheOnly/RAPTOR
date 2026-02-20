@@ -1,7 +1,7 @@
 import logging
-import sqlite3
 from typing import Any, Dict, Tuple
 
+from app.integrations.db.connection import IntegrityError
 from app.repositories import ip_sources_repository, vuln_categories_repository
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def add_ip_source(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         )
         logger.info(message)
         return {"message": message}, 200
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return {"error": f"IP address {ip_address} is already defined."}, 400
     except Exception as e:
         logger.error(f"Error adding IP source: {e}")
@@ -81,7 +81,7 @@ def add_vuln_category(data: Dict[str, Any], username: str) -> Tuple[Dict[str, An
             "id": category_id,
             "name": name,
         }, 200
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return {"error": "Category already exists."}, 400
     except Exception as e:
         logger.error(f"Error adding vulnerability category: {e}")

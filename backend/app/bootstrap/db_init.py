@@ -1,6 +1,4 @@
 import logging
-import os
-import sqlite3
 
 from app.bootstrap.schema_setup import (
     create_allowed_users_table,
@@ -17,15 +15,14 @@ from app.bootstrap.schema_setup import (
 )
 from app.bootstrap.seed_orchestrator import run_seed_routines
 from app.config import DB_PATH
+from app.integrations.db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
 
 
 def init_db(db_path: str = DB_PATH) -> None:
     logger.info("Initializing database...")
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-
-    conn = sqlite3.connect(db_path)
+    conn = get_db_connection(db_path)
     c = conn.cursor()
 
     record_columns = create_records_table(c)

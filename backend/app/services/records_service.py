@@ -1,8 +1,8 @@
 import logging
 import re
-import sqlite3
 from typing import Any, Dict, Optional, Tuple
 
+from app.integrations.db.connection import IntegrityError
 from app.repositories import applications_repository
 from app.repositories import records_repository
 
@@ -89,7 +89,7 @@ def create_application(data: Dict[str, Any], username: str) -> Tuple[Dict[str, A
     try:
         applications_repository.create_application(sanitized, username)
         return {"message": "Application created.", "name": sanitized}, 201
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return {"error": "Application name already exists."}, 409
     except Exception as e:
         logger.error(f"Error creating application: {e}")
@@ -113,7 +113,7 @@ def update_application(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, Any
         if not exists:
             return {"error": "Application not found."}, 404
         return {"message": "Application updated.", "name": sanitized}, 200
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return {"error": "Application name already exists."}, 409
     except Exception as e:
         logger.error(f"Error updating application: {e}")
