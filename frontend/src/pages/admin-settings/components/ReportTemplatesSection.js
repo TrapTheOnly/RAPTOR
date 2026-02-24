@@ -23,6 +23,7 @@ import {
   Add as AddIcon,
   Article as ArticleIcon,
   Check as CheckIcon,
+  CloudUpload as CloudUploadIcon,
   ContentCopy as ContentCopyIcon,
   Delete as DeleteIcon,
   DragIndicator as DragIndicatorIcon,
@@ -324,6 +325,7 @@ const ReportTemplatesSection = ({
   selectedTemplate,
   templateForm,
   onChangeTemplateForm,
+  onUploadLogo,
   onSaveTemplate,
   onDeleteTemplate,
   onResetTemplate
@@ -403,6 +405,13 @@ const ReportTemplatesSection = ({
       ...(templateForm?.placeholders || {}),
       [field]: value
     });
+  };
+
+  const handleLogoUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !onUploadLogo) return;
+    await onUploadLogo(file);
   };
 
   const updateSelectedBlock = (updater) => {
@@ -1235,12 +1244,48 @@ const ReportTemplatesSection = ({
                       />
                       <TextField
                         size="small"
-                        label="Logo URL"
-                        value={templateForm.branding?.logo_url || ''}
-                        onChange={(event) => updateBranding('logo_url', event.target.value)}
+                        label="Logo Asset"
+                        value={
+                          templateForm.branding?.logo_asset_id
+                            ? `ID ${templateForm.branding.logo_asset_id} (${templateForm.branding?.logo_url || ''})`
+                            : 'No logo uploaded'
+                        }
+                        InputProps={{ readOnly: true }}
                         InputLabelProps={{ sx: { fontSize: '0.78rem' } }}
                         inputProps={{ style: { fontSize: '0.84rem' } }}
                       />
+                      <Box display="flex" gap={0.8}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          component="label"
+                          startIcon={<CloudUploadIcon />}
+                          disabled={loading || !selectedTemplate?.id}
+                        >
+                          Upload PNG Logo
+                          <input
+                            hidden
+                            type="file"
+                            accept="image/png"
+                            onChange={handleLogoUpload}
+                          />
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="warning"
+                          disabled={loading || !templateForm.branding?.logo_asset_id}
+                          onClick={() =>
+                            onChangeTemplateForm('branding', {
+                              ...(templateForm?.branding || {}),
+                              logo_asset_id: null,
+                              logo_url: ''
+                            })
+                          }
+                        >
+                          Remove Logo
+                        </Button>
+                      </Box>
                       <Box
                         sx={{
                           display: 'grid',

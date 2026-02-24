@@ -13,6 +13,7 @@ from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
 from app.integrations.storage.offsec_storage import delete_report, fetch_image, ftp_connect, save_report
 from app.http.decorators.permission_required import permission_required
 from app.integrations.reporting.report_pdf_render import render_pentest_report_pdf
+from app.services.offsec.offsec_templates import bind_report_template_logo_for_template
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,13 @@ def generate_report(record_id):
             template_definition = safe_json_load(template_row["template_json"], {})
             if not isinstance(template_definition, dict):
                 return jsonify({"error": "Report template definition is invalid."}), 500
+            template_definition, logo_error = bind_report_template_logo_for_template(
+                c,
+                template_row["id"],
+                template_definition,
+            )
+            if logo_error:
+                return jsonify({"error": logo_error}), 400
 
             checklist_templates = load_enabled_checklist_templates()
             pentest_data = get_pentest_data_internal(record_id)

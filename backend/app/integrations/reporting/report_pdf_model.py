@@ -2,13 +2,16 @@ import datetime
 import html
 import json
 import re
+from urllib.parse import urlparse
 
 PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}")
 IMAGE_REFERENCE_PATTERN = re.compile(
-    r"(?:https?://[^)\s]+)?/pentest/images/([a-f0-9]{32}\.(?:png|jpg|jpeg|gif|webp))",
+    r"^(?:https?://[^/\s]+)?/pentest/images/([a-f0-9]{32}\.(?:png|jpg|jpeg|gif|webp))$",
     re.IGNORECASE,
 )
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+ALLOWED_LINK_SCHEMES = {"http", "https", "mailto"}
 
 
 def safe_json_load(raw_value, default):
@@ -90,11 +93,30 @@ def resolve_placeholders(value, flat_context):
     return PLACEHOLDER_PATTERN.sub(repl, value)
 
 
+def _sanitize_link_target(raw_url):
+    candidate = html.unescape(str(raw_url or "")).strip()
+    if not candidate or len(candidate) > 500:
+        return None
+    if re.search(r"[\x00-\x1F\x7F]", candidate):
+        return None
+    parsed = urlparse(candidate)
+    if parsed.scheme.lower() not in ALLOWED_LINK_SCHEMES:
+        return None
+    return html.escape(candidate, quote=True)
+
+
 def replace_inline_markdown(text):
     safe_text = html.escape(str(text or ""))
     safe_text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe_text)
     safe_text = re.sub(r"`([^`]+)`", r"<font name='Courier'>\1</font>", safe_text)
-    safe_text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"<a href='\2'>\1</a>", safe_text)
+    safe_text = MARKDOWN_LINK_PATTERN.sub(
+        lambda match: (
+            f"<a href='{safe_url}'>{match.group(1)}</a>"
+            if (safe_url := _sanitize_link_target(match.group(2)))
+            else match.group(1)
+        ),
+        safe_text,
+    )
     return safe_text
 
 

@@ -22,42 +22,10 @@ import Record from './pages/Record';
 import PentestRecord from './pages/PentestRecord';
 import DocumentationPortal from './pages/DocumentationPortal';
 import Error from './pages/Error';
+import { hasPermission as hasRolePermission } from './utils/permissions';
 
 const SESSION_HEARTBEAT_MS = 5000;
 const SESSION_WARNING_SECONDS = 60;
-
-const ROLE_DEFAULT_PERMISSIONS = {
-  user: ['view_records', 'modify_records', 'view_record_details', 'export_records'],
-  pentester: [
-    'view_records',
-    'view_security_dashboard',
-    'view_record_details',
-    'export_records',
-    'view_pentest_page',
-    'modify_pentests',
-    'export_pentests'
-  ],
-  manager: [
-    'view_settings',
-    'view_dashboard',
-    'view_records',
-    'view_security_dashboard',
-    'modify_records',
-    'view_record_details',
-    'export_records',
-    'manage_ip_sources',
-    'manage_vuln_categories',
-    'manage_report_templates',
-    'manage_apps',
-    'view_pentest_page',
-    'modify_pentests',
-    'export_pentests',
-    'reassign_pentests_admin',
-    'delete_records',
-    'modify_others_pentests_admin'
-  ],
-  admin: ['*']
-};
 
 const App = () => {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -85,13 +53,8 @@ const App = () => {
     setExtendingSession(false);
   }, []);
 
-  const hasPermission = (permission) => {
-    if (userRole === 'admin') return true;
-    const normalizedRole = String(userRole || '').trim().toLowerCase();
-    const roleDefaults = ROLE_DEFAULT_PERMISSIONS[normalizedRole] || [];
-    if (roleDefaults.includes('*') || roleDefaults.includes(permission)) return true;
-    return userPermissions?.includes(permission);
-  };
+  const hasPermission = (permission) =>
+    hasRolePermission(userRole, userPermissions, permission);
 
   const getDefaultRoute = () => {
     if (!loggedIn) return '/login';

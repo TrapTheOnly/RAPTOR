@@ -1,0 +1,581 @@
+{
+  "key": "owasp-web",
+  "name": "OWASP Web Security Testing Guide",
+  "service": "web",
+  "source": "OWASP WSTG v4.2",
+  "auto_ports": [
+    80,
+    443,
+    8080,
+    8443,
+    8000,
+    3000
+  ],
+  "sections": [
+    {
+      "name": "Information Gathering",
+      "items": [
+        {
+          "id": "INFO-001",
+          "testName": "Conduct Search Engine Discovery and Reconnaissance for Information Leakage",
+          "description": "Use a search engine to search for Network diagrams and Configurations, Credentials, Error message content.",
+          "tools": "Google Hacking, Sitedigger, Shodan, FOCA, Punkspider"
+        },
+        {
+          "id": "INFO-002",
+          "testName": "Fingerprint Web Server",
+          "description": "Find the version and type of a running web server to determine known vulnerabilities and the appropriate exploits. Using HTTP header field ordering and Malformed requests test.",
+          "tools": "Httprint, Httprecon, Desenmascarame"
+        },
+        {
+          "id": "INFO-003",
+          "testName": "Review Webserver Metafiles for Information Leakage",
+          "description": "Analyze robots.txt, sitemap.xml and identify < META > Tags from website.",
+          "tools": "Browser, curl, wget"
+        },
+        {
+          "id": "INFO-004",
+          "testName": "Enumerate Applications on Webserver",
+          "description": "Find applications hosted in the webserver (Virtual hosts/Subdomain), non-standard ports, DNS zone transfers.",
+          "tools": "Webhosting.info, dnsrecon, Nmap, fierce, Recon-ng, Intrigue"
+        },
+        {
+          "id": "INFO-005",
+          "testName": "Review Webpage Comments and Metadata for Information Leakage",
+          "description": "Find sensitive information from webpage comments and Metadata on source code.",
+          "tools": "Browser, curl, wget"
+        },
+        {
+          "id": "INFO-006",
+          "testName": "Identify application entry points",
+          "description": "Identify from hidden fields, parameters, methods HTTP header analysis.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "INFO-007",
+          "testName": "Map execution paths through application",
+          "description": "Map the target application and understand the principal workflows.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "INFO-008",
+          "testName": "Fingerprint Web Application Framework",
+          "description": "Find the type of web application framework/CMS from HTTP headers, Cookies, Source code, Specific files and folders.",
+          "tools": "Whatweb, BlindElephant, Wappalyzer"
+        },
+        {
+          "id": "INFO-009",
+          "testName": "Fingerprint Web Application",
+          "description": "Identify the web application and version to determine known vulnerabilities and the appropriate exploits.",
+          "tools": "Whatweb, BlindElephant, Wappalyzer, CMSmap"
+        },
+        {
+          "id": "INFO-010",
+          "testName": "Map Application Architecture",
+          "description": "Identify application architecture including Web language, WAF, Reverse proxy, Application Server, Backend Database.",
+          "tools": "Browser, curl, wget"
+        },
+        {
+          "id": "INFO-011",
+          "testName": "Identify security measures",
+          "description": "Identify if application is behind WAF.",
+          "tools": "whatwaf, wafw00f"
+        }
+      ]
+    },
+    {
+      "name": "Configuration and Deploy Management Testing",
+      "items": [
+        {
+          "id": "CONFIG-001",
+          "testName": "Test Network/Infrastructure Configuration",
+          "description": "Understand the infrastructure elements interactions, config management for software, backend DB server, WebDAV, FTP in order to identify known vulnerabilities.",
+          "tools": "Qualys, Nessus"
+        },
+        {
+          "id": "CONFIG-002",
+          "testName": "Test Application Platform Configuration",
+          "description": "Identify default installation file/directory, Handle Server errors (40*,50*), Minimal Privilege, Software logging.",
+          "tools": "Browser, Nikto"
+        },
+        {
+          "id": "CONFIG-003",
+          "testName": "Test File Extensions Handling for Sensitive Information",
+          "description": "Find important file, information (.asa, .inc, .sql, zip, tar, pdf, txt, etc).",
+          "tools": "Browser, Nikto"
+        },
+        {
+          "id": "CONFIG-004",
+          "testName": "Backup and Unreferenced Files for Sensitive Information",
+          "description": "Check JS source code, comments, cache file, backup file (.old, .bak, .inc, .src) and guessing of filename.",
+          "tools": "Nessus, Nikto, Wikto"
+        },
+        {
+          "id": "CONFIG-005",
+          "testName": "Enumerate Infrastructure and Application Admin Interfaces",
+          "description": "Directory and file enumeration, comments and links in source (/admin, /administrator, /backoffice, /backend, etc), alternative server port (Tomcat/8080).",
+          "tools": "Burp Suite, dirb, Dirbuster, fuzzdb, gobuster"
+        },
+        {
+          "id": "CONFIG-006",
+          "testName": "Test HTTP Methods",
+          "description": "Identify HTTP allowed methods on Web server with OPTIONS. Arbitrary HTTP Methods, HEAD access control bypass and XST.",
+          "tools": "netcat, curl"
+        },
+        {
+          "id": "CONFIG-007",
+          "testName": "Test HTTP Strict Transport Security",
+          "description": "Identify HSTS header on Web server through HTTP response header. (e.g., using curl to check for 'Strict-Transport-Security').",
+          "tools": "Burp Suite, curl"
+        },
+        {
+          "id": "CONFIG-008",
+          "testName": "Test RIA cross domain policy",
+          "description": "Analyse permissions allowed from policy files (crossdomain.xml/clientaccesspolicy.xml) and allow-access-from.",
+          "tools": "Burp Suite, Nikto"
+        }
+      ]
+    },
+    {
+      "name": "Identity Management Testing",
+      "items": [
+        {
+          "id": "IDENT-001",
+          "testName": "Test Role Definitions",
+          "description": "Validate the system roles defined within the application by creating a permission matrix.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "IDENT-002",
+          "testName": "Test User Registration Process",
+          "description": "Verify that identity requirements for user registration are aligned with business and security requirements.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "IDENT-003",
+          "testName": "Test Account Provisioning Process",
+          "description": "Determine which roles can provision users and what types of accounts they can provision.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "IDENT-004",
+          "testName": "Testing for Account Enumeration and Guessable User Account",
+          "description": "Check generic login error statements, return codes/parameter values to enumerate valid user IDs.",
+          "tools": "Browser, Burp Suite"
+        },
+        {
+          "id": "IDENT-005",
+          "testName": "Testing for Weak or unenforced username/password policy",
+          "description": "Validate that account names are not easily guessable.",
+          "tools": "Browser, Burp Suite"
+        },
+        {
+          "id": "IDENT-006",
+          "testName": "Test Permissions of Guest/Training Accounts",
+          "description": "Evaluate consistency between access policy and guest/training account permissions.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "IDENT-007",
+          "testName": "Test Account Suspension/Resumption Process",
+          "description": "Verify identity requirements for account suspension/resumption.",
+          "tools": "Burp Suite"
+        }
+      ]
+    },
+    {
+      "name": "Authentication Testing",
+      "items": [
+        {
+          "id": "AUTHN-001",
+          "testName": "Testing for Credentials Transported over an Encrypted Channel",
+          "description": "Check if credentials are transmitted over HTTPs rather than HTTP.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "AUTHN-002",
+          "testName": "Testing for default credentials",
+          "description": "Test for common default credentials on applications and new accounts.",
+          "tools": "Burp Suite, Hydra"
+        },
+        {
+          "id": "AUTHN-003",
+          "testName": "Testing for Weak lock out mechanism",
+          "description": "Evaluate account lockout mechanisms against brute-force password guessing and check the unlock mechanism.",
+          "tools": "Burp Suite, Hydra"
+        }
+      ]
+    },
+    {
+      "name": "Session Management Testing",
+      "items": [
+        {
+          "id": "SESS-001",
+          "testName": "Testing for Bypassing Session Management Schema",
+          "description": "Identify session management schema and check for bypassing methods.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "SESS-002",
+          "testName": "Testing for Cookies attributes",
+          "description": "Check for secure flag, HttpOnly flag, domain, path and expires attributes in cookies.",
+          "tools": "Burp Suite, Browser Developer Tools"
+        },
+        {
+          "id": "SESS-003",
+          "testName": "Testing for Session Fixation",
+          "description": "Check if the application renews session ID after successful authentication.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "SESS-004",
+          "testName": "Testing for Exposed Session Variables",
+          "description": "Check if session variables are exposed in URLs, logs, or referrer headers.",
+          "tools": "Burp Suite, Browser Developer Tools"
+        },
+        {
+          "id": "SESS-005",
+          "testName": "Testing for Cross Site Request Forgery",
+          "description": "Check if the application is vulnerable to CSRF attacks.",
+          "tools": "Burp Suite, CSRF PoC Generator"
+        },
+        {
+          "id": "SESS-006",
+          "testName": "Testing for logout functionality",
+          "description": "Verify proper session termination and token invalidation on logout.",
+          "tools": "Burp Suite, Browser Developer Tools"
+        },
+        {
+          "id": "SESS-007",
+          "testName": "Test Session Timeout",
+          "description": "Check if sessions timeout appropriately after periods of inactivity.",
+          "tools": "Burp Suite, Browser Developer Tools"
+        },
+        {
+          "id": "SESS-008",
+          "testName": "Testing for Session puzzling",
+          "description": "Check for session confusion across different application contexts.",
+          "tools": "Burp Suite"
+        }
+      ]
+    },
+    {
+      "name": "Authorization Testing",
+      "items": [
+        {
+          "id": "AUTHZ-001",
+          "testName": "Testing Directory traversal/file include",
+          "description": "Check for directory traversal and local/remote file inclusion vulnerabilities.",
+          "tools": "Burp Suite, DirBuster"
+        },
+        {
+          "id": "AUTHZ-002",
+          "testName": "Testing for bypassing authorization schema",
+          "description": "Attempt to bypass authorization controls and access restricted resources.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "AUTHZ-003",
+          "testName": "Testing for Privilege Escalation",
+          "description": "Check for horizontal and vertical privilege escalation vulnerabilities.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "AUTHZ-004",
+          "testName": "Testing for Insecure Direct Object References",
+          "description": "Check if the application properly validates access to objects.",
+          "tools": "Burp Suite"
+        }
+      ]
+    },
+    {
+      "name": "Business Logic Testing",
+      "items": [
+        {
+          "id": "LOGIC-001",
+          "testName": "Test Business Logic Data Validation",
+          "description": "Verify that business logic properly validates and handles input data.",
+          "tools": "Manual Testing, Custom Scripts"
+        },
+        {
+          "id": "LOGIC-002",
+          "testName": "Test Ability to Forge Requests",
+          "description": "Check if malicious requests can be forged to bypass business logic.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "LOGIC-003",
+          "testName": "Test Integrity Checks",
+          "description": "Verify data integrity mechanisms in business processes.",
+          "tools": "Manual Testing, Burp Suite"
+        },
+        {
+          "id": "LOGIC-004",
+          "testName": "Test for Process Timing",
+          "description": "Check for timing-based vulnerabilities in business processes.",
+          "tools": "Manual Testing, Custom Scripts"
+        },
+        {
+          "id": "LOGIC-005",
+          "testName": "Test Number of Times a Function Can be Used Limits",
+          "description": "Verify proper limits on function usage and rate limiting.",
+          "tools": "Manual Testing, Burp Suite"
+        },
+        {
+          "id": "LOGIC-006",
+          "testName": "Testing for the Circumvention of Work Flows",
+          "description": "Check if application workflows can be bypassed or manipulated.",
+          "tools": "Manual Testing"
+        },
+        {
+          "id": "LOGIC-007",
+          "testName": "Test Defenses Against Application Misuse",
+          "description": "Verify defenses against application abuse and misuse.",
+          "tools": "Manual Testing, Automated Tools"
+        },
+        {
+          "id": "LOGIC-008",
+          "testName": "Test Upload of Unexpected File Types",
+          "description": "Check file upload functionality for security vulnerabilities.",
+          "tools": "Burp Suite, Custom Files"
+        },
+        {
+          "id": "LOGIC-009",
+          "testName": "Test Upload of Malicious Files",
+          "description": "Attempt to upload malicious files and check execution.",
+          "tools": "Burp Suite, Metasploit"
+        }
+      ]
+    },
+    {
+      "name": "Data Validation Testing",
+      "items": [
+        {
+          "id": "INPUT-001",
+          "testName": "Testing for Reflected Cross Site Scripting",
+          "description": "Check for reflected XSS vulnerabilities in input fields.",
+          "tools": "Burp Suite, XSS Payloads"
+        },
+        {
+          "id": "INPUT-002",
+          "testName": "Testing for Stored Cross Site Scripting",
+          "description": "Check for stored XSS vulnerabilities that persist in the application.",
+          "tools": "Burp Suite, XSS Payloads"
+        },
+        {
+          "id": "INPUT-003",
+          "testName": "Testing for HTTP Verb Tampering",
+          "description": "Check if the application properly handles different HTTP methods.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "INPUT-004",
+          "testName": "Testing for HTTP Parameter pollution",
+          "description": "Check for HTTP parameter pollution vulnerabilities.",
+          "tools": "Burp Suite"
+        },
+        {
+          "id": "INPUT-005",
+          "testName": "Testing for SQL Injection",
+          "description": "Check for SQL injection vulnerabilities in database interactions.",
+          "tools": "Burp Suite, SQLMap"
+        },
+        {
+          "id": "INPUT-006",
+          "testName": "Testing for LDAP Injection",
+          "description": "Check for LDAP injection vulnerabilities.",
+          "tools": "Burp Suite, Custom Payloads"
+        },
+        {
+          "id": "INPUT-007",
+          "testName": "Testing for ORM Injection",
+          "description": "Check for Object Relational Mapping injection vulnerabilities.",
+          "tools": "Burp Suite, Custom Payloads"
+        },
+        {
+          "id": "INPUT-008",
+          "testName": "Testing for XML Injection",
+          "description": "Check for XML injection and XXE vulnerabilities.",
+          "tools": "Burp Suite, XXE Payloads"
+        },
+        {
+          "id": "INPUT-009",
+          "testName": "Testing for SSI Injection",
+          "description": "Check for Server Side Include injection vulnerabilities.",
+          "tools": "Burp Suite, SSI Payloads"
+        },
+        {
+          "id": "INPUT-010",
+          "testName": "Testing for XPath Injection",
+          "description": "Check for XPath injection vulnerabilities.",
+          "tools": "Burp Suite, XPath Payloads"
+        },
+        {
+          "id": "INPUT-011",
+          "testName": "IMAP/SMTP Injection",
+          "description": "Check for IMAP and SMTP injection vulnerabilities.",
+          "tools": "Burp Suite, Custom Payloads"
+        },
+        {
+          "id": "INPUT-012",
+          "testName": "Testing for Code Injection",
+          "description": "Check for code injection vulnerabilities.",
+          "tools": "Burp Suite, Code Injection Payloads"
+        },
+        {
+          "id": "INPUT-013",
+          "testName": "Testing for Local File Inclusion",
+          "description": "Check for local file inclusion vulnerabilities.",
+          "tools": "Burp Suite, LFI Payloads"
+        },
+        {
+          "id": "INPUT-014",
+          "testName": "Testing for Remote File Inclusion",
+          "description": "Check for remote file inclusion vulnerabilities.",
+          "tools": "Burp Suite, RFI Payloads"
+        },
+        {
+          "id": "INPUT-015",
+          "testName": "Testing for Command Injection",
+          "description": "Check for OS command injection vulnerabilities.",
+          "tools": "Burp Suite, Command Injection Payloads"
+        },
+        {
+          "id": "INPUT-016",
+          "testName": "Testing for Buffer overflow",
+          "description": "Check for buffer overflow vulnerabilities.",
+          "tools": "Custom Tools, Fuzzing"
+        },
+        {
+          "id": "INPUT-017",
+          "testName": "Testing for incubated vulnerabilities",
+          "description": "Check for vulnerabilities that may manifest later.",
+          "tools": "Manual Analysis"
+        },
+        {
+          "id": "INPUT-018",
+          "testName": "Testing for HTTP Splitting/Smuggling",
+          "description": "Check for HTTP request splitting and smuggling vulnerabilities.",
+          "tools": "Burp Suite, Custom Tools"
+        }
+      ]
+    },
+    {
+      "name": "Error Handling",
+      "items": [
+        {
+          "id": "ERROR-001",
+          "testName": "Analysis of Error Codes",
+          "description": "Analyze application error codes for information disclosure.",
+          "tools": "Manual Testing, Burp Suite"
+        },
+        {
+          "id": "ERROR-002",
+          "testName": "Analysis of Stack Traces",
+          "description": "Check if stack traces reveal sensitive information.",
+          "tools": "Manual Testing, Error Generation"
+        }
+      ]
+    },
+    {
+      "name": "Cryptography",
+      "items": [
+        {
+          "id": "CRYPTO-001",
+          "testName": "Testing for Weak SSL/TLS Ciphers, Insufficient Transport Layer Protection",
+          "description": "Check for weak cryptographic implementations and transport security.",
+          "tools": "SSLScan, TestSSL, Nmap"
+        },
+        {
+          "id": "CRYPTO-002",
+          "testName": "Testing for Padding Oracle",
+          "description": "Check for padding oracle attacks in cryptographic implementations.",
+          "tools": "PadBuster, Custom Scripts"
+        },
+        {
+          "id": "CRYPTO-003",
+          "testName": "Testing for Sensitive information sent via unencrypted channels",
+          "description": "Verify that sensitive data is properly encrypted in transit.",
+          "tools": "Network Monitoring, Burp Suite"
+        }
+      ]
+    },
+    {
+      "name": "Client Side Testing",
+      "items": [
+        {
+          "id": "CLIENT-001",
+          "testName": "Testing for DOM based Cross Site Scripting",
+          "description": "Check for DOM-based XSS vulnerabilities in client-side code.",
+          "tools": "Browser Developer Tools, DOMXSSScanner"
+        },
+        {
+          "id": "CLIENT-002",
+          "testName": "Testing for JavaScript Execution",
+          "description": "Check for unauthorized JavaScript execution vulnerabilities.",
+          "tools": "Browser Developer Tools, Custom Scripts"
+        },
+        {
+          "id": "CLIENT-003",
+          "testName": "Testing for HTML Injection",
+          "description": "Check for HTML injection vulnerabilities.",
+          "tools": "Burp Suite, Manual Testing"
+        },
+        {
+          "id": "CLIENT-004",
+          "testName": "Testing for Client Side URL Redirect",
+          "description": "Check for client-side URL redirection vulnerabilities.",
+          "tools": "Burp Suite, Manual Testing"
+        },
+        {
+          "id": "CLIENT-005",
+          "testName": "Testing for CSS Injection",
+          "description": "Check for CSS injection vulnerabilities.",
+          "tools": "Manual Testing, Custom Payloads"
+        },
+        {
+          "id": "CLIENT-006",
+          "testName": "Testing for Client Side Resource Manipulation",
+          "description": "Check for client-side resource manipulation vulnerabilities.",
+          "tools": "Browser Developer Tools"
+        },
+        {
+          "id": "CLIENT-007",
+          "testName": "Test Cross Origin Resource Sharing",
+          "description": "Check CORS implementation for security issues.",
+          "tools": "Burp Suite, Browser Developer Tools"
+        },
+        {
+          "id": "CLIENT-008",
+          "testName": "Testing for Cross Site Flashing",
+          "description": "Check for Cross-Site Flashing vulnerabilities in Flash content.",
+          "tools": "Flash Decompilers, Manual Testing"
+        },
+        {
+          "id": "CLIENT-009",
+          "testName": "Testing for Clickjacking",
+          "description": "Check for clickjacking vulnerabilities and frame busting.",
+          "tools": "Browser Developer Tools, Custom HTML"
+        },
+        {
+          "id": "CLIENT-010",
+          "testName": "Testing WebSockets",
+          "description": "Check WebSocket implementation for security vulnerabilities.",
+          "tools": "Burp Suite, Custom Scripts"
+        },
+        {
+          "id": "CLIENT-011",
+          "testName": "Test Web Messaging",
+          "description": "Check HTML5 web messaging for security issues.",
+          "tools": "Browser Developer Tools, Custom Scripts"
+        },
+        {
+          "id": "CLIENT-012",
+          "testName": "Test Local Storage",
+          "description": "Determine whether sensitive data is stored in local storage.",
+          "tools": "Chrome, Firebug, Burp Suite"
+        }
+      ]
+    }
+  ]
+}

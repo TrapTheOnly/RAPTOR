@@ -16,6 +16,7 @@ def append_story_block(
     border_color,
     severity_color_hex,
     severity_colors,
+    company_name,
     logo_url,
     get_embedded_image_fn,
     section_title_fn,
@@ -40,13 +41,27 @@ def append_story_block(
         return
 
     if block_type == "cover":
-        story.append(Spacer(1, 44 * mm))
+        story.append(Spacer(1, 22 * mm))
 
         if raw_block.get("show_logo") and logo_url:
-            logo_image = get_embedded_image_fn(resolve(logo_url), max_width_mm=52, max_height_mm=52, centered=True)
+            logo_image = get_embedded_image_fn(
+                resolve(logo_url),
+                target_width_mm=35.6,
+                max_width_mm=35.6,
+                max_height_mm=30,
+                centered=True,
+            )
             if logo_image:
                 story.append(logo_image)
-                story.append(Spacer(1, 12 * mm))
+                story.append(Spacer(1, 5 * mm))
+
+        story.append(
+            Paragraph(
+                f"<b>{replace_inline_markdown(company_name or 'Security Operations')}</b>",
+                styles["ReportCoverCompany"],
+            )
+        )
+        story.append(Spacer(1, 5 * mm))
 
         story.append(
             Paragraph(

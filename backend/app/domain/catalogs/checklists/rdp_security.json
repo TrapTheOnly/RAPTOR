@@ -1,0 +1,152 @@
+{
+  "key": "rdp-security",
+  "name": "RDP Security Checklist",
+  "service": "rdp",
+  "source": "CIS Windows Benchmark + Microsoft Security Baselines",
+  "auto_ports": [
+    3389
+  ],
+  "sections": [
+    {
+      "name": "Exposure and Authentication Controls",
+      "items": [
+        {
+          "id": "RDP-001",
+          "testName": "External exposure assessment",
+          "description": "Confirm RDP is not internet-exposed without approved access control layers.",
+          "tools": "attack surface scan"
+        },
+        {
+          "id": "RDP-002",
+          "testName": "Network Level Authentication enforcement",
+          "description": "Verify NLA is required for all RDP endpoints.",
+          "tools": "GPO review"
+        },
+        {
+          "id": "RDP-003",
+          "testName": "MFA and conditional access requirements",
+          "description": "Enforce strong auth for remote administration paths.",
+          "tools": "IdP policy review"
+        },
+        {
+          "id": "RDP-004",
+          "testName": "Allowed user/group restrictions",
+          "description": "Limit RDP login rights to approved administrative groups.",
+          "tools": "local policy review"
+        },
+        {
+          "id": "RDP-005",
+          "testName": "Account lockout and brute-force controls",
+          "description": "Validate lockout thresholds and anti-brute-force telemetry.",
+          "tools": "GPO + SIEM"
+        },
+        {
+          "id": "RDP-006",
+          "testName": "Credential caching minimization",
+          "description": "Reduce persisted credential exposure on RDP jump hosts.",
+          "tools": "policy + endpoint checks"
+        },
+        {
+          "id": "RDP-007",
+          "testName": "Jump host enforcement",
+          "description": "Route privileged RDP sessions through hardened bastions only.",
+          "tools": "network policy validation"
+        }
+      ]
+    },
+    {
+      "name": "Protocol, Session and Host Hardening",
+      "items": [
+        {
+          "id": "RDP-008",
+          "testName": "TLS requirement and certificate validation",
+          "description": "Require strong transport encryption and trusted certificates.",
+          "tools": "RDP config + cert audit"
+        },
+        {
+          "id": "RDP-009",
+          "testName": "Clipboard/drive/port redirection policy",
+          "description": "Restrict redirection channels to reduce data exfiltration risk.",
+          "tools": "GPO review"
+        },
+        {
+          "id": "RDP-010",
+          "testName": "Session timeout and idle disconnects",
+          "description": "Enforce idle timeout and maximum session duration controls.",
+          "tools": "policy checks"
+        },
+        {
+          "id": "RDP-011",
+          "testName": "Concurrent session and shadow controls",
+          "description": "Restrict concurrent admin sessions and monitor shadowing use.",
+          "tools": "host config review"
+        },
+        {
+          "id": "RDP-012",
+          "testName": "RemoteFX and legacy feature disablement",
+          "description": "Disable deprecated features with known risk profiles.",
+          "tools": "Windows feature audit"
+        },
+        {
+          "id": "RDP-013",
+          "testName": "Endpoint hardening baseline compliance",
+          "description": "Ensure RDP hosts comply with hardened server baseline.",
+          "tools": "CIS/Microsoft baseline scan"
+        },
+        {
+          "id": "RDP-014",
+          "testName": "Privileged operations segregation",
+          "description": "Use separate admin workstations/accounts for privileged RDP activity.",
+          "tools": "PAM process review"
+        }
+      ]
+    },
+    {
+      "name": "Monitoring and Incident Readiness",
+      "items": [
+        {
+          "id": "RDP-015",
+          "testName": "RDP logon/logoff event coverage",
+          "description": "Collect and correlate key Windows event IDs for RDP activity.",
+          "tools": "SIEM ingestion"
+        },
+        {
+          "id": "RDP-016",
+          "testName": "Geo/time anomaly detections",
+          "description": "Alert on unusual source geographies and off-hours access patterns.",
+          "tools": "SIEM analytics"
+        },
+        {
+          "id": "RDP-017",
+          "testName": "Lateral movement detection tuning",
+          "description": "Detect suspicious RDP chaining and privilege escalation behavior.",
+          "tools": "EDR + SIEM"
+        },
+        {
+          "id": "RDP-018",
+          "testName": "Patching for RDP vulnerabilities",
+          "description": "Prioritize remediation for critical RDP-related vulnerabilities.",
+          "tools": "vuln mgmt process"
+        },
+        {
+          "id": "RDP-019",
+          "testName": "Credential theft defensive controls",
+          "description": "Validate protections against credential dumping/reuse on RDP hosts.",
+          "tools": "EDR control checks"
+        },
+        {
+          "id": "RDP-020",
+          "testName": "Session recording for critical systems",
+          "description": "Enable secure recording/audit for high-impact admin sessions.",
+          "tools": "PAM tooling"
+        },
+        {
+          "id": "RDP-021",
+          "testName": "Incident response exercises",
+          "description": "Exercise RDP compromise containment and forensic collection procedures.",
+          "tools": "tabletop + drill"
+        }
+      ]
+    }
+  ]
+}

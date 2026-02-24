@@ -145,6 +145,16 @@ def render_pentest_report_pdf(
     )
     styles.add(
         ParagraphStyle(
+            name="ReportCoverCompany",
+            parent=styles["BodyText"],
+            fontSize=14,
+            leading=18,
+            alignment=TA_CENTER,
+            textColor=accent,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
             name="ReportCoverSub",
             parent=styles["BodyText"],
             fontSize=12.8,
@@ -215,7 +225,13 @@ def render_pentest_report_pdf(
     def resolve(value):
         return resolve_placeholders(value, flat_context)
 
-    def get_embedded_image_fn(url, max_width_mm=170, max_height_mm=90, centered=False):
+    def get_embedded_image_fn(
+        url,
+        max_width_mm=170,
+        max_height_mm=90,
+        target_width_mm=None,
+        centered=False,
+    ):
         return get_embedded_image(
             url,
             image_fetcher,
@@ -224,6 +240,7 @@ def render_pentest_report_pdf(
             IMAGE_REFERENCE_PATTERN,
             max_width_mm=max_width_mm,
             max_height_mm=max_height_mm,
+            target_width_mm=target_width_mm,
             centered=centered,
         )
 
@@ -310,6 +327,7 @@ def render_pentest_report_pdf(
             border_color=border_color,
             severity_color_hex=severity_color_hex,
             severity_colors=severity_colors,
+            company_name=company_name,
             logo_url=logo_url,
             get_embedded_image_fn=get_embedded_image_fn,
             section_title_fn=section_title_fn,

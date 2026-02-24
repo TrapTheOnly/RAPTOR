@@ -1,0 +1,154 @@
+{
+  "key": "ftp-ftps-security",
+  "name": "FTP and FTPS Security Checklist",
+  "service": "ftp",
+  "source": "CIS Benchmark + NIST SP 800-52 + OWASP Testing Guide",
+  "auto_ports": [
+    20,
+    21,
+    990
+  ],
+  "sections": [
+    {
+      "name": "Protocol Posture & Encryption",
+      "items": [
+        {
+          "id": "FTP-001",
+          "testName": "Anonymous access policy validation",
+          "description": "Confirm anonymous FTP is disabled unless explicitly justified and restricted.",
+          "tools": "ftp client, nmap"
+        },
+        {
+          "id": "FTP-002",
+          "testName": "Plain FTP credential exposure checks",
+          "description": "Verify credentials are not accepted over cleartext channels where prohibited.",
+          "tools": "tcpdump, Wireshark"
+        },
+        {
+          "id": "FTP-003",
+          "testName": "Explicit FTPS enforcement",
+          "description": "Ensure explicit TLS mode is required for approved clients.",
+          "tools": "lftp, openssl"
+        },
+        {
+          "id": "FTP-004",
+          "testName": "Implicit FTPS configuration checks",
+          "description": "Validate implicit TLS listeners and certificate handling if deployed.",
+          "tools": "openssl s_client"
+        },
+        {
+          "id": "FTP-005",
+          "testName": "TLS version and cipher hardening",
+          "description": "Disable weak protocol versions and cipher suites for FTPS.",
+          "tools": "testssl.sh, nmap"
+        },
+        {
+          "id": "FTP-006",
+          "testName": "Certificate trust and hostname validation",
+          "description": "Check server certificates for trust, expiry, and hostname alignment.",
+          "tools": "openssl, cert tools"
+        },
+        {
+          "id": "FTP-007",
+          "testName": "Passive mode security boundaries",
+          "description": "Ensure passive port ranges are restricted and firewall policies are least privilege.",
+          "tools": "nmap, firewall review"
+        }
+      ]
+    },
+    {
+      "name": "Access Control & File Handling",
+      "items": [
+        {
+          "id": "FTP-008",
+          "testName": "Directory jail/chroot enforcement",
+          "description": "Verify users cannot escape assigned home directories.",
+          "tools": "manual traversal tests"
+        },
+        {
+          "id": "FTP-009",
+          "testName": "Path traversal and normalization checks",
+          "description": "Validate path canonicalization prevents unauthorized path access.",
+          "tools": "custom traversal payloads"
+        },
+        {
+          "id": "FTP-010",
+          "testName": "Upload permission segmentation",
+          "description": "Confirm upload rights are scoped by role and destination path.",
+          "tools": "permission review"
+        },
+        {
+          "id": "FTP-011",
+          "testName": "Executable upload control",
+          "description": "Ensure uploaded binaries/scripts cannot execute unintentionally downstream.",
+          "tools": "upload + execution probes"
+        },
+        {
+          "id": "FTP-012",
+          "testName": "Overwrite and delete policy review",
+          "description": "Validate destructive operations are constrained and audited.",
+          "tools": "manual tests, logs"
+        },
+        {
+          "id": "FTP-013",
+          "testName": "Quota and storage abuse protections",
+          "description": "Check controls against disk exhaustion and denial-of-service patterns.",
+          "tools": "stress tests"
+        },
+        {
+          "id": "FTP-014",
+          "testName": "Sensitive file exposure checks",
+          "description": "Verify secrets/config artifacts are not retrievable through FTP paths.",
+          "tools": "file enumeration"
+        }
+      ]
+    },
+    {
+      "name": "Operations, Monitoring & Resilience",
+      "items": [
+        {
+          "id": "FTP-015",
+          "testName": "Authentication logging completeness",
+          "description": "Capture successful/failed auth events with source attribution.",
+          "tools": "SIEM, auth logs"
+        },
+        {
+          "id": "FTP-016",
+          "testName": "Transfer auditing and traceability",
+          "description": "Log upload/download/delete operations with actor and object metadata.",
+          "tools": "SIEM, FTP logs"
+        },
+        {
+          "id": "FTP-017",
+          "testName": "Brute-force and abuse detection",
+          "description": "Validate anomaly rules for repeated auth failures and suspicious transfer patterns.",
+          "tools": "alert tuning"
+        },
+        {
+          "id": "FTP-018",
+          "testName": "Administrative endpoint hardening",
+          "description": "Restrict and secure any FTP admin interfaces and control channels.",
+          "tools": "config review"
+        },
+        {
+          "id": "FTP-019",
+          "testName": "Backup and recovery integrity checks",
+          "description": "Confirm backup restore paths preserve permissions and confidentiality.",
+          "tools": "ops validation"
+        },
+        {
+          "id": "FTP-020",
+          "testName": "Key/certificate rotation process",
+          "description": "Verify repeatable rotation process for FTPS certs and private keys.",
+          "tools": "runbook review"
+        },
+        {
+          "id": "FTP-021",
+          "testName": "Service dependency hardening",
+          "description": "Review OS, package, and daemon hardening baseline for FTP host.",
+          "tools": "CIS audit tooling"
+        }
+      ]
+    }
+  ]
+}

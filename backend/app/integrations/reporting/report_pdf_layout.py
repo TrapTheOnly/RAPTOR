@@ -13,17 +13,24 @@ def get_embedded_image(
     image_reference_pattern,
     max_width_mm=170,
     max_height_mm=90,
+    target_width_mm=None,
     centered=False,
 ):
     if not url or not image_fetcher:
         return None
-    match = image_reference_pattern.search(str(url))
+    match = image_reference_pattern.fullmatch(str(url).strip())
     if not match:
         return None
     filename = match.group(1).lower()
     try:
         file_obj = image_fetcher(filename)
         image = rl_image_class(file_obj)
+        if target_width_mm is not None:
+            target_width = max(float(target_width_mm), 1.0) * mm
+            if image.drawWidth > 0:
+                ratio = target_width / float(image.drawWidth)
+                image.drawWidth = target_width
+                image.drawHeight *= ratio
         max_width = max_width_mm * mm
         max_height = max_height_mm * mm
         if image.drawWidth > max_width:
@@ -270,9 +277,6 @@ def make_draw_cover_page(a4, mm, primary, accent, company_name, colors):
         canvas.rect(0, page_height - (24 * mm), page_width, 24 * mm, fill=1, stroke=0)
         canvas.setFillColor(accent)
         canvas.rect(0, 0, page_width, 7 * mm, fill=1, stroke=0)
-        canvas.setFillColor(colors.white)
-        canvas.setFont("Helvetica-Bold", 11)
-        canvas.drawString(14 * mm, page_height - (14 * mm), company_name)
         canvas.restoreState()
 
     return draw_cover_page

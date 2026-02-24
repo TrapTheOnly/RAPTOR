@@ -13,6 +13,13 @@ from app.domain.catalogs.report_template_catalog import (
     get_canonical_report_templates,
 )
 
+HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
+REPORT_LOGO_URL_PATTERN = re.compile(
+    r"^(?:https?://[^/\s]+)?/pentest/images/([a-f0-9]{32}\.(?:png|jpg|jpeg|gif|webp))$",
+    re.IGNORECASE,
+)
+PLACEHOLDER_KEY_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{1,64}$")
+
 def get_default_service_checklists():
     """Returns a deep-copy-safe list of seeded service checklist templates."""
     return get_canonical_checklists()
@@ -170,16 +177,69 @@ def normalize_report_template_definition(raw_definition):
     if not normalized_blocks:
         return None, "Template definition must contain at least one valid block object."
 
-    branding = raw_definition.get("branding", {})
-    placeholders = raw_definition.get("placeholders", {})
+    branding = normalize_report_branding(raw_definition.get("branding", {}))
+    placeholders = normalize_report_placeholders(raw_definition.get("placeholders", {}))
 
     normalized = {
         "version": to_int(raw_definition.get("version"), 1),
-        "branding": branding if isinstance(branding, dict) else {},
-        "placeholders": placeholders if isinstance(placeholders, dict) else {},
+        "branding": branding,
+        "placeholders": placeholders,
         "blocks": normalized_blocks,
     }
     return normalized, None
+
+
+def normalize_report_branding(raw_branding):
+    branding = raw_branding if isinstance(raw_branding, dict) else {}
+
+    raw_company = str(branding.get("company_name", "Security Operations") or "Security Operations")
+    company_name = re.sub(r"[\x00-\x1F\x7F]", "", raw_company).strip()[:120]
+    if not company_name:
+        company_name = "Security Operations"
+
+    primary_color = str(branding.get("primary_color", "#0B5CAD") or "").strip()
+    if not HEX_COLOR_PATTERN.fullmatch(primary_color):
+        primary_color = "#0B5CAD"
+
+    accent_color = str(branding.get("accent_color", "#1E293B") or "").strip()
+    if not HEX_COLOR_PATTERN.fullmatch(accent_color):
+        accent_color = "#1E293B"
+
+    raw_logo_url = str(branding.get("logo_url", "") or "").strip()
+    logo_match = REPORT_LOGO_URL_PATTERN.fullmatch(raw_logo_url)
+    logo_url = f"/pentest/images/{logo_match.group(1).lower()}" if logo_match else ""
+
+    raw_logo_asset_id = branding.get("logo_asset_id")
+    logo_asset_id = None
+    if raw_logo_asset_id is not None and str(raw_logo_asset_id).strip():
+        try:
+            parsed_logo_asset_id = int(raw_logo_asset_id)
+            if parsed_logo_asset_id > 0:
+                logo_asset_id = parsed_logo_asset_id
+        except (TypeError, ValueError):
+            logo_asset_id = None
+
+    return {
+        "company_name": company_name,
+        "primary_color": primary_color,
+        "accent_color": accent_color,
+        "logo_asset_id": logo_asset_id,
+        "logo_url": logo_url,
+    }
+
+
+def normalize_report_placeholders(raw_placeholders):
+    placeholders = raw_placeholders if isinstance(raw_placeholders, dict) else {}
+    normalized = {}
+    for key, value in placeholders.items():
+        normalized_key = str(key or "").strip()
+        if not PLACEHOLDER_KEY_PATTERN.fullmatch(normalized_key):
+            continue
+
+        text_value = "" if value is None else str(value)
+        text_value = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text_value).strip()
+        normalized[normalized_key] = text_value[:500]
+    return normalized
 
 
 def normalize_report_template_payload(payload):

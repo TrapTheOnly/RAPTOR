@@ -241,6 +241,33 @@ def create_report_templates_table(cursor: DatabaseCursor) -> None:
     if "system_revision" not in report_template_columns:
         cursor.execute("ALTER TABLE report_templates ADD COLUMN system_revision TEXT")
 
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS report_template_logo_assets (
+            id SERIAL PRIMARY KEY,
+            report_template_id INTEGER NOT NULL,
+            file_path TEXT NOT NULL UNIQUE,
+            created_by TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    logo_asset_columns = get_table_columns(cursor, "report_template_logo_assets")
+    if "report_template_id" not in logo_asset_columns:
+        cursor.execute("ALTER TABLE report_template_logo_assets ADD COLUMN report_template_id INTEGER")
+    if "file_path" not in logo_asset_columns:
+        cursor.execute("ALTER TABLE report_template_logo_assets ADD COLUMN file_path TEXT")
+    if "created_by" not in logo_asset_columns:
+        cursor.execute("ALTER TABLE report_template_logo_assets ADD COLUMN created_by TEXT")
+    if "created_at" not in logo_asset_columns:
+        cursor.execute("ALTER TABLE report_template_logo_assets ADD COLUMN created_at TEXT")
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_report_template_logo_assets_template_id
+        ON report_template_logo_assets (report_template_id)
+        """
+    )
+
 
 def create_app_meta_table(cursor: DatabaseCursor) -> None:
     cursor.execute(

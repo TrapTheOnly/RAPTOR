@@ -224,6 +224,7 @@ def admin_reset_password(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[s
             "status": "logged_in",
             "username": session_obj.get("username"),
             "user_type": "admin",
+            "permissions": list(get_user_permissions(session_obj.get("username"), "admin")),
         }, 200
 
     return response, status_code
@@ -263,10 +264,12 @@ def user_reset_password(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[st
 
         session_obj["logged_in"] = True
         session_obj["reset_required"] = False
+        user_type = session_obj.get("user_type")
         return {
             "status": "logged_in",
             "username": username,
-            "user_type": session_obj.get("user_type"),
+            "user_type": user_type,
+            "permissions": list(get_user_permissions(username, user_type)),
         }, 200
     except Exception as e:
         logger.error(f"Error resetting password for user {username}: {e}")

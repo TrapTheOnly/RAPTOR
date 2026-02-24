@@ -46,6 +46,7 @@ Create `RAPTOR_LOCATION\.env` with at least:
 ```env
 # Core app
 APP_PORT=5000
+APP_USE_TLS=false
 SECRET_KEY=replace-with-a-random-secret
 ADMIN_USERNAME=awadmin
 DATABASE_URL=postgresql://user:password@postgres:5432/raptor
@@ -75,7 +76,7 @@ LDAP_PASS=replace-me
 FTP_USER=raptor_ftp_user
 FTP_PASS=replace-me
 
-# TLS (needed when APP_PORT=5000 mode is used)
+# TLS (only needed when APP_USE_TLS=true)
 CERT_FILE=/certs/cert.pem
 KEY_FILE=/certs/key.pem
 
@@ -129,7 +130,7 @@ Use:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-`docker-compose.prod.yml` maps host `1337` to container `5000` and expects TLS cert/key paths when running in HTTPS mode.
+`docker-compose.prod.yml` maps host `1337` to container `5000`. TLS is optional and controlled by `APP_USE_TLS` (`false` by default).
 
 ## Local Development (Without Docker)
 
