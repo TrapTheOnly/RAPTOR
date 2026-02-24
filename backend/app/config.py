@@ -6,7 +6,8 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA_PATH = os.getenv("DATA_PATH", os.path.join(BASE_DIR, "data"))
 SHARED_PATH = os.getenv("SHARED_PATH", os.path.join(BASE_DIR, "shared"))
 BACKUP_FOLDER = os.getenv("BACKUP_FOLDER", os.path.join(BASE_DIR, "backups"))
-DB_PATH = os.path.join(DATA_PATH, "database.db")
+DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
+DB_PATH = DATABASE_URL  # Backward-compatible alias for existing call signatures.
 
 FAILED_LOGIN_ATTEMPT_LIMIT = max(1, int(os.getenv("FAILED_LOGIN_ATTEMPT_LIMIT", "5")))
 LOGIN_LOCKOUT_BASE_MINUTES = max(1, int(os.getenv("LOGIN_LOCKOUT_BASE_MINUTES", "1")))
@@ -21,8 +22,11 @@ def env_flag(name: str, default: bool = False) -> bool:
 
 
 def configure_logging(db_path: Optional[str] = None) -> None:
-    target_db_path = db_path or DB_PATH
-    log_folder = os.path.dirname(target_db_path)
+    target = str(db_path or "").strip()
+    if target and not target.startswith(("postgres://", "postgresql://")):
+        log_folder = os.path.dirname(target)
+    else:
+        log_folder = DATA_PATH
     os.makedirs(log_folder, exist_ok=True)
 
     logging.basicConfig(

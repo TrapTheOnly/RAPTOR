@@ -1,16 +1,16 @@
 import json
 import logging
-import sqlite3
 
 from app.config import DB_PATH
 from app.domain.auth.permissions import PERMISSIONS, get_effective_permissions
+from app.integrations.db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
 
 
 def _load_permissions_from_db(username):
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT permissions FROM allowed_users WHERE username = ?", (username,))
             row = c.fetchone()

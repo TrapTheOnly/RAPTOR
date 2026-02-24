@@ -1,12 +1,12 @@
-import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import DB_PATH
+from app.integrations.db.connection import ROW_AS_DICT, get_db_connection, get_table_columns
 
 
 def fetch_applications(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
         c.execute(
             """
@@ -20,12 +20,12 @@ def fetch_applications(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
 
 
 def create_application(name: str, created_by: str, db_path: str = DB_PATH) -> None:
-    with sqlite3.connect(db_path) as conn:
+    with get_db_connection(db_path) as conn:
         c = conn.cursor()
         c.execute(
             """
             INSERT INTO applications (name, created_by, created_at)
-            VALUES (?, ?, datetime('now', '+4 hours'))
+            VALUES (?, ?, (NOW() + INTERVAL '4 hours'))
             """,
             (name, created_by),
         )
@@ -33,8 +33,8 @@ def create_application(name: str, created_by: str, db_path: str = DB_PATH) -> No
 
 
 def update_application(app_id: int, name: str, db_path: str = DB_PATH) -> bool:
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
         c.execute("SELECT id, name FROM applications WHERE id = ?", (app_id,))
         existing_app = c.fetchone()
@@ -44,8 +44,7 @@ def update_application(app_id: int, name: str, db_path: str = DB_PATH) -> bool:
         old_name = str(existing_app["name"] or "").strip()
         c.execute("UPDATE applications SET name = ? WHERE id = ?", (name, app_id))
 
-        c.execute("PRAGMA table_info(records)")
-        record_columns = {row["name"] for row in c.fetchall()}
+        record_columns = get_table_columns(c, "records")
         if "application_name" in record_columns:
             c.execute(
                 """
@@ -71,7 +70,7 @@ def update_application(app_id: int, name: str, db_path: str = DB_PATH) -> bool:
 
 
 def delete_application(app_id: int, db_path: str = DB_PATH) -> bool:
-    with sqlite3.connect(db_path) as conn:
+    with get_db_connection(db_path) as conn:
         c = conn.cursor()
         c.execute("SELECT id FROM applications WHERE id = ?", (app_id,))
         if not c.fetchone():

@@ -22,6 +22,7 @@ from app.services.offsec.offsec_templates import (
     get_report_templates,
     reset_checklist_template_to_canonical,
     reset_report_template_to_canonical,
+    upload_report_template_logo,
     update_checklist_template,
     update_report_template,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "load_enabled_checklist_templates",
     "reset_checklist_template_to_canonical",
     "reset_report_template_to_canonical",
+    "upload_report_template_logo",
     "update_checklist_template",
     "update_report_template",
     "upload_pentest_image",

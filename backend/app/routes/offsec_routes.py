@@ -21,6 +21,7 @@ from app.services.offsec import (
     reset_report_template_to_canonical,
     update_checklist_template,
     update_report_template,
+    upload_report_template_logo,
     upload_pentest_image,
 )
 
@@ -60,6 +61,7 @@ def register_offsec_routes(app: Flask) -> None:
     )
     app.add_url_rule("/report-templates", methods=["GET"], view_func=get_report_templates)
     app.add_url_rule("/report-templates", methods=["POST"], view_func=create_report_template)
+    app.add_url_rule("/report-templates/logo-upload", methods=["POST"], view_func=upload_report_template_logo)
     app.add_url_rule(
         "/report-templates/<int:template_id>",
         methods=["PUT"],

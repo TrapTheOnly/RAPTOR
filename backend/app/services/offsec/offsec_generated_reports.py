@@ -1,5 +1,4 @@
 import logging
-import sqlite3
 from io import BytesIO
 
 from flask import jsonify, request, send_file, session
@@ -10,16 +9,18 @@ from app.repositories.offsec.offsec_records import (
     get_record_details_internal,
 )
 from app.domain.offsec.shared import DB_PATH, safe_json_load, serialize_checklist_template
+from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
 from app.integrations.storage.offsec_storage import delete_report, fetch_image, ftp_connect, save_report
 from app.http.decorators.permission_required import permission_required
 from app.integrations.reporting.report_pdf_render import render_pentest_report_pdf
+from app.services.offsec.offsec_templates import bind_report_template_logo_for_template
 
 logger = logging.getLogger(__name__)
 
 
 def load_enabled_checklist_templates():
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db_connection(DB_PATH) as conn:
+        conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
         c.execute(
             """
@@ -28,7 +29,7 @@ def load_enabled_checklist_templates():
                    created_by, created_at, updated_at
             FROM service_checklists
             WHERE enabled = 1
-            ORDER BY name COLLATE NOCASE ASC
+            ORDER BY LOWER(name) ASC
             """
         )
         return [serialize_checklist_template(row) for row in c.fetchall()]
@@ -49,8 +50,8 @@ def generate_report(record_id):
     template_id = payload.get("template_id")
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
 
             template_row = None
@@ -78,7 +79,7 @@ def generate_report(record_id):
                     SELECT id, key, name, description, template_json, enabled
                     FROM report_templates
                     WHERE enabled = 1
-                    ORDER BY name COLLATE NOCASE ASC
+                    ORDER BY LOWER(name) ASC
                     LIMIT 1
                     """
                 )
@@ -89,6 +90,13 @@ def generate_report(record_id):
             template_definition = safe_json_load(template_row["template_json"], {})
             if not isinstance(template_definition, dict):
                 return jsonify({"error": "Report template definition is invalid."}), 500
+            template_definition, logo_error = bind_report_template_logo_for_template(
+                c,
+                template_row["id"],
+                template_definition,
+            )
+            if logo_error:
+                return jsonify({"error": logo_error}), 400
 
             checklist_templates = load_enabled_checklist_templates()
             pentest_data = get_pentest_data_internal(record_id)
@@ -120,7 +128,7 @@ def generate_report(record_id):
                     UPDATE pentest_data
                     SET generated_report_file = ?,
                         generated_report_template_id = ?,
-                        generated_report_generated_at = datetime('now', '+4 hours')
+                        generated_report_generated_at = (NOW() + INTERVAL '4 hours')
                     WHERE record_id = ?
                     """,
                     (generated_relative_path, template_row["id"], record_id),
@@ -131,7 +139,7 @@ def generate_report(record_id):
                     INSERT INTO pentest_data (
                         record_id, dns_name, ip_address, source,
                         generated_report_file, generated_report_template_id, generated_report_generated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+4 hours'))
+                    ) VALUES (?, ?, ?, ?, ?, ?, (NOW() + INTERVAL '4 hours'))
                     """,
                     (
                         record_id,
@@ -208,7 +216,7 @@ def delete_generated_report_route(record_id):
 
     try:
         delete_report(pentest_data["generated_report_file"])
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute(
                 """

@@ -3,13 +3,13 @@ import json
 import logging
 import os
 import re
-import sqlite3
 import uuid
 from io import BytesIO
 
 from flask import session
 
 from app.domain.offsec.shared import DB_PATH
+from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
 from app.services.authorization_service import user_has_permission
 
 logger = logging.getLogger(__name__)
@@ -124,8 +124,8 @@ def collect_referenced_image_filenames(description, notes, vulnerabilities):
 
 def is_image_referenced_anywhere(filename):
     like_value = f"%{filename}%"
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db_connection(DB_PATH) as conn:
+        conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
         c.execute("SELECT 1 FROM records WHERE description LIKE ? LIMIT 1", (like_value,))
         if c.fetchone():
@@ -163,8 +163,8 @@ def can_user_access_image(filename):
         return False
 
     like_value = f"%{filename}%"
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db_connection(DB_PATH) as conn:
+        conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
         c.execute(
             """

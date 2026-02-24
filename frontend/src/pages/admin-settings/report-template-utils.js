@@ -94,6 +94,7 @@ const DEFAULT_BRANDING = {
   company_name: 'Security Operations',
   primary_color: '#0B5CAD',
   accent_color: '#1E293B',
+  logo_asset_id: null,
   logo_url: ''
 };
 
@@ -156,6 +157,14 @@ const normalizeInt = (value, fallback) => {
   return Number.isFinite(numeric) ? Math.round(numeric) : fallback;
 };
 
+const normalizePositiveIntOrNull = (value) => {
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric <= 0) {
+    return null;
+  }
+  return numeric;
+};
+
 const normalizeLayout = (layout, type, index) => {
   const baseLayout = DEFAULT_BLOCK_LAYOUT[type] || DEFAULT_BLOCK_LAYOUT.text;
   const raw = layout && typeof layout === 'object' ? layout : {};
@@ -206,6 +215,7 @@ export const normalizeTemplateDefinition = (rawDefinition) => {
       company_name: `${brandingInput.company_name || DEFAULT_BRANDING.company_name}`,
       primary_color: ensureColor(brandingInput.primary_color, DEFAULT_BRANDING.primary_color),
       accent_color: ensureColor(brandingInput.accent_color, DEFAULT_BRANDING.accent_color),
+      logo_asset_id: normalizePositiveIntOrNull(brandingInput.logo_asset_id),
       logo_url: `${brandingInput.logo_url || ''}`
     },
     placeholders: {

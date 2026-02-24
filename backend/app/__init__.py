@@ -15,11 +15,9 @@ def create_app():
     from app.routes.metadata import metadata_bp
     from app.routes.offsec_routes import register_offsec_routes
     from app.routes.records import records_bp
-    from app.integrations.db.postgres_adapter import ensure_db_backend
     from app.services.session_policy_service import SESSION_IDLE_TIMEOUT_SECONDS
 
     load_dotenv()
-    ensure_db_backend()
     configure_logging()
 
     app = Flask(

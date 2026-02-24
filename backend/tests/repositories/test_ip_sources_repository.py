@@ -1,61 +1,115 @@
-import sqlite3
-
 from app.repositories import ip_sources_repository
 
 
-def _setup_db(db_path: str) -> None:
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute(
-        """
-        CREATE TABLE ip_sources (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_name TEXT NOT NULL,
-            ip_address TEXT NOT NULL UNIQUE
-        )
-        """
-    )
-    c.execute(
-        """
-        CREATE TABLE records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ip_address TEXT NOT NULL,
-            source TEXT NOT NULL,
-            status TEXT NOT NULL,
-            last_modification_date TEXT
-        )
-        """
-    )
-    c.execute(
-        "INSERT INTO records (ip_address, source, status, last_modification_date) VALUES (?, ?, ?, NULL)",
-        ("10.10.10.10", "Other", "unchanged"),
-    )
-    conn.commit()
-    conn.close()
+class _FakeCursor:
+    def __init__(self, state):
+        self._state = state
+        self._rows = []
+        self.rowcount = 0
+
+    def execute(self, query, params=()):
+        normalized = " ".join(str(query).split()).lower()
+        self.rowcount = 0
+
+        if normalized.startswith("insert into ip_sources"):
+            source_name, ip_address = params
+            if ip_address in self._state["ip_sources"]:
+                raise RuntimeError("duplicate key")
+            self._state["ip_sources"][ip_address] = source_name
+            self.rowcount = 1
+            self._rows = []
+            return self
+
+        if normalized.startswith("update records set source = ?"):
+            source_name, ip_address = params
+            updated = 0
+            for row in self._state["records"]:
+                if row["ip_address"] == ip_address:
+                    row["source"] = source_name
+                    row["status"] = "updated"
+                    updated += 1
+            self.rowcount = updated
+            self._rows = []
+            return self
+
+        if normalized.startswith("select source_name from ip_sources where ip_address ="):
+            ip_address = params[0]
+            source = self._state["ip_sources"].get(ip_address)
+            self._rows = [(source,)] if source is not None else []
+            return self
+
+        if normalized.startswith("delete from ip_sources where ip_address ="):
+            ip_address = params[0]
+            deleted = 1 if self._state["ip_sources"].pop(ip_address, None) is not None else 0
+            self.rowcount = deleted
+            self._rows = []
+            return self
+
+        if normalized.startswith("update records set source = 'other'"):
+            ip_address = params[0]
+            updated = 0
+            for row in self._state["records"]:
+                if row["ip_address"] == ip_address:
+                    row["source"] = "Other"
+                    row["status"] = "updated"
+                    updated += 1
+            self.rowcount = updated
+            self._rows = []
+            return self
+
+        if normalized.startswith("select id, source_name, ip_address from ip_sources"):
+            self._rows = [
+                {"id": index + 1, "source_name": source_name, "ip_address": ip_address}
+                for index, (ip_address, source_name) in enumerate(self._state["ip_sources"].items())
+            ]
+            return self
+
+        raise AssertionError(f"Unexpected query in test fake: {query}")
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
 
 
-def test_add_and_delete_ip_source_updates_records(tmp_path):
-    db_path = str(tmp_path / "ip.db")
-    _setup_db(db_path)
+class _FakeConnection:
+    def __init__(self, state):
+        self._state = state
+        self.row_factory = None
 
-    updated = ip_sources_repository.add_ip_source("Corp", "10.10.10.10", db_path=db_path)
+    def cursor(self):
+        return _FakeCursor(self._state)
+
+    def commit(self):
+        return None
+
+    def rollback(self):
+        return None
+
+    def close(self):
+        return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def test_add_and_delete_ip_source_updates_records(monkeypatch):
+    state = {
+        "ip_sources": {},
+        "records": [{"ip_address": "10.10.10.10", "source": "Other", "status": "unchanged"}],
+    }
+    monkeypatch.setattr(ip_sources_repository, "get_db_connection", lambda _db_path: _FakeConnection(state))
+
+    updated = ip_sources_repository.add_ip_source("Corp", "10.10.10.10", db_path="postgresql://unit-test")
     assert updated == 1
+    assert state["records"][0]["source"] == "Corp"
+    assert state["records"][0]["status"] == "updated"
 
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute("SELECT source, status FROM records WHERE ip_address = ?", ("10.10.10.10",))
-    source, status = c.fetchone()
-    conn.close()
-    assert source == "Corp"
-    assert status == "updated"
-
-    deleted = ip_sources_repository.delete_ip_source("10.10.10.10", db_path=db_path)
+    deleted = ip_sources_repository.delete_ip_source("10.10.10.10", db_path="postgresql://unit-test")
     assert deleted == ("Corp", 1)
-
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute("SELECT source, status FROM records WHERE ip_address = ?", ("10.10.10.10",))
-    source_after, status_after = c.fetchone()
-    conn.close()
-    assert source_after == "Other"
-    assert status_after == "updated"
+    assert state["records"][0]["source"] == "Other"
+    assert state["records"][0]["status"] == "updated"

@@ -1,5 +1,4 @@
 import logging
-import sqlite3
 import time
 from typing import Any, Dict
 
@@ -10,6 +9,7 @@ from app.config import (
     LOGIN_LOCKOUT_MAX_MINUTES,
 )
 from app.http.request_utils import normalize_auth_key
+from app.integrations.db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def get_login_lockout_status(username: str, db_path: str = DB_PATH) -> Dict[str,
 
     now_epoch = int(time.time())
     try:
-        with sqlite3.connect(db_path) as conn:
+        with get_db_connection(db_path) as conn:
             c = conn.cursor()
             c.execute(
                 """
@@ -67,7 +67,7 @@ def register_failed_login_attempt(username: str, db_path: str = DB_PATH) -> Dict
 
     now_epoch = int(time.time())
     try:
-        with sqlite3.connect(db_path) as conn:
+        with get_db_connection(db_path) as conn:
             c = conn.cursor()
             c.execute(
                 """
@@ -112,7 +112,7 @@ def register_failed_login_attempt(username: str, db_path: str = DB_PATH) -> Dict
                     SET failed_attempts = ?,
                         lockout_level = ?,
                         lockout_until_epoch = ?,
-                        updated_at = datetime('now')
+                        updated_at = NOW()
                     WHERE username = ?
                     """,
                     (failed_attempts, lockout_level, lockout_until_epoch, key),
@@ -122,7 +122,7 @@ def register_failed_login_attempt(username: str, db_path: str = DB_PATH) -> Dict
                     """
                     INSERT INTO auth_lockouts (
                         username, failed_attempts, lockout_level, lockout_until_epoch, updated_at
-                    ) VALUES (?, ?, ?, ?, datetime('now'))
+                    ) VALUES (?, ?, ?, ?, NOW())
                     """,
                     (key, failed_attempts, lockout_level, lockout_until_epoch),
                 )
@@ -144,7 +144,7 @@ def clear_login_lockout_state(username: str, db_path: str = DB_PATH) -> None:
         return
 
     try:
-        with sqlite3.connect(db_path) as conn:
+        with get_db_connection(db_path) as conn:
             c = conn.cursor()
             c.execute("DELETE FROM auth_lockouts WHERE username = ?", (key,))
             conn.commit()

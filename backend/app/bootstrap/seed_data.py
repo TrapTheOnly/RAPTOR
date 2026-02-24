@@ -1,15 +1,15 @@
 import hashlib
 import json
 import logging
-import sqlite3
 
 from app.domain.catalogs.report_template_catalog import build_report_template_revision
 from app.domain.offsec.shared import get_default_report_templates, get_default_service_checklists
+from app.integrations.db.connection import DatabaseCursor
 
 logger = logging.getLogger(__name__)
 
 
-def seed_service_checklists(cursor: sqlite3.Cursor) -> None:
+def seed_service_checklists(cursor: DatabaseCursor) -> None:
     checklist_seed_key = "service_checklists_seeded_v2"
     cursor.execute("SELECT value FROM app_meta WHERE key = ?", (checklist_seed_key,))
     checklist_seeded = cursor.fetchone() is not None
@@ -38,7 +38,7 @@ def seed_service_checklists(cursor: sqlite3.Cursor) -> None:
                     key, name, service, source, auto_ports, sections, enabled,
                     is_system, is_customized, system_revision,
                     created_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, ?, 'system', datetime('now', '+4 hours'), datetime('now', '+4 hours'))
+                ) VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, ?, 'system', (NOW() + INTERVAL '4 hours'), (NOW() + INTERVAL '4 hours'))
                 """,
                 (
                     template["key"],
@@ -59,7 +59,7 @@ def seed_service_checklists(cursor: sqlite3.Cursor) -> None:
                 UPDATE service_checklists
                 SET name = ?, service = ?, source = ?, auto_ports = ?, sections = ?, enabled = 1,
                     is_system = 1, is_customized = 0, system_revision = ?,
-                    updated_at = datetime('now', '+4 hours')
+                    updated_at = (NOW() + INTERVAL '4 hours')
                 WHERE id = ?
                 """,
                 (
@@ -78,7 +78,7 @@ def seed_service_checklists(cursor: sqlite3.Cursor) -> None:
                 UPDATE service_checklists
                 SET is_system = 1,
                     system_revision = ?,
-                    updated_at = datetime('now', '+4 hours')
+                    updated_at = (NOW() + INTERVAL '4 hours')
                 WHERE id = ?
                 """,
                 (system_revision, existing_id),
@@ -90,19 +90,19 @@ def seed_service_checklists(cursor: sqlite3.Cursor) -> None:
                 cursor.execute(
                     """
                     UPDATE service_checklists
-                    SET enabled = 0, updated_at = datetime('now', '+4 hours')
+                    SET enabled = 0, updated_at = (NOW() + INTERVAL '4 hours')
                     WHERE id = ?
                     """,
                     (existing_id,),
                 )
 
     cursor.execute(
-        "INSERT INTO app_meta (key, value) VALUES (?, datetime('now', '+4 hours'))",
+        "INSERT INTO app_meta (key, value) VALUES (?, (NOW() + INTERVAL '4 hours'))",
         (checklist_seed_key,),
     )
 
 
-def seed_report_templates(cursor: sqlite3.Cursor) -> None:
+def seed_report_templates(cursor: DatabaseCursor) -> None:
     report_seed_key = "report_templates_seeded_v1"
     cursor.execute("SELECT value FROM app_meta WHERE key = ?", (report_seed_key,))
     report_seeded = cursor.fetchone() is not None
@@ -137,7 +137,7 @@ def seed_report_templates(cursor: sqlite3.Cursor) -> None:
                     key, name, description, template_json, enabled,
                     is_system, is_customized, system_revision,
                     created_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, 1, 1, 0, ?, 'system', datetime('now', '+4 hours'), datetime('now', '+4 hours'))
+                ) VALUES (?, ?, ?, ?, 1, 1, 0, ?, 'system', (NOW() + INTERVAL '4 hours'), (NOW() + INTERVAL '4 hours'))
                 """,
                 (
                     template_key,
@@ -156,7 +156,7 @@ def seed_report_templates(cursor: sqlite3.Cursor) -> None:
                 UPDATE report_templates
                 SET name = ?, description = ?, template_json = ?, enabled = 1,
                     is_system = 1, is_customized = 0, system_revision = ?,
-                    updated_at = datetime('now', '+4 hours')
+                    updated_at = (NOW() + INTERVAL '4 hours')
                 WHERE id = ?
                 """,
                 (
@@ -173,7 +173,7 @@ def seed_report_templates(cursor: sqlite3.Cursor) -> None:
                 UPDATE report_templates
                 SET is_system = 1,
                     system_revision = ?,
-                    updated_at = datetime('now', '+4 hours')
+                    updated_at = (NOW() + INTERVAL '4 hours')
                 WHERE id = ?
                 """,
                 (system_revision, existing_id),
@@ -185,23 +185,23 @@ def seed_report_templates(cursor: sqlite3.Cursor) -> None:
                 cursor.execute(
                     """
                     UPDATE report_templates
-                    SET enabled = 0, updated_at = datetime('now', '+4 hours')
+                    SET enabled = 0, updated_at = (NOW() + INTERVAL '4 hours')
                     WHERE id = ?
                     """,
                     (existing_id,),
                 )
 
     cursor.execute(
-        "INSERT INTO app_meta (key, value) VALUES (?, datetime('now', '+4 hours'))",
+        "INSERT INTO app_meta (key, value) VALUES (?, (NOW() + INTERVAL '4 hours'))",
         (report_seed_key,),
     )
 
 
-def create_vuln_categories_table(cursor: sqlite3.Cursor) -> None:
+def create_vuln_categories_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS vuln_categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             created_by TEXT,
             created_at TEXT NOT NULL,
@@ -211,7 +211,7 @@ def create_vuln_categories_table(cursor: sqlite3.Cursor) -> None:
     )
 
 
-def seed_default_vuln_categories(cursor: sqlite3.Cursor) -> None:
+def seed_default_vuln_categories(cursor: DatabaseCursor) -> None:
     cursor.execute("SELECT COUNT(*) FROM vuln_categories")
     if cursor.fetchone()[0] != 0:
         return
@@ -274,7 +274,7 @@ def seed_default_vuln_categories(cursor: sqlite3.Cursor) -> None:
         cursor.execute(
             """
             INSERT INTO vuln_categories (name, created_by, created_at, is_custom)
-            VALUES (?, ?, datetime('now', '+4 hours'), 0)
+            VALUES (?, ?, (NOW() + INTERVAL '4 hours'), 0)
             """,
             (name, "system"),
         )

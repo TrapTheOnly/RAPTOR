@@ -1,12 +1,13 @@
-import sqlite3
 from typing import Set
 
+from app.integrations.db.connection import DatabaseCursor, get_table_columns
 
-def create_records_table(cursor: sqlite3.Cursor) -> Set[str]:
+
+def create_records_table(cursor: DatabaseCursor) -> Set[str]:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             ip_address TEXT NOT NULL,
             source TEXT NOT NULL,
@@ -20,36 +21,34 @@ def create_records_table(cursor: sqlite3.Cursor) -> Set[str]:
         )
         """
     )
-    cursor.execute("PRAGMA table_info(records)")
-    record_columns = {row[1] for row in cursor.fetchall()}
+    record_columns = get_table_columns(cursor, "records")
     if "application_id" not in record_columns:
         cursor.execute("ALTER TABLE records ADD COLUMN application_id INTEGER")
         record_columns.add("application_id")
     return record_columns
 
 
-def create_allowed_users_table(cursor: sqlite3.Cursor) -> None:
+def create_allowed_users_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS allowed_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT NOT NULL UNIQUE,
             email TEXT,
             added_date TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'user',
             auth_type TEXT NOT NULL DEFAULT 'ldap',
-            password BLOB,
+            password BYTEA,
             must_reset INTEGER NOT NULL DEFAULT 0,
             permissions TEXT
         )
         """
     )
-    cursor.execute("PRAGMA table_info(allowed_users)")
-    allowed_user_columns = {row[1] for row in cursor.fetchall()}
+    allowed_user_columns = get_table_columns(cursor, "allowed_users")
     if "auth_type" not in allowed_user_columns:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'ldap'")
     if "password" not in allowed_user_columns:
-        cursor.execute("ALTER TABLE allowed_users ADD COLUMN password BLOB")
+        cursor.execute("ALTER TABLE allowed_users ADD COLUMN password BYTEA")
     if "must_reset" not in allowed_user_columns:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
     if "permissions" not in allowed_user_columns:
@@ -57,11 +56,11 @@ def create_allowed_users_table(cursor: sqlite3.Cursor) -> None:
     cursor.execute("UPDATE allowed_users SET auth_type = 'ldap' WHERE auth_type IS NULL OR auth_type = ''")
 
 
-def create_applications_table(cursor: sqlite3.Cursor) -> None:
+def create_applications_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS applications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             created_by TEXT,
             created_at TEXT NOT NULL
@@ -70,7 +69,7 @@ def create_applications_table(cursor: sqlite3.Cursor) -> None:
     )
 
 
-def repair_legacy_application_mapping(cursor: sqlite3.Cursor, record_columns: Set[str]) -> None:
+def repair_legacy_application_mapping(cursor: DatabaseCursor, record_columns: Set[str]) -> None:
     if "application_name" not in record_columns:
         return
 
@@ -112,11 +111,11 @@ def repair_legacy_application_mapping(cursor: sqlite3.Cursor, record_columns: Se
     )
 
 
-def create_ip_sources_table(cursor: sqlite3.Cursor) -> None:
+def create_ip_sources_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS ip_sources (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             source_name TEXT NOT NULL,
             ip_address TEXT NOT NULL UNIQUE
         )
@@ -124,11 +123,11 @@ def create_ip_sources_table(cursor: sqlite3.Cursor) -> None:
     )
 
 
-def create_record_history_table(cursor: sqlite3.Cursor) -> None:
+def create_record_history_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS record_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             record_id INTEGER NOT NULL,
             action TEXT NOT NULL,
             timestamp TEXT NOT NULL,
@@ -144,11 +143,11 @@ def create_record_history_table(cursor: sqlite3.Cursor) -> None:
     )
 
 
-def create_pentest_table(cursor: sqlite3.Cursor) -> None:
+def create_pentest_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS pentest_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             record_id INTEGER NOT NULL,
             dns_name TEXT NOT NULL,
             ip_address TEXT NOT NULL,
@@ -170,8 +169,7 @@ def create_pentest_table(cursor: sqlite3.Cursor) -> None:
         )
         """
     )
-    cursor.execute("PRAGMA table_info(pentest_data)")
-    pentest_columns = {row[1] for row in cursor.fetchall()}
+    pentest_columns = get_table_columns(cursor, "pentest_data")
     if "vulnerabilities" not in pentest_columns:
         cursor.execute("ALTER TABLE pentest_data ADD COLUMN vulnerabilities TEXT")
     if "checklist_states" not in pentest_columns:
@@ -184,11 +182,11 @@ def create_pentest_table(cursor: sqlite3.Cursor) -> None:
         cursor.execute("ALTER TABLE pentest_data ADD COLUMN generated_report_generated_at TEXT")
 
 
-def create_service_checklists_table(cursor: sqlite3.Cursor) -> None:
+def create_service_checklists_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS service_checklists (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             key TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
             service TEXT NOT NULL,
@@ -205,8 +203,7 @@ def create_service_checklists_table(cursor: sqlite3.Cursor) -> None:
         )
         """
     )
-    cursor.execute("PRAGMA table_info(service_checklists)")
-    checklist_columns = {row[1] for row in cursor.fetchall()}
+    checklist_columns = get_table_columns(cursor, "service_checklists")
     if "is_system" not in checklist_columns:
         cursor.execute("ALTER TABLE service_checklists ADD COLUMN is_system INTEGER NOT NULL DEFAULT 1")
     if "is_customized" not in checklist_columns:
@@ -215,11 +212,11 @@ def create_service_checklists_table(cursor: sqlite3.Cursor) -> None:
         cursor.execute("ALTER TABLE service_checklists ADD COLUMN system_revision TEXT")
 
 
-def create_report_templates_table(cursor: sqlite3.Cursor) -> None:
+def create_report_templates_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS report_templates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             key TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
             description TEXT,
@@ -234,8 +231,7 @@ def create_report_templates_table(cursor: sqlite3.Cursor) -> None:
         )
         """
     )
-    cursor.execute("PRAGMA table_info(report_templates)")
-    report_template_columns = {row[1] for row in cursor.fetchall()}
+    report_template_columns = get_table_columns(cursor, "report_templates")
     if "description" not in report_template_columns:
         cursor.execute("ALTER TABLE report_templates ADD COLUMN description TEXT")
     if "is_system" not in report_template_columns:
@@ -245,8 +241,35 @@ def create_report_templates_table(cursor: sqlite3.Cursor) -> None:
     if "system_revision" not in report_template_columns:
         cursor.execute("ALTER TABLE report_templates ADD COLUMN system_revision TEXT")
 
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS report_template_logo_assets (
+            id SERIAL PRIMARY KEY,
+            report_template_id INTEGER NOT NULL,
+            file_path TEXT NOT NULL UNIQUE,
+            created_by TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    logo_asset_columns = get_table_columns(cursor, "report_template_logo_assets")
+    if "report_template_id" not in logo_asset_columns:
+        cursor.execute("ALTER TABLE report_template_logo_assets ADD COLUMN report_template_id INTEGER")
+    if "file_path" not in logo_asset_columns:
+        cursor.execute("ALTER TABLE report_template_logo_assets ADD COLUMN file_path TEXT")
+    if "created_by" not in logo_asset_columns:
+        cursor.execute("ALTER TABLE report_template_logo_assets ADD COLUMN created_by TEXT")
+    if "created_at" not in logo_asset_columns:
+        cursor.execute("ALTER TABLE report_template_logo_assets ADD COLUMN created_at TEXT")
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_report_template_logo_assets_template_id
+        ON report_template_logo_assets (report_template_id)
+        """
+    )
 
-def create_app_meta_table(cursor: sqlite3.Cursor) -> None:
+
+def create_app_meta_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS app_meta (
@@ -257,7 +280,7 @@ def create_app_meta_table(cursor: sqlite3.Cursor) -> None:
     )
 
 
-def create_auth_lockout_table(cursor: sqlite3.Cursor) -> None:
+def create_auth_lockout_table(cursor: DatabaseCursor) -> None:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS auth_lockouts (

@@ -793,6 +793,45 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     setReportTemplateForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleUploadReportTemplateLogo = async (file) => {
+    if (!file) return;
+    if (!selectedReportTemplateId) {
+      showMessage('error', 'Save the report template first, then upload a logo.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('logo', file);
+    formData.append('template_id', String(selectedReportTemplateId));
+
+    setLoading(true);
+    try {
+      const response = await axios.post('/report-templates/logo-upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      if (response.status === 200 && response.data.logo_url) {
+        setReportTemplateForm((prev) => ({
+          ...prev,
+          branding: {
+            ...(prev.branding || {}),
+            logo_asset_id: response.data.logo_asset_id || null,
+            logo_url: response.data.logo_url
+          }
+        }));
+        showMessage('success', 'Logo uploaded successfully.');
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to upload logo.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveReportTemplate = async () => {
     const key = selectedReportTemplate?.is_system
       ? (selectedReportTemplate.key || '').trim().toLowerCase()
@@ -1212,6 +1251,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
             onCreateNewTemplate={handleCreateNewReportTemplate}
             onSelectTemplate={handleSelectReportTemplate}
             onChangeTemplateForm={handleReportTemplateFormChange}
+            onUploadLogo={handleUploadReportTemplateLogo}
             onSaveTemplate={handleSaveReportTemplate}
             onDeleteTemplate={handleDeleteReportTemplate}
             onResetTemplate={handleResetReportTemplate}
