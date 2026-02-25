@@ -1247,7 +1247,7 @@ const ReportTemplatesSection = ({
                         label="Logo Asset"
                         value={
                           templateForm.branding?.logo_asset_id
-                            ? `ID ${templateForm.branding.logo_asset_id} (${templateForm.branding?.logo_url || ''})`
+                            ? `Logo uploaded`
                             : 'No logo uploaded'
                         }
                         InputProps={{ readOnly: true }}
