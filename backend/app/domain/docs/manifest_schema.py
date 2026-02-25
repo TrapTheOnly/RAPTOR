@@ -48,6 +48,22 @@ def find_page_in_manifest(manifest: Dict[str, Any], section_slug: str, page_slug
     return None
 
 
+def resolve_docs_content_path(section_slug: str, page_slug: str) -> Optional[str]:
+    section = str(section_slug or "").strip()
+    page = str(page_slug or "").strip()
+    if not section or not page:
+        return None
+
+    candidate_path = os.path.abspath(os.path.join(DOCS_CONTENT_ROOT, section, f"{page}.json"))
+    content_root = os.path.abspath(DOCS_CONTENT_ROOT)
+    try:
+        if os.path.commonpath([candidate_path, content_root]) != content_root:
+            return None
+    except ValueError:
+        return None
+    return candidate_path
+
+
 __all__ = [
     "DOCS_CONTENT_ROOT",
     "ROLE_LABELS",
@@ -55,4 +71,5 @@ __all__ = [
     "find_page_in_manifest",
     "load_manifest",
     "read_json_file",
+    "resolve_docs_content_path",
 ]

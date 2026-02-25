@@ -1,10 +1,10 @@
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.domain.docs.manifest_schema import (
-    DOCS_CONTENT_ROOT,
     find_page_in_manifest,
     load_manifest,
     read_json_file,
+    resolve_docs_content_path,
 )
 from app.services.authorization_service import get_user_permissions
 from app.services.docs_access_matrix_service import build_docs_access_matrix, is_access_allowed
@@ -75,7 +75,9 @@ def get_docs_page_for_user(section_slug: str, page_slug: str, username: Optional
     if not is_access_allowed(access, normalized_role, permissions):
         return {"error": "Unauthorized access"}, 403
 
-    content_path = f"{DOCS_CONTENT_ROOT}/{section_slug}/{page_slug}.json"
+    content_path = resolve_docs_content_path(section_slug, page_slug)
+    if not content_path:
+        return {"error": "Documentation content not found."}, 404
     page_payload = read_json_file(content_path)
     if page_payload is None:
         return {"error": "Documentation content not found."}, 404

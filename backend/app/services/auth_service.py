@@ -65,6 +65,7 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
     if username == ADMIN_USERNAME:
         if admin_login(username, password):
             clear_login_lockout_state(username)
+            session_obj.clear()
             session_obj.permanent = True
             session_obj["username"] = username
             session_obj["user_type"] = "admin"
@@ -101,6 +102,7 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
                 return _invalid_credentials_response(username)
 
             clear_login_lockout_state(username)
+            session_obj.clear()
             session_obj.permanent = True
             session_obj["username"] = user[0]
             session_obj["user_type"] = user_role
@@ -127,6 +129,7 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
 
         if ldap_authenticate(username, password):
             clear_login_lockout_state(username)
+            session_obj.clear()
             session_obj.permanent = True
             session_obj["logged_in"] = True
             session_obj["username"] = user[0]
