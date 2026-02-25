@@ -182,8 +182,31 @@ def enforce_pentest_record_access(record_id, action_verb="access"):
     return True, None
 
 
+def filter_visible_pentest_records(records, username, can_modify_others=False):
+    """
+    Restrict pentest dashboard rows for non-privileged users.
+    - Privileged users see all rows.
+    - Others see rows assigned to themselves or currently unassigned.
+    """
+    if not isinstance(records, list):
+        return []
+    if can_modify_others:
+        return list(records)
+
+    normalized_username = (username or "").strip()
+    visible_records = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        assigned_user = str(record.get("tested_by") or "").strip()
+        if not assigned_user or assigned_user == normalized_username:
+            visible_records.append(record)
+    return visible_records
+
+
 __all__ = [
     "enforce_pentest_record_access",
+    "filter_visible_pentest_records",
     "get_pentest_data_internal",
     "get_pentest_row",
     "get_pentest_users_internal",
