@@ -1,3 +1,6 @@
+import re
+
+
 def safe_color(value, fallback, colors):
     try:
         return colors.HexColor(value)
@@ -57,14 +60,62 @@ def markdown_to_flowables(
     paragraph,
     spacer,
     empty_message="No content provided.",
+    preformatted=None,
+    markdown_image_target_width_mm=None,
+    markdown_image_max_height_mm=250,
 ):
     text = str(raw_text or "")
     if not text.strip():
         return [paragraph(empty_message, styles["ReportMuted"])]
 
+    def append_code_block(flowables_list, code_lines, code_language):
+        if not code_lines:
+            return
+        code_text = "\n".join(code_lines).rstrip("\n")
+        if not code_text.strip():
+            return
+
+        if code_language:
+            language_style = styles["ReportCodeLanguage"] if "ReportCodeLanguage" in styles else styles["ReportMuted"]
+            flowables_list.append(
+                paragraph(
+                    f"Code ({replace_inline_markdown(code_language.lower())})",
+                    language_style,
+                )
+            )
+            flowables_list.append(spacer(1, 2))
+
+        if preformatted and "ReportCodeBlock" in styles:
+            flowables_list.append(preformatted(code_text, styles["ReportCodeBlock"]))
+        else:
+            fallback_text = code_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            flowables_list.append(paragraph(f"<font name='Courier'>{fallback_text}</font>", styles["ReportBody"]))
+        flowables_list.append(spacer(1, 5))
+
     flowables = []
+    in_code_block = False
+    code_language = ""
+    code_lines = []
+
     for line in text.splitlines():
         current = line.rstrip()
+        fence_match = re.match(r"^```([a-zA-Z0-9_+-]*)\s*$", current.strip())
+        if fence_match:
+            if in_code_block:
+                append_code_block(flowables, code_lines, code_language)
+                in_code_block = False
+                code_language = ""
+                code_lines = []
+            else:
+                in_code_block = True
+                code_language = (fence_match.group(1) or "").strip()
+                code_lines = []
+            continue
+
+        if in_code_block:
+            code_lines.append(current)
+            continue
+
         if not current.strip():
             flowables.append(spacer(1, 4))
             continue
@@ -73,12 +124,19 @@ def markdown_to_flowables(
         text_without_images = markdown_image_pattern.sub("", current).strip()
 
         if text_without_images:
-            if text_without_images.startswith("### "):
-                flowables.append(paragraph(replace_inline_markdown(text_without_images[4:]), styles["ReportSectionTitle"]))
-            elif text_without_images.startswith("## "):
-                flowables.append(paragraph(replace_inline_markdown(text_without_images[3:]), styles["ReportSectionTitle"]))
-            elif text_without_images.startswith("# "):
-                flowables.append(paragraph(replace_inline_markdown(text_without_images[2:]), styles["ReportSectionTitle"]))
+            heading_match = re.match(r"^(#{1,6})\s+(.*)$", text_without_images)
+            if heading_match:
+                heading_level = len(heading_match.group(1))
+                heading_text = heading_match.group(2).strip()
+                heading_style_map = {
+                    1: "ReportMarkdownH1",
+                    2: "ReportMarkdownH2",
+                    3: "ReportMarkdownH3",
+                    4: "ReportMarkdownH4",
+                }
+                style_name = heading_style_map.get(heading_level, "ReportMarkdownH4")
+                heading_style = styles[style_name] if style_name in styles else styles["ReportSectionTitle"]
+                flowables.append(paragraph(replace_inline_markdown(heading_text), heading_style))
             elif text_without_images.startswith("- ") or text_without_images.startswith("* "):
                 flowables.append(
                     paragraph(replace_inline_markdown(text_without_images[2:]), styles["ReportBullet"], bulletText="•")
@@ -88,7 +146,14 @@ def markdown_to_flowables(
 
         for match in image_matches:
             image_url = match.group(2)
-            image = get_embedded_image_fn(image_url, centered=True)
+            image_width_target = markdown_image_target_width_mm if markdown_image_target_width_mm else 170
+            image = get_embedded_image_fn(
+                image_url,
+                max_width_mm=image_width_target,
+                max_height_mm=markdown_image_max_height_mm,
+                target_width_mm=markdown_image_target_width_mm,
+                centered=True,
+            )
             if image:
                 flowables.append(spacer(1, 6))
                 flowables.append(image)
@@ -98,6 +163,9 @@ def markdown_to_flowables(
                 flowables.append(
                     paragraph(f"[Image omitted: {replace_inline_markdown(alt_text)}]", styles["ReportMuted"])
                 )
+
+    if in_code_block and code_lines:
+        append_code_block(flowables, code_lines, code_language)
 
     return flowables
 

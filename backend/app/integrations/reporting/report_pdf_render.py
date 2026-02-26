@@ -46,6 +46,7 @@ def render_pentest_report_pdf(
             Image as RLImage,
             PageBreak,
             Paragraph,
+            Preformatted,
             SimpleDocTemplate,
             Spacer,
             Table,
@@ -94,6 +95,7 @@ def render_pentest_report_pdf(
         "Informational": "#475569",
     }
     severity_colors = {key: colors.HexColor(value) for key, value in severity_color_hex.items()}
+    content_width_mm = 178
 
     styles = getSampleStyleSheet()
     styles.add(
@@ -118,11 +120,88 @@ def render_pentest_report_pdf(
     )
     styles.add(
         ParagraphStyle(
+            name="ReportMarkdownH1",
+            parent=styles["ReportBody"],
+            fontName="Helvetica-Bold",
+            fontSize=12.4,
+            leading=16,
+            textColor=accent,
+            spaceBefore=2,
+            spaceAfter=1,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportMarkdownH2",
+            parent=styles["ReportBody"],
+            fontName="Helvetica-Bold",
+            fontSize=11.6,
+            leading=14.8,
+            textColor=accent,
+            spaceBefore=1,
+            spaceAfter=1,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportMarkdownH3",
+            parent=styles["ReportBody"],
+            fontName="Helvetica-Bold",
+            fontSize=10.9,
+            leading=13.8,
+            textColor=text_primary,
+            spaceBefore=1,
+            spaceAfter=0.5,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportMarkdownH4",
+            parent=styles["ReportBody"],
+            fontName="Helvetica-Bold",
+            fontSize=10.4,
+            leading=13.2,
+            textColor=text_primary,
+            spaceBefore=0.5,
+            spaceAfter=0.5,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
             name="ReportMuted",
             parent=styles["BodyText"],
             fontSize=9.1,
             leading=12.4,
             textColor=muted,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportCodeLanguage",
+            parent=styles["ReportMuted"],
+            fontSize=8.2,
+            leading=10,
+            textColor=muted,
+            spaceBefore=1,
+            spaceAfter=0,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportCodeBlock",
+            parent=styles["ReportBody"],
+            fontName="Courier",
+            fontSize=8.8,
+            leading=11.4,
+            textColor=text_primary,
+            backColor=colors.HexColor("#F1F5F9"),
+            borderColor=border_color,
+            borderWidth=0.5,
+            borderPadding=6,
+            leftIndent=2,
+            rightIndent=2,
+            spaceBefore=0,
+            spaceAfter=0,
         )
     )
     styles.add(
@@ -254,6 +333,9 @@ def render_pentest_report_pdf(
             Paragraph,
             Spacer,
             empty_message=empty_message,
+            preformatted=Preformatted,
+            markdown_image_target_width_mm=content_width_mm,
+            markdown_image_max_height_mm=250,
         )
 
     def section_title_fn(text):

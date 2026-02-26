@@ -276,7 +276,30 @@ def append_story_block(
                 styles["ReportMutedCenter"],
             )
 
-            card_content = [finding_header, Spacer(1, 3), severity_label]
+            # Keep header in a compact card, but render long body content outside the table
+            # so reportlab can paginate naturally for large findings and images.
+            finding_header_table = Table(
+                [[finding_header, severity_label]],
+                colWidths=[130 * mm, 48 * mm],
+                hAlign="LEFT",
+            )
+            finding_header_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                        ("BOX", (0, 0), (-1, -1), 0.7, border_color),
+                        ("LINEBEFORE", (0, 0), (0, 0), 3, severity_color),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                        ("TOPPADDING", (0, 0), (-1, -1), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ]
+                )
+            )
+            story.append(finding_header_table)
+
             metrics = vuln.get("metrics")
             if isinstance(metrics, dict) and metrics:
                 ordered = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"]
@@ -286,8 +309,8 @@ def append_story_block(
                     if metrics.get(metric) is not None and metrics.get(metric) != ""
                 ]
                 if metric_parts:
-                    card_content.append(Spacer(1, 2))
-                    card_content.append(
+                    story.append(Spacer(1, 2))
+                    story.append(
                         Paragraph(
                             f"CVSS Vector: {replace_inline_markdown('/'.join(metric_parts))}",
                             styles["ReportMuted"],
@@ -296,24 +319,8 @@ def append_story_block(
 
             if include_descriptions:
                 description = vuln.get("description", "")
-                card_content.append(Spacer(1, 4))
-                card_content.extend(markdown_to_flowables_fn(description))
-
-            finding_table = Table([[card_content]], colWidths=[178 * mm], hAlign="LEFT")
-            finding_table.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-                        ("BOX", (0, 0), (-1, -1), 0.7, border_color),
-                        ("LINEBEFORE", (0, 0), (0, 0), 3, severity_color),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                        ("TOPPADDING", (0, 0), (-1, -1), 8),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                    ]
-                )
-            )
-            story.append(finding_table)
+                story.append(Spacer(1, 4))
+                story.extend(markdown_to_flowables_fn(description))
             story.append(Spacer(1, 7))
         return
 
