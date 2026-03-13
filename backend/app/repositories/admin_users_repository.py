@@ -208,7 +208,12 @@ def get_existing_users():
         with get_db_connection(DB_PATH) as conn:
             conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
-            c.execute("SELECT username, email, added_date, role, auth_type, permissions FROM allowed_users")
+            c.execute(
+                """
+                SELECT username, email, added_date, role, auth_type, permissions, is_service_account
+                FROM allowed_users
+                """
+            )
             users = []
             for row in c.fetchall():
                 user = dict(row)
@@ -220,6 +225,7 @@ def get_existing_users():
                         user["permissions"] = []
                 else:
                     user["permissions"] = []
+                user["is_service_account"] = bool(user.get("is_service_account"))
                 users.append(user)
             return {"users": users}, 200
     except Exception as exc:
@@ -234,6 +240,15 @@ def delete_user(username):
             c.execute("SELECT username FROM allowed_users WHERE username = ?", (username,))
             if not c.fetchone():
                 return {"error": f"User '{username}' does not exist."}, 404
+            c.execute(
+                """
+                DELETE FROM service_account_api_keys
+                WHERE service_account_id = (
+                    SELECT id FROM allowed_users WHERE username = ?
+                )
+                """,
+                (username,),
+            )
             c.execute("DELETE FROM allowed_users WHERE username = ?", (username,))
             conn.commit()
         logger.info(f"User '{username}' deleted successfully.")

@@ -8,7 +8,11 @@ def get_allowed_user_for_login(username: str, db_path: str = DB_PATH) -> Optiona
     conn = get_db_connection(db_path)
     c = conn.cursor()
     c.execute(
-        "SELECT username, role, auth_type, password, must_reset FROM allowed_users WHERE username = ?",
+        """
+        SELECT username, role, auth_type, password, must_reset, is_service_account
+        FROM allowed_users
+        WHERE username = ?
+        """,
         (username,),
     )
     user = c.fetchone()
@@ -24,16 +28,27 @@ def add_allowed_user(
     password_hash: Optional[bytes],
     must_reset: int,
     permissions_json: str,
+    is_service_account: int = 0,
     db_path: str = DB_PATH,
 ) -> None:
     conn = get_db_connection(db_path)
     c = conn.cursor()
     c.execute(
         """
-        INSERT INTO allowed_users (username, email, added_date, role, auth_type, password, must_reset, permissions)
-        VALUES (?, ?, (NOW() + INTERVAL '4 hours'), ?, ?, ?, ?, ?)
+        INSERT INTO allowed_users (
+            username,
+            email,
+            added_date,
+            role,
+            auth_type,
+            password,
+            must_reset,
+            permissions,
+            is_service_account
+        )
+        VALUES (?, ?, (NOW() + INTERVAL '4 hours'), ?, ?, ?, ?, ?, ?)
         """,
-        (username, email, role, auth_type, password_hash, must_reset, permissions_json),
+        (username, email, role, auth_type, password_hash, must_reset, permissions_json, is_service_account),
     )
     conn.commit()
     conn.close()
@@ -87,6 +102,20 @@ def get_user_role(username: str, db_path: str = DB_PATH) -> Optional[str]:
     return (row[0] or "user").lower()
 
 
+def is_service_account_user(username: str, db_path: str = DB_PATH) -> bool:
+    conn = get_db_connection(db_path)
+    c = conn.cursor()
+    c.execute("SELECT is_service_account FROM allowed_users WHERE username = ?", (username,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return False
+    try:
+        return bool(row[0])
+    except Exception:
+        return False
+
+
 def update_user_permissions(username: str, permissions_json: str, db_path: str = DB_PATH) -> None:
     conn = get_db_connection(db_path)
     c = conn.cursor()
@@ -96,3 +125,15 @@ def update_user_permissions(username: str, permissions_json: str, db_path: str =
     )
     conn.commit()
     conn.close()
+
+
+__all__ = [
+    "add_allowed_user",
+    "get_allowed_user_for_login",
+    "get_user_password",
+    "get_user_role",
+    "is_service_account_user",
+    "update_local_user_password",
+    "update_user_permissions",
+    "update_user_role",
+]

@@ -45,6 +45,11 @@ def test_init_db_is_idempotent(monkeypatch):
     monkeypatch.setattr(db_init, "create_pentest_table", lambda cursor: _track("create_pentest_table"))
     monkeypatch.setattr(db_init, "create_service_checklists_table", lambda cursor: _track("create_service_checklists_table"))
     monkeypatch.setattr(db_init, "create_report_templates_table", lambda cursor: _track("create_report_templates_table"))
+    monkeypatch.setattr(
+        db_init,
+        "create_service_account_api_keys_table",
+        lambda cursor: _track("create_service_account_api_keys_table"),
+    )
     monkeypatch.setattr(db_init, "create_app_meta_table", lambda cursor: _track("create_app_meta_table"))
     monkeypatch.setattr(db_init, "create_auth_lockout_table", lambda cursor: _track("create_auth_lockout_table"))
     monkeypatch.setattr(db_init, "run_seed_routines", lambda cursor: _track("run_seed_routines"))

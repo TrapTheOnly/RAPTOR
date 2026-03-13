@@ -453,6 +453,25 @@
           }
         },
         {
+          "slug": "service-account-api-access",
+          "title": "Service Accounts and API Access",
+          "audience": [
+            "Admins"
+          ],
+          "summary": "Defines how to create service accounts, issue static API keys, configure atomic scopes, and rotate keys on a strict lifecycle.",
+          "coverage": [
+            "Service account creation and login restrictions",
+            "Atomic scope model for records and pentests datasets",
+            "API key creation, visibility, copy, and rotation workflow",
+            "90-day default rotation baseline with optional creation end date"
+          ],
+          "access": {
+            "roles": [
+              "admin"
+            ]
+          }
+        },
+        {
           "slug": "security-controls-and-maintenance",
           "title": "Security Controls and Maintenance",
           "audience": [

@@ -46,6 +46,7 @@ import VulnCategoriesSection from './admin-settings/components/VulnCategoriesSec
 import DomainUsersPanel from './admin-settings/components/users/DomainUsersPanel';
 import ExistingUsersPanel from './admin-settings/components/users/ExistingUsersPanel';
 import LocalUsersPanel from './admin-settings/components/users/LocalUsersPanel';
+import ServiceAccountsPanel from './admin-settings/components/users/ServiceAccountsPanel';
 import UserManagementSection from './admin-settings/components/users/UserManagementSection';
 
 const REQUIRED_RESET_PHRASE = 'RESET ALL BUT OPEN VULNERABILITIES';
@@ -85,9 +86,18 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
   const [ipsToDelete, setIpsToDelete] = useState([]);
 
   const [localUsername, setLocalUsername] = useState('');
+  const [localIsServiceAccount, setLocalIsServiceAccount] = useState(false);
   const [localRole, setLocalRole] = useState('user');
   const [localTempPassword, setLocalTempPassword] = useState('');
   const [localPermissions, setLocalPermissions] = useState([]);
+  const [serviceAccounts, setServiceAccounts] = useState([]);
+  const [selectedServiceAccountUsername, setSelectedServiceAccountUsername] = useState('');
+  const [createServiceAccountUsername, setCreateServiceAccountUsername] = useState('');
+  const [createServiceAccountScopes, setCreateServiceAccountScopes] = useState(['records.read']);
+  const [createServiceAccountEndDate, setCreateServiceAccountEndDate] = useState('');
+  const [selectedServiceAccountScopes, setSelectedServiceAccountScopes] = useState([]);
+  const [selectedServiceAccountEndDate, setSelectedServiceAccountEndDate] = useState('');
+  const [visibleServiceApiKey, setVisibleServiceApiKey] = useState('');
 
   const [vulnCategories, setVulnCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -211,6 +221,11 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       reportTemplates.find((template) => template.id === selectedReportTemplateId) || null,
     [reportTemplates, selectedReportTemplateId]
   );
+  const selectedServiceAccount = useMemo(
+    () =>
+      serviceAccounts.find((account) => account.username === selectedServiceAccountUsername) || null,
+    [serviceAccounts, selectedServiceAccountUsername]
+  );
 
   const showMessage = useCallback((type, text) => {
     setMessageType(type);
@@ -260,6 +275,29 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     }
   }, [showMessage]);
 
+  const fetchServiceAccounts = useCallback(async () => {
+    try {
+      const response = await axios.get('/service-accounts');
+      if (response.status === 200) {
+        const accounts = response.data.service_accounts || [];
+        setServiceAccounts(accounts);
+        if (accounts.length === 0) {
+          setSelectedServiceAccountUsername('');
+        } else if (
+          !selectedServiceAccountUsername ||
+          !accounts.some((account) => account.username === selectedServiceAccountUsername)
+        ) {
+          setSelectedServiceAccountUsername(accounts[0].username);
+        }
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to fetch service accounts.'
+      );
+    }
+  }, [selectedServiceAccountUsername, showMessage]);
+
   const fetchVulnCategories = useCallback(async () => {
     try {
       const response = await axios.get('/vuln-categories');
@@ -301,7 +339,10 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
 
   useEffect(() => {
     if (canManageIpSources) fetchIpSources();
-    if (canManageUsers) fetchExistingUsers();
+    if (canManageUsers) {
+      fetchExistingUsers();
+      fetchServiceAccounts();
+    }
     if (canManageVulnCategories) fetchVulnCategories();
     if (canManageChecklistTemplates) fetchChecklistTemplates();
     if (canManageReportTemplates) fetchReportTemplates();
@@ -314,6 +355,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     fetchReportTemplates,
     fetchChecklistTemplates,
     fetchExistingUsers,
+    fetchServiceAccounts,
     fetchIpSources,
     fetchVulnCategories
   ]);
@@ -332,6 +374,18 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     }
     return undefined;
   }, [message]);
+
+  useEffect(() => {
+    if (!selectedServiceAccount) {
+      setSelectedServiceAccountScopes([]);
+      setSelectedServiceAccountEndDate('');
+      setVisibleServiceApiKey('');
+      return;
+    }
+    setSelectedServiceAccountScopes(selectedServiceAccount.scopes || []);
+    setSelectedServiceAccountEndDate('');
+    setVisibleServiceApiKey('');
+  }, [selectedServiceAccount]);
 
   const handleAddSourceType = () => {
     const trimmedName = newSourceName.trim();
@@ -521,6 +575,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         setExistingUsers((prev) =>
           prev.filter((user) => user.username !== username)
         );
+        fetchServiceAccounts();
       }
     } catch (error) {
       showMessage('error', `Failed to delete user ${username}.`);
@@ -991,7 +1046,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       showMessage('error', 'Local username is required.');
       return;
     }
-    if (!['user', 'pentester', 'manager'].includes(localRole)) {
+    if (!localIsServiceAccount && !['user', 'pentester', 'manager'].includes(localRole)) {
       showMessage('error', 'Invalid role specified.');
       return;
     }
@@ -999,16 +1054,26 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     try {
       const response = await axios.post('/add-local-user', {
         username: trimmedUsername,
-        role: localRole,
-        permissions: normalizeOptionalPermissions(localRole, localPermissions)
+        role: localIsServiceAccount ? 'user' : localRole,
+        permissions: localIsServiceAccount
+          ? []
+          : normalizeOptionalPermissions(localRole, localPermissions),
+        is_service_account: localIsServiceAccount
       });
       if (response.status === 200) {
-        showMessage('success', 'Local user created. Temporary password generated.');
-        setLocalTempPassword(response.data.temp_password || '');
+        showMessage(
+          'success',
+          localIsServiceAccount
+            ? 'Service account created successfully.'
+            : 'Local user created. Temporary password generated.'
+        );
+        setLocalTempPassword(localIsServiceAccount ? '' : response.data.temp_password || '');
         setLocalUsername('');
+        setLocalIsServiceAccount(false);
         setLocalRole('user');
         setLocalPermissions([]);
         fetchExistingUsers();
+        fetchServiceAccounts();
       }
     } catch (error) {
       showMessage(
@@ -1128,6 +1193,178 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     setLocalPermissions(next);
   };
 
+  const toggleScope = (scopes, scope) =>
+    scopes.includes(scope)
+      ? scopes.filter((current) => current !== scope)
+      : [...scopes, scope];
+
+  const handleToggleCreateServiceScope = (scope) => {
+    setCreateServiceAccountScopes((prev) => toggleScope(prev, scope));
+  };
+
+  const handleToggleSelectedServiceScope = (scope) => {
+    setSelectedServiceAccountScopes((prev) => toggleScope(prev, scope));
+  };
+
+  const handleCreateServiceAccountWithKey = async () => {
+    const username = createServiceAccountUsername.trim().toLowerCase();
+    if (!username) {
+      showMessage('error', 'Service account username is required.');
+      return;
+    }
+    if (createServiceAccountScopes.length === 0) {
+      showMessage('error', 'Select at least one privilege.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const createResponse = await axios.post('/service-accounts', { username });
+      if (createResponse.status === 201 || createResponse.status === 200) {
+        const keyResponse = await axios.post(`/service-accounts/${username}/api-key`, {
+          scopes: createServiceAccountScopes,
+          end_date: createServiceAccountEndDate || undefined
+        });
+        if (keyResponse.status === 201 || keyResponse.status === 200) {
+          const account = keyResponse.data?.service_account;
+          setVisibleServiceApiKey(account?.api_key || '');
+          setCreateServiceAccountUsername('');
+          setCreateServiceAccountEndDate('');
+          setCreateServiceAccountScopes(['records.read']);
+          setSelectedServiceAccountUsername(username);
+          showMessage('success', 'Service account and API key created.');
+          fetchExistingUsers();
+          fetchServiceAccounts();
+        }
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to create service account.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateKeyForSelectedServiceAccount = async () => {
+    if (!selectedServiceAccountUsername) {
+      showMessage('error', 'Select a service account first.');
+      return;
+    }
+    if (selectedServiceAccountScopes.length === 0) {
+      showMessage('error', 'Select at least one privilege.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.post(
+        `/service-accounts/${selectedServiceAccountUsername}/api-key`,
+        {
+          scopes: selectedServiceAccountScopes,
+          end_date: selectedServiceAccountEndDate || undefined
+        }
+      );
+      if (response.status === 201 || response.status === 200) {
+        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
+        setSelectedServiceAccountEndDate('');
+        showMessage('success', 'API key created successfully.');
+        fetchServiceAccounts();
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to create API key.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewSelectedApiKey = async () => {
+    if (!selectedServiceAccountUsername) return;
+    setLoading(true);
+    try {
+      const response = await axios.get(
+        `/service-accounts/${selectedServiceAccountUsername}/api-key`
+      );
+      if (response.status === 200) {
+        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
+        showMessage('success', 'API key loaded.');
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to fetch API key.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRotateSelectedApiKey = async () => {
+    if (!selectedServiceAccountUsername) return;
+    if (!window.confirm('Rotate this API key now? The previous key will stop working immediately.')) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.post(
+        `/service-accounts/${selectedServiceAccountUsername}/api-key/rotate`
+      );
+      if (response.status === 200) {
+        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
+        showMessage('success', 'API key rotated successfully.');
+        fetchServiceAccounts();
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to rotate API key.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveSelectedServiceScopes = async () => {
+    if (!selectedServiceAccountUsername) return;
+    if (selectedServiceAccountScopes.length === 0) {
+      showMessage('error', 'Select at least one privilege.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.put(
+        `/service-accounts/${selectedServiceAccountUsername}/privileges`,
+        {
+          scopes: selectedServiceAccountScopes
+        }
+      );
+      if (response.status === 200) {
+        showMessage('success', 'Service account privileges updated.');
+        fetchServiceAccounts();
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error.response?.data?.error || 'Failed to update privileges.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopyVisibleApiKey = async () => {
+    if (!visibleServiceApiKey) return;
+    try {
+      await navigator.clipboard.writeText(visibleServiceApiKey);
+      showMessage('success', 'API key copied to clipboard.');
+    } catch (error) {
+      showMessage('error', 'Failed to copy API key.');
+    }
+  };
+
   const handleSelectSection = (sectionKey) => {
     setSelectedSection(sectionKey);
     if (isMobile) setNavOpen(false);
@@ -1172,12 +1409,39 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
                 loading={loading}
                 localUsername={localUsername}
                 setLocalUsername={setLocalUsername}
+                localIsServiceAccount={localIsServiceAccount}
+                setLocalIsServiceAccount={setLocalIsServiceAccount}
                 localRole={localRole}
                 localPermissions={localPermissions}
                 localTempPassword={localTempPassword}
                 onRoleChange={handleLocalRoleChange}
                 onTogglePermission={handleLocalPermissionToggle}
                 onCreateLocalUser={handleCreateLocalUser}
+              />
+            }
+            serviceAccountsPanel={
+              <ServiceAccountsPanel
+                loading={loading}
+                serviceAccounts={serviceAccounts}
+                selectedServiceAccountUsername={selectedServiceAccountUsername}
+                onSelectServiceAccount={setSelectedServiceAccountUsername}
+                createUsername={createServiceAccountUsername}
+                setCreateUsername={setCreateServiceAccountUsername}
+                createScopes={createServiceAccountScopes}
+                onToggleCreateScope={handleToggleCreateServiceScope}
+                createEndDate={createServiceAccountEndDate}
+                setCreateEndDate={setCreateServiceAccountEndDate}
+                onCreateServiceAccountWithKey={handleCreateServiceAccountWithKey}
+                selectedScopes={selectedServiceAccountScopes}
+                onToggleSelectedScope={handleToggleSelectedServiceScope}
+                selectedEndDate={selectedServiceAccountEndDate}
+                setSelectedEndDate={setSelectedServiceAccountEndDate}
+                onCreateKeyForSelectedServiceAccount={handleCreateKeyForSelectedServiceAccount}
+                onSaveSelectedScopes={handleSaveSelectedServiceScopes}
+                onViewSelectedKey={handleViewSelectedApiKey}
+                onRotateSelectedKey={handleRotateSelectedApiKey}
+                visibleApiKey={visibleServiceApiKey}
+                onCopyVisibleApiKey={handleCopyVisibleApiKey}
               />
             }
           />

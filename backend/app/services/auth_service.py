@@ -96,6 +96,10 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
         auth_type = user[2] if user[2] else "ldap"
         password_hash = normalize_password_hash(user[3])
         must_reset = bool(user[4])
+        is_service_account = bool(user[5]) if len(user) > 5 else False
+
+        if is_service_account or auth_type == "service":
+            return _invalid_credentials_response(username)
 
         if auth_type == "local":
             if not password_hash or not bcrypt.checkpw(password.encode(), password_hash):
