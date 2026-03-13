@@ -18,6 +18,7 @@ RAPTOR (Reconnaissance, Assessment, Penetration Testing, Operations, and Reporti
 - Database: PostgreSQL (runtime), with one-time SQLite migration support
 - Auth: Local admin + local users + LDAP/AD users
 - File/report storage: FTP service for uploaded/generated report assets
+- MCP integration service: standalone Python MCP server (`mcp/`) over streamable HTTP
 - Packaging: Multi-stage Docker build with Compose for dev/prod
 
 ## Repository Layout
@@ -65,6 +66,13 @@ UPDATE_TIME=86400
 # Session cookie/CORS
 CORS_ORIGINS=*
 SESSION_COOKIE_SAMESITE=Lax
+
+# MCP service (standalone container)
+MCP_SERVER_TOKEN=replace-with-a-random-mcp-bearer-token
+RAPTOR_SERVICE_API_KEY=replace-with-a-service-account-api-key
+RAPTOR_API_BASE_URL=http://app:5000
+MCP_PORT=8081
+RAPTOR_API_TIMEOUT_SECONDS=30
 
 # LDAP (required for LDAP auth/admin LDAP search)
 LDAP_SERVER=ldap.example.com
@@ -121,6 +129,23 @@ On first startup, the backend creates the admin account and writes credentials t
 - `DATA_PATH/initial_admin_credentials.txt`
 
 Delete this file after first successful admin login.
+
+## Standalone MCP Service
+
+RAPTOR includes a separate MCP service container that does not run inside the main backend runtime.
+
+- MCP transport: streamable HTTP
+- MCP endpoint: `http://localhost:8081/mcp`
+- Health endpoint: `http://localhost:8081/healthz`
+- MCP tools (v1): `list_records`, `list_pentests`
+
+The MCP service authenticates inbound clients with `Authorization: Bearer <MCP_SERVER_TOKEN>` and authenticates to RAPTOR via `X-API-Key: <RAPTOR_SERVICE_API_KEY>`.
+
+Verify service health:
+
+```bash
+curl http://localhost:${MCP_PORT:-8081}/healthz
+```
 
 ## Production Compose
 
@@ -219,6 +244,11 @@ Pentest and reporting:
 - `POST /pentest/{record_id}/images`
 - `GET /pentest/images/{filename}`
 
+Service API datasets:
+
+- `GET /service-api/v1/records`
+- `GET /service-api/v1/pentests`
+
 Admin and taxonomy:
 
 - `GET /ldap-search`
@@ -233,6 +263,11 @@ Admin and taxonomy:
 - `GET|POST|PUT|DELETE /checklist-templates`
 - `GET|POST|PUT|DELETE /report-templates`
 
+MCP service:
+
+- `GET /healthz` (MCP container)
+- `POST/GET /mcp` (streamable HTTP MCP protocol endpoint)
+
 ## Operations and Troubleshooting
 
 - App logs: `DATA_PATH/application.log`
@@ -240,6 +275,14 @@ Admin and taxonomy:
 - Legacy migration source (optional): `DATA_PATH/database.db`
 - Zone-file backups: `BACKUP_FOLDER/<domain>/...`
 - If no assets appear, verify `SHARED_PATH` contains valid `*_A_Records` files and run `POST /manual-update`.
+
+MCP token/key rotation runbook:
+
+1. Rotate RAPTOR service account API key in Admin Settings.
+2. Update `RAPTOR_SERVICE_API_KEY` secret for MCP deployment.
+3. Restart MCP container.
+4. Rotate `MCP_SERVER_TOKEN` secret.
+5. Restart MCP container and update AI client bearer token.
 
 ## Current Focus Areas
 
