@@ -472,6 +472,25 @@
           }
         },
         {
+          "slug": "mcp-service-integration",
+          "title": "MCP Service Integration",
+          "audience": [
+            "Admins"
+          ],
+          "summary": "Runbook for connecting AI clients to RAPTOR MCP over streamable HTTP with bearer-token authentication.",
+          "coverage": [
+            "Authentication boundary between MCP bearer and RAPTOR service API key",
+            "Required MCP environment variables and endpoint contract",
+            "Client connection flow for initialize, tool discovery, and tool calls",
+            "Operational troubleshooting and credential rotation guidance"
+          ],
+          "access": {
+            "roles": [
+              "admin"
+            ]
+          }
+        },
+        {
           "slug": "security-controls-and-maintenance",
           "title": "Security Controls and Maintenance",
           "audience": [

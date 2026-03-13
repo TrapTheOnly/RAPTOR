@@ -147,6 +147,24 @@ Verify service health:
 curl http://localhost:${MCP_PORT:-8081}/healthz
 ```
 
+Client connection pattern (Python MCP SDK):
+
+```python
+import asyncio
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async def main():
+    headers = {"Authorization": "Bearer <MCP_SERVER_TOKEN>"}
+    async with streamablehttp_client("http://localhost:8081/mcp", headers=headers) as (r, w, _):
+        async with ClientSession(r, w) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            print([t.name for t in tools.tools])  # ['list_records', 'list_pentests']
+
+asyncio.run(main())
+```
+
 ## Production Compose
 
 Use:

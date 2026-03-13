@@ -6,7 +6,7 @@ from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route
+from starlette.routing import Route
 
 from raptor_mcp.server import mcp
 from raptor_mcp.settings import MCPSettings, load_settings
@@ -42,15 +42,9 @@ async def healthz(_: Request) -> JSONResponse:
 def create_app(settings: MCPSettings | None = None) -> Starlette:
     cfg = settings or load_settings()
     mcp_asgi_app = mcp.streamable_http_app()
-
-    app = Starlette(
-        routes=[
-            Route("/healthz", endpoint=healthz, methods=["GET"]),
-            Mount("/", app=mcp_asgi_app),
-        ]
-    )
-    app.add_middleware(MCPAuthMiddleware, expected_token=cfg.mcp_server_token)
-    return app
+    mcp_asgi_app.router.routes.append(Route("/healthz", endpoint=healthz, methods=["GET"]))
+    mcp_asgi_app.add_middleware(MCPAuthMiddleware, expected_token=cfg.mcp_server_token)
+    return mcp_asgi_app
 
 
 __all__ = ["MCPAuthMiddleware", "create_app"]
