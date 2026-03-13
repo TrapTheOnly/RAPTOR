@@ -1,0 +1,168 @@
+{
+  "slug": "mcp-service-integration",
+  "title": "MCP Service Integration",
+  "audience": [
+    "Admins"
+  ],
+  "summary": "Runbook for connecting AI clients to RAPTOR MCP over streamable HTTP with bearer-token authentication.",
+  "coverage": [
+    "Separation of MCP bearer token and RAPTOR service API key",
+    "Required environment variables and endpoint contract",
+    "Client connection workflow and verification checks",
+    "Troubleshooting and credential-rotation operations"
+  ],
+  "article": {
+    "warning": {
+      "variant": "important",
+      "title": "IMPORTANT",
+      "paragraphs": [
+        "`MCP_SERVER_TOKEN` and `RAPTOR_SERVICE_API_KEY` are separate secrets with different trust boundaries. Do not reuse one value for both."
+      ]
+    },
+    "sections": [
+      {
+        "id": "auth-boundary-model",
+        "title": "Authentication boundary model",
+        "paragraphs": [
+          "MCP clients authenticate to RAPTOR MCP using `Authorization: Bearer <MCP_SERVER_TOKEN>` on `/mcp`.",
+          "RAPTOR MCP authenticates upstream RAPTOR service API requests using `X-API-Key: <RAPTOR_SERVICE_API_KEY>`.",
+          "This split keeps client-facing MCP authentication independent from backend service-account key lifecycle."
+        ],
+        "table": {
+          "columns": [
+            "Hop",
+            "Credential",
+            "Header",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "AI client -> MCP",
+              "`MCP_SERVER_TOKEN`",
+              "`Authorization: Bearer <token>`",
+              "Authenticate client access to MCP transport."
+            ],
+            [
+              "MCP -> RAPTOR API",
+              "`RAPTOR_SERVICE_API_KEY`",
+              "`X-API-Key: <key>`",
+              "Authorize dataset reads on `/service-api/v1/*`."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "required-configuration",
+        "title": "Required configuration",
+        "paragraphs": [
+          "Set these environment variables for the MCP container before startup."
+        ],
+        "table": {
+          "columns": [
+            "Variable",
+            "Required",
+            "Default",
+            "Notes"
+          ],
+          "rows": [
+            [
+              "`MCP_SERVER_TOKEN`",
+              "Yes",
+              "None",
+              "Inbound bearer token for `/mcp` requests."
+            ],
+            [
+              "`RAPTOR_SERVICE_API_KEY`",
+              "Yes",
+              "None",
+              "Service-account API key with `records.read` and/or `pentests.read`."
+            ],
+            [
+              "`RAPTOR_API_BASE_URL`",
+              "No",
+              "`http://app:5000`",
+              "Base URL for RAPTOR backend from MCP network."
+            ],
+            [
+              "`MCP_PORT`",
+              "No",
+              "`8081`",
+              "MCP listen port."
+            ],
+            [
+              "`RAPTOR_API_TIMEOUT_SECONDS`",
+              "No",
+              "`30`",
+              "Upstream RAPTOR API timeout."
+            ]
+          ]
+        }
+      },
+      {
+        "id": "client-connection-flow",
+        "title": "Client connection flow",
+        "paragraphs": [
+          "MCP uses streamable HTTP at `POST/GET /mcp`. Health checks use `GET /healthz` without auth.",
+          "After authenticating with bearer token, client should initialize session, list tools, then call `list_records` or `list_pentests`."
+        ],
+        "orderedList": [
+          "Verify MCP is reachable: `curl http://localhost:${MCP_PORT:-8081}/healthz`.",
+          "Configure client transport URL to `http://localhost:${MCP_PORT:-8081}/mcp`.",
+          "Attach header `Authorization: Bearer <MCP_SERVER_TOKEN>`.",
+          "Run MCP session init and list tools. Expected tools: `list_records`, `list_pentests`.",
+          "Call tools and confirm RAPTOR service API responses are returned as JSON."
+        ],
+        "tip": {
+          "variant": "tip",
+          "title": "Python MCP SDK quick start",
+          "paragraphs": [
+            "Use `streamablehttp_client(url, headers={\"Authorization\": \"Bearer ...\"})` with `ClientSession`, then call `initialize`, `list_tools`, and `call_tool`."
+          ]
+        }
+      },
+      {
+        "id": "status-codes-and-troubleshooting",
+        "title": "Status codes and troubleshooting",
+        "table": {
+          "columns": [
+            "Symptom",
+            "Likely cause",
+            "Action"
+          ],
+          "rows": [
+            [
+              "`401` on `/mcp`",
+              "Missing or invalid `Authorization` bearer token.",
+              "Set `MCP_SERVER_TOKEN` correctly in client secret config."
+            ],
+            [
+              "Tool error `RAPTOR API error (401/403)`",
+              "Service key is invalid, expired, or missing scope.",
+              "Rotate/recreate service-account key and ensure required scopes are granted."
+            ],
+            [
+              "Tool timeout/connect failure",
+              "`RAPTOR_API_BASE_URL` unreachable from MCP network.",
+              "Validate Docker network path and backend container health."
+            ],
+            [
+              "`500` during malformed client calls",
+              "Client did not send valid MCP protocol messages.",
+              "Use official MCP SDK client flow (`initialize`, then tool calls)."
+            ]
+          ]
+        },
+        "related": [
+          {
+            "label": "Administration: Service Accounts and API Access",
+            "to": "/docs/administration/service-account-api-access"
+          },
+          {
+            "label": "Operations and Governance: Audit and Troubleshooting",
+            "to": "/docs/operations-and-governance/audit-and-troubleshooting"
+          }
+        ]
+      }
+    ]
+  }
+}
