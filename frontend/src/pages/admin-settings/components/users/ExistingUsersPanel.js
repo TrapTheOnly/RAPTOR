@@ -59,6 +59,7 @@ const ExistingUsersPanel = ({
   };
 
   const openAccessDialog = (user) => {
+    if (user.is_service_account) return;
     const roleKey = editedUserRoles[user.username] || user.role;
     const permissions = normalizeOptionalPermissions(
       roleKey,
@@ -166,25 +167,41 @@ const ExistingUsersPanel = ({
                   </Box>
 
                   <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
-                    <Chip
-                      label={getRoleMeta(roleKey).label}
-                      size="small"
-                      sx={{
-                        fontWeight: 600,
-                        backgroundColor: alpha(getRolePalette(roleKey), 0.14),
-                        color: getRolePalette(roleKey),
-                        border: `1px solid ${alpha(getRolePalette(roleKey), 0.35)}`
-                      }}
-                    />
+                    {user.is_service_account ? (
+                      <Chip
+                        label="Service Account"
+                        size="small"
+                        sx={{
+                          fontWeight: 600,
+                          backgroundColor: alpha(theme.palette.success.main, 0.14),
+                          color: theme.palette.success.main,
+                          border: `1px solid ${alpha(theme.palette.success.main, 0.35)}`
+                        }}
+                      />
+                    ) : (
+                      <Chip
+                        label={getRoleMeta(roleKey).label}
+                        size="small"
+                        sx={{
+                          fontWeight: 600,
+                          backgroundColor: alpha(getRolePalette(roleKey), 0.14),
+                          color: getRolePalette(roleKey),
+                          border: `1px solid ${alpha(getRolePalette(roleKey), 0.35)}`
+                        }}
+                      />
+                    )}
                     <Box display="flex" alignItems="center" gap={0.5}>
                       <Tooltip title="Edit role and permissions">
-                        <IconButton
-                          color="primary"
-                          onClick={() => openAccessDialog(user)}
-                          size="small"
-                        >
-                          <EditIcon />
-                        </IconButton>
+                        <span>
+                          <IconButton
+                            color="primary"
+                            onClick={() => openAccessDialog(user)}
+                            size="small"
+                            disabled={Boolean(user.is_service_account)}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </span>
                       </Tooltip>
                       <Tooltip title="Delete User">
                         <IconButton
@@ -199,7 +216,9 @@ const ExistingUsersPanel = ({
                   </Box>
 
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {getRoleMeta(roleKey).description}
+                    {user.is_service_account
+                      ? 'API-only identity. Manage scopes and keys in Service Accounts section.'
+                      : getRoleMeta(roleKey).description}
                   </Typography>
 
                   <Box display="flex" alignItems="center" gap={1} mt={1}>

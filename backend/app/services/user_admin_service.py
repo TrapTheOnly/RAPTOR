@@ -10,6 +10,7 @@ from app.http.request_utils import normalize_auth_key
 from app.repositories.users_repository import (
     add_allowed_user,
     get_user_role,
+    is_service_account_user,
     update_user_permissions as update_user_permissions_repo,
     update_user_role as update_user_role_repo,
 )
@@ -33,6 +34,7 @@ def add_user_to_system(
     password_hash: Any = None,
     must_reset: int = 0,
     permissions: Any = None,
+    is_service_account: bool = False,
 ) -> None:
     try:
         sanitized_permissions = sanitize_extra_permissions(role, permissions)
@@ -44,6 +46,7 @@ def add_user_to_system(
             password_hash=password_hash,
             must_reset=must_reset,
             permissions_json=json.dumps(sanitized_permissions),
+            is_service_account=1 if is_service_account else 0,
         )
         logger.info(f"User {username} added to the system with role {role}.")
     except IntegrityError:
@@ -91,6 +94,7 @@ def add_local_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     username = str(data.get("username") or "").strip().lower()
     role = str(data.get("role", "user")).strip().lower()
     permissions = data.get("permissions", [])
+    is_service_account = bool(data.get("is_service_account"))
 
     if not username:
         return {"error": "Username is required."}, 400
@@ -102,6 +106,22 @@ def add_local_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         return {"error": "Permissions must be a list."}, 400
 
     try:
+        if is_service_account:
+            add_user_to_system(
+                username=username,
+                email="",
+                role="user",
+                auth_type="service",
+                password_hash=None,
+                must_reset=0,
+                permissions=[],
+                is_service_account=True,
+            )
+            return {
+                "message": f"Service account {username} created successfully.",
+                "is_service_account": True,
+            }, 200
+
         temp_password = secrets.token_urlsafe(12)
         if len(temp_password) < 12:
             temp_password = temp_password + secrets.token_urlsafe(12)
@@ -116,10 +136,12 @@ def add_local_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             password_hash=hashed_password,
             must_reset=1,
             permissions=permissions,
+            is_service_account=False,
         )
         return {
             "message": f"Local user {username} created successfully.",
             "temp_password": temp_password,
+            "is_service_account": False,
         }, 200
     except Exception as e:
         logger.error(f"Error adding local user {username}: {e}")
@@ -152,6 +174,8 @@ def update_user_role(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         return {"error": "Invalid user role"}, 400
 
     try:
+        if is_service_account_user(username):
+            return {"error": "Service account role cannot be changed."}, 400
         rowcount = update_user_role_repo(username, new_role, json.dumps([]))
         if rowcount == 0:
             return {"error": f"User {username} not found"}, 404
@@ -171,6 +195,8 @@ def update_user_permissions(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         return {"error": "Permissions must be a list"}, 400
 
     try:
+        if is_service_account_user(username):
+            return {"error": "Service account permissions are managed via API privileges."}, 400
         role = get_user_role(username)
         if role is None:
             return {"error": f"User {username} not found"}, 404

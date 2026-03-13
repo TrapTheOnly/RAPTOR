@@ -41,7 +41,8 @@ const AdminSettingsNavDrawer = ({
     () => [
       { key: 'existing', label: 'Existing Users' },
       { key: 'add-domain', label: 'Add LDAP Users' },
-      { key: 'local', label: 'Add Local Users' }
+      { key: 'local', label: 'Add Local Users' },
+      { key: 'service-accounts', label: 'Service Accounts' }
     ],
     []
   );

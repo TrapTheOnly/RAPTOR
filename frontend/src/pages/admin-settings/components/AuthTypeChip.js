@@ -7,7 +7,8 @@ const AuthTypeChip = ({ authType }) => {
   const normalized = (authType || 'ldap').toLowerCase();
   const configs = {
     local: { label: 'Local', color: theme.palette.warning.main },
-    ldap: { label: 'LDAP', color: theme.palette.info.main }
+    ldap: { label: 'LDAP', color: theme.palette.info.main },
+    service: { label: 'Service', color: theme.palette.success.main }
   };
   const config = configs[normalized] || configs.ldap;
 

@@ -1,7 +1,7 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, session
 
 from app.http.request_utils import parse_json_object
-from app.services import dns_sync_service, offsec_admin_service, user_admin_service
+from app.services import dns_sync_service, offsec_admin_service, service_account_service, user_admin_service
 from app.http.decorators.admin_required import admin_required
 
 admin_bp = Blueprint("admin", __name__)
@@ -74,4 +74,56 @@ def manual_update():
 @admin_required
 def reset_keep_open_vulnerabilities():
     payload, status_code = offsec_admin_service.reset_keep_open_vulnerabilities(parse_json_object())
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/service-accounts", methods=["GET"])
+@admin_required
+def list_service_accounts():
+    payload, status_code = service_account_service.get_service_accounts_service()
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/service-accounts", methods=["POST"])
+@admin_required
+def create_service_account():
+    payload, status_code = service_account_service.create_service_account_service(parse_json_object())
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/service-accounts/<string:username>/api-key", methods=["POST"])
+@admin_required
+def create_service_account_api_key(username: str):
+    payload, status_code = service_account_service.create_service_account_key_service(
+        username=username,
+        data=parse_json_object(),
+        actor_username=session.get("username", ""),
+    )
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/service-accounts/<string:username>/api-key", methods=["GET"])
+@admin_required
+def view_service_account_api_key(username: str):
+    payload, status_code = service_account_service.view_service_account_key_service(username)
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/service-accounts/<string:username>/api-key/rotate", methods=["POST"])
+@admin_required
+def rotate_service_account_api_key(username: str):
+    payload, status_code = service_account_service.rotate_service_account_key_service(
+        username=username,
+        actor_username=session.get("username", ""),
+    )
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/service-accounts/<string:username>/privileges", methods=["PUT"])
+@admin_required
+def update_service_account_privileges(username: str):
+    payload, status_code = service_account_service.update_service_account_scopes_service(
+        username=username,
+        data=parse_json_object(),
+    )
     return jsonify(payload), status_code

@@ -40,7 +40,8 @@ def create_allowed_users_table(cursor: DatabaseCursor) -> None:
             auth_type TEXT NOT NULL DEFAULT 'ldap',
             password BYTEA,
             must_reset INTEGER NOT NULL DEFAULT 0,
-            permissions TEXT
+            permissions TEXT,
+            is_service_account INTEGER NOT NULL DEFAULT 0
         )
         """
     )
@@ -53,6 +54,15 @@ def create_allowed_users_table(cursor: DatabaseCursor) -> None:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
     if "permissions" not in allowed_user_columns:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN permissions TEXT")
+    if "is_service_account" not in allowed_user_columns:
+        cursor.execute("ALTER TABLE allowed_users ADD COLUMN is_service_account INTEGER NOT NULL DEFAULT 0")
+    cursor.execute(
+        """
+        UPDATE allowed_users
+        SET is_service_account = 1
+        WHERE auth_type = 'service'
+        """
+    )
     cursor.execute("UPDATE allowed_users SET auth_type = 'ldap' WHERE auth_type IS NULL OR auth_type = ''")
 
 
@@ -294,6 +304,59 @@ def create_auth_lockout_table(cursor: DatabaseCursor) -> None:
     )
 
 
+def create_service_account_api_keys_table(cursor: DatabaseCursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS service_account_api_keys (
+            id SERIAL PRIMARY KEY,
+            service_account_id INTEGER NOT NULL UNIQUE,
+            api_key TEXT NOT NULL UNIQUE,
+            api_key_fingerprint TEXT NOT NULL UNIQUE,
+            scopes TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            rotated_at TEXT,
+            last_used_at TEXT,
+            created_by TEXT,
+            rotated_by TEXT
+        )
+        """
+    )
+    key_columns = get_table_columns(cursor, "service_account_api_keys")
+    if "service_account_id" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN service_account_id INTEGER")
+    if "api_key" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN api_key TEXT")
+    if "api_key_fingerprint" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN api_key_fingerprint TEXT")
+    if "scopes" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT '[]'")
+    if "created_at" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN created_at TEXT")
+    if "expires_at" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN expires_at TEXT")
+    if "rotated_at" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN rotated_at TEXT")
+    if "last_used_at" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN last_used_at TEXT")
+    if "created_by" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN created_by TEXT")
+    if "rotated_by" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN rotated_by TEXT")
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_service_account_api_keys_fingerprint
+        ON service_account_api_keys (api_key_fingerprint)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_service_account_api_keys_service_account
+        ON service_account_api_keys (service_account_id)
+        """
+    )
+
+
 __all__ = [
     "create_allowed_users_table",
     "create_app_meta_table",
@@ -304,6 +367,7 @@ __all__ = [
     "create_record_history_table",
     "create_records_table",
     "create_report_templates_table",
+    "create_service_account_api_keys_table",
     "create_service_checklists_table",
     "repair_legacy_application_mapping",
 ]

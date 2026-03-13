@@ -8,13 +8,15 @@ const UserManagementSection = ({
   userManagementPage,
   existingPanel,
   domainPanel,
-  localPanel
+  localPanel,
+  serviceAccountsPanel
 }) => (
   <Card>
     <CardContent>
       {userManagementPage === 'existing' && existingPanel}
       {userManagementPage === 'add-domain' && domainPanel}
       {userManagementPage === 'local' && localPanel}
+      {userManagementPage === 'service-accounts' && serviceAccountsPanel}
     </CardContent>
   </Card>
 );
