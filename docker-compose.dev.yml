@@ -45,6 +45,40 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+    image: raptor-mcp-dev
+    container_name: raptor-mcp-dev
+    ports:
+      - "${MCP_PORT:-8081}:${MCP_PORT:-8081}"
+    networks:
+      - app_network
+    environment:
+      - MCP_SERVER_TOKEN=${MCP_SERVER_TOKEN:?MCP_SERVER_TOKEN must be set}
+      - RAPTOR_API_BASE_URL=${RAPTOR_API_BASE_URL:-http://app:5000}
+      - RAPTOR_SERVICE_API_KEY=${RAPTOR_SERVICE_API_KEY:?RAPTOR_SERVICE_API_KEY must be set}
+      - MCP_PORT=${MCP_PORT:-8081}
+      - RAPTOR_API_TIMEOUT_SECONDS=${RAPTOR_API_TIMEOUT_SECONDS:-30}
+    depends_on:
+      app:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import os,sys,urllib.request;port=os.getenv("MCP_PORT","8081");url=f"http://127.0.0.1:{port}/healthz";sys.exit(0 if urllib.request.urlopen(url, timeout=5).status==200 else 1)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
   ftp:
     image: akogut/docker-pyftpdlib
     container_name: raptor-ftp-dev

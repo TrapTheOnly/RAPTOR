@@ -1,0 +1,26 @@
+FROM python:3.12-slim
+
+WORKDIR /usr/app/src
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy
+ARG https_proxy
+
+COPY mcp/requirements.txt /usr/app/src/mcp/requirements.txt
+RUN set -eux; \
+    pip_proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"; \
+    if [ -n "$pip_proxy" ]; then \
+      pip install --no-cache-dir --proxy "$pip_proxy" -r /usr/app/src/mcp/requirements.txt; \
+    else \
+      pip install --no-cache-dir -r /usr/app/src/mcp/requirements.txt; \
+    fi
+
+COPY mcp/ /usr/app/src/mcp/
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/usr/app/src/mcp
+
+EXPOSE 8081
+
+CMD ["python", "-m", "raptor_mcp.main"]
