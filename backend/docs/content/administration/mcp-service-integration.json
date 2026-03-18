@@ -94,6 +94,18 @@
               "No",
               "`30`",
               "Upstream RAPTOR API timeout."
+            ],
+            [
+              "`MCP_ALLOWED_HOSTS`",
+              "No",
+              "Loopback hosts only",
+              "Comma-separated `Host` header values allowed by FastMCP transport security. Required when publishing MCP through a public domain such as `raptor.azercell.com`."
+            ],
+            [
+              "`MCP_ALLOWED_ORIGINS`",
+              "No",
+              "Loopback origins only",
+              "Comma-separated allowed browser origins. Set this when a client sends an `Origin` header through the public domain."
             ]
           ]
         }
@@ -109,6 +121,7 @@
           "Verify MCP is reachable: `curl http://localhost:${MCP_PORT:-8081}/healthz`.",
           "Configure client transport URL to `http://localhost:${MCP_PORT:-8081}/mcp`.",
           "Attach header `Authorization: Bearer <MCP_SERVER_TOKEN>`.",
+          "If MCP is published through a public domain, set `MCP_ALLOWED_HOSTS` to that host, for example `raptor.azercell.com,raptor.azercell.com:443`.",
           "Run MCP session init and list tools. Expected tools: `list_records`, `list_pentests`.",
           "Call tools and confirm RAPTOR service API responses are returned as JSON."
         ],
@@ -149,6 +162,11 @@
               "`500` during malformed client calls",
               "Client did not send valid MCP protocol messages.",
               "Use official MCP SDK client flow (`initialize`, then tool calls)."
+            ],
+            [
+              "`421 Invalid Host header`",
+              "FastMCP transport security rejected the public `Host` header.",
+              "Set `MCP_ALLOWED_HOSTS` to the published host values forwarded by WAF or reverse proxy."
             ]
           ]
         },

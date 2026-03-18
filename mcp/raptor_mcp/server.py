@@ -5,12 +5,26 @@ from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
-from raptor_mcp.settings import MCPSettings, load_settings
+from raptor_mcp.settings import (
+    MCPSettings,
+    load_settings,
+    load_transport_security_hosts,
+    load_transport_security_origins,
+)
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP(name="raptor-mcp", streamable_http_path="/mcp")
+mcp = FastMCP(
+    name="raptor-mcp",
+    streamable_http_path="/mcp",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=list(load_transport_security_hosts()),
+        allowed_origins=list(load_transport_security_origins()),
+    ),
+)
 
 
 def _sanitize_upstream_error(response: httpx.Response) -> str:

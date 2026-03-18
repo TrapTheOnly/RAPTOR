@@ -64,6 +64,8 @@ services:
       - RAPTOR_SERVICE_API_KEY=${RAPTOR_SERVICE_API_KEY:?RAPTOR_SERVICE_API_KEY must be set}
       - MCP_PORT=${MCP_PORT:-8081}
       - RAPTOR_API_TIMEOUT_SECONDS=${RAPTOR_API_TIMEOUT_SECONDS:-30}
+      - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
+      - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-}
     depends_on:
       app:
         condition: service_started
