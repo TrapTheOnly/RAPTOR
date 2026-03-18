@@ -73,6 +73,8 @@ RAPTOR_SERVICE_API_KEY=replace-with-a-service-account-api-key
 RAPTOR_API_BASE_URL=http://app:5000
 MCP_PORT=8081
 RAPTOR_API_TIMEOUT_SECONDS=30
+MCP_ALLOWED_HOSTS=raptor.azercell.com,raptor.azercell.com:443
+MCP_ALLOWED_ORIGINS=https://raptor.azercell.com
 
 # LDAP (required for LDAP auth/admin LDAP search)
 LDAP_SERVER=ldap.example.com
@@ -140,6 +142,8 @@ RAPTOR includes a separate MCP service container that does not run inside the ma
 - MCP tools (v1): `list_records`, `list_pentests`
 
 The MCP service authenticates inbound clients with `Authorization: Bearer <MCP_SERVER_TOKEN>` and authenticates to RAPTOR via `X-API-Key: <RAPTOR_SERVICE_API_KEY>`.
+
+If MCP is published behind the main domain through a WAF or reverse proxy, set `MCP_ALLOWED_HOSTS` to the public host values the proxy forwards in the `Host` header. For a standard HTTPS publish on the main domain, use values like `raptor.azercell.com,raptor.azercell.com:443`. Set `MCP_ALLOWED_ORIGINS` if browser-based clients will send an `Origin` header.
 
 Verify service health:
 
