@@ -21,3 +21,4 @@ test.*
 sqleditor.py
 runner.py
 tree_db.py
+*.ipynb
