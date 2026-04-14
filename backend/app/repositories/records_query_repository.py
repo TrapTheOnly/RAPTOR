@@ -29,6 +29,8 @@ def fetch_dashboard_data(db_path: str = DB_PATH) -> Dict[str, List[Dict[str, Any
                 r.name,
                 r.source,
                 r.status,
+                r.origin,
+                r.sync_conflict,
                 r.last_modification_date
             FROM records r
             """
@@ -100,9 +102,26 @@ def fetch_record_by_domain(domain: str, db_path: str = DB_PATH) -> Optional[Dict
     c = conn.cursor()
     c.execute(
         """
-        SELECT r.*, p.open_ports
+        SELECT
+            r.id,
+            r.name,
+            r.ip_address,
+            r.source,
+            r.status,
+            r.origin,
+            r.sync_conflict,
+            r.sync_conflict_reason,
+            r.creation_date,
+            r.last_modification_date,
+            r.application_owner,
+            r.maintainer,
+            r.description,
+            r.application_id,
+            p.open_ports,
+            a.name AS application_name
         FROM records r
         LEFT JOIN pentest_data p ON r.id = p.record_id
+        LEFT JOIN applications a ON r.application_id = a.id
         WHERE r.name = ?
         """,
         (domain,),

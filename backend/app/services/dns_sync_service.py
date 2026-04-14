@@ -159,3 +159,19 @@ def update_data() -> None:
         logger.info(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
     except Exception as e:
         logger.error(f"Error during data update: {e}")
+
+
+def find_live_imported_record(name: str) -> Optional[Dict[str, str]]:
+    target_name = str(name or "").strip().lower()
+    if not target_name:
+        return None
+
+    zone_files = glob.glob(f"{DATA_PATH}/*_A_Records")
+    for zone_file in zone_files:
+        domain = extract_domain_from_filename(zone_file)
+        if not domain:
+            continue
+        for record in parse_bind_zone_file(zone_file, domain):
+            if str(record.get("name") or "").strip().lower() == target_name:
+                return record
+    return None

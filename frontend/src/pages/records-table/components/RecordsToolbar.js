@@ -1,11 +1,13 @@
 import React from 'react';
-import { alpha, Box, Button, FormControlLabel, Switch } from '@mui/material';
-import { AccountTree } from '@mui/icons-material';
+import { alpha, Box, Button, FormControlLabel, Stack, Switch } from '@mui/material';
+import { AccountTree, Add } from '@mui/icons-material';
 
 const RecordsToolbar = ({
   groupByApp,
   onToggleGroupByApp,
   canManageApps,
+  canCreateManualRecords,
+  onOpenCreateDialog,
   onOpenAppsDialog,
   theme
 }) => (
@@ -20,27 +22,39 @@ const RecordsToolbar = ({
       }
       label="Group by application"
     />
-    {canManageApps && (
-      <Button
-        variant="outlined"
-        size="small"
-        startIcon={<AccountTree />}
-        onClick={onOpenAppsDialog}
-        sx={{
-          borderColor: alpha(theme.palette.primary.main, 0.4),
-          color: theme.palette.primary.main,
-          backgroundColor: alpha(theme.palette.primary.main, 0.08),
-          transition: 'all 0.2s ease',
-          '&:hover': {
-            backgroundColor: alpha(theme.palette.primary.main, 0.15),
-            borderColor: theme.palette.primary.main,
-            transform: 'translateY(-1px)'
-          }
-        }}
-      >
-        Manage Apps
-      </Button>
-    )}
+    <Stack direction="row" spacing={1}>
+      {canCreateManualRecords && (
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={<Add />}
+          onClick={onOpenCreateDialog}
+        >
+          Add Manual Domain
+        </Button>
+      )}
+      {canManageApps && (
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AccountTree />}
+          onClick={onOpenAppsDialog}
+          sx={{
+            borderColor: alpha(theme.palette.primary.main, 0.4),
+            color: theme.palette.primary.main,
+            backgroundColor: alpha(theme.palette.primary.main, 0.08),
+            transition: 'all 0.2s ease',
+            '&:hover': {
+              backgroundColor: alpha(theme.palette.primary.main, 0.15),
+              borderColor: theme.palette.primary.main,
+              transform: 'translateY(-1px)'
+            }
+          }}
+        >
+          Manage Apps
+        </Button>
+      )}
+    </Stack>
   </Box>
 );
 

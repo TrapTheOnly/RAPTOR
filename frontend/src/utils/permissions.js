@@ -14,6 +14,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'view_dashboard',
     'view_records',
     'view_security_dashboard',
+    'create_manual_records',
     'modify_records',
     'view_record_details',
     'export_records',

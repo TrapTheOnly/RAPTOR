@@ -12,6 +12,9 @@ def create_records_table(cursor: DatabaseCursor) -> Set[str]:
             ip_address TEXT NOT NULL,
             source TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'unchanged',
+            origin TEXT NOT NULL DEFAULT 'automated',
+            sync_conflict INTEGER NOT NULL DEFAULT 0,
+            sync_conflict_reason TEXT,
             creation_date TEXT NOT NULL,
             last_modification_date TEXT,
             application_owner TEXT DEFAULT '',
@@ -22,6 +25,15 @@ def create_records_table(cursor: DatabaseCursor) -> Set[str]:
         """
     )
     record_columns = get_table_columns(cursor, "records")
+    if "origin" not in record_columns:
+        cursor.execute("ALTER TABLE records ADD COLUMN origin TEXT NOT NULL DEFAULT 'automated'")
+        record_columns.add("origin")
+    if "sync_conflict" not in record_columns:
+        cursor.execute("ALTER TABLE records ADD COLUMN sync_conflict INTEGER NOT NULL DEFAULT 0")
+        record_columns.add("sync_conflict")
+    if "sync_conflict_reason" not in record_columns:
+        cursor.execute("ALTER TABLE records ADD COLUMN sync_conflict_reason TEXT")
+        record_columns.add("sync_conflict_reason")
     if "application_id" not in record_columns:
         cursor.execute("ALTER TABLE records ADD COLUMN application_id INTEGER")
         record_columns.add("application_id")

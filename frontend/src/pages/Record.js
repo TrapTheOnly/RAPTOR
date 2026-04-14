@@ -115,10 +115,13 @@ const Record = ({ darkMode, userPermissions }) => {
 
   const getActionChip = (action) => {
     const color = getActionColor(action);
+    const label = String(action || '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
     return (
       <Chip
         icon={getActionIcon(action)}
-        label={action}
+        label={label}
         size="small"
         sx={{
           backgroundColor: alpha(color, 0.1),

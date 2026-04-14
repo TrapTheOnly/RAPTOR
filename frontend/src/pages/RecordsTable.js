@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, LinearProgress, Paper, Typography } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import AppGroupsList from './records-table/components/AppGroupsList';
+import CreateManualRecordDialog from './records-table/components/CreateManualRecordDialog';
 import ManageAppsDialog from './records-table/components/ManageAppsDialog';
 import RecordCard from './records-table/components/RecordCard';
 import RecordsStatsBar from './records-table/components/RecordsStatsBar';
@@ -10,11 +11,13 @@ import RecordsToolbar from './records-table/components/RecordsToolbar';
 import SearchFiltersSection from './records-table/components/SearchFiltersSection';
 import { SEARCH_PARAMETERS } from './records-table/constants';
 import {
+  createManualRecord,
   createApp,
   deleteAppById,
   deleteRecordById,
   getApps,
   getRecords,
+  resolveSyncConflictById,
   getSessionStatus,
   renameApp,
   updateRecordById
@@ -52,6 +55,18 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
   const [groupByApp, setGroupByApp] = useState(true);
   const [expandedApps, setExpandedApps] = useState(new Set());
   const [appsDialogOpen, setAppsDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createDialogBusy, setCreateDialogBusy] = useState(false);
+  const [createDialogError, setCreateDialogError] = useState('');
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    ip_address: '',
+    application_id: '',
+    application_owner: '',
+    maintainer: '',
+    open_ports: '',
+    description: ''
+  });
   const [newAppName, setNewAppName] = useState('');
   const [appEdits, setAppEdits] = useState({});
   const [appsBusy, setAppsBusy] = useState(false);
@@ -69,10 +84,12 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
     userRole === 'admin' || userPermissions?.includes(permission);
   const canDeleteRecords = hasPermission('delete_records');
   const canManageApps = hasPermission('manage_apps');
+  const canCreateManualRecords = hasPermission('create_manual_records');
   const canModifyRecords = hasPermission('modify_records');
   const canViewRecordDetails = hasPermission('view_record_details');
   const canExportRecords = hasPermission('export_records');
   const canViewPentestPage = hasPermission('view_pentest_page');
+  const canResolveSyncConflicts = userRole === 'admin';
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -139,6 +156,42 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
       console.error('Error creating application:', error);
     } finally {
       setAppsBusy(false);
+    }
+  };
+
+  const resetCreateDialog = () => {
+    setCreateDialogOpen(false);
+    setCreateDialogBusy(false);
+    setCreateDialogError('');
+    setCreateForm({
+      name: '',
+      ip_address: '',
+      application_id: '',
+      application_owner: '',
+      maintainer: '',
+      open_ports: '',
+      description: ''
+    });
+  };
+
+  const handleCreateManualRecord = async () => {
+    if (!createForm.name.trim() || !createForm.ip_address.trim()) {
+      setCreateDialogError('Domain and IP address are required.');
+      return;
+    }
+    setCreateDialogBusy(true);
+    setCreateDialogError('');
+    try {
+      await createManualRecord({
+        ...createForm,
+        name: createForm.name.trim(),
+        ip_address: createForm.ip_address.trim()
+      });
+      resetCreateDialog();
+      await fetchRecords();
+    } catch (error) {
+      setCreateDialogBusy(false);
+      setCreateDialogError(error.response?.data?.error || 'Failed to create manual domain.');
     }
   };
 
@@ -287,7 +340,8 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
       application_id: record.application_id || '',
       application_owner: record.application_owner || '',
       maintainer: record.maintainer || '',
-      open_ports: record.open_ports || ''
+      open_ports: record.open_ports || '',
+      description: record.description || ''
     });
   };
 
@@ -318,6 +372,18 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
     }
   };
 
+  const resolveSyncConflict = async (recordId) => {
+    if (!window.confirm('Convert this manual domain into an automated record using the current live import data?')) {
+      return;
+    }
+    try {
+      await resolveSyncConflictById(recordId);
+      fetchRecords();
+    } catch (error) {
+      window.alert(error.response?.data?.error || 'Failed to resolve sync conflict.');
+    }
+  };
+
   const exportCSV = () => {
     const csv = buildRecordsCsv(filteredRecords);
     downloadCsvFile(csv, 'dns_records.csv');
@@ -335,6 +401,7 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
       apps={apps}
       canModifyRecords={canModifyRecords}
       canDeleteRecords={canDeleteRecords}
+      canResolveSyncConflicts={canResolveSyncConflicts}
       canViewRecordDetails={canViewRecordDetails}
       canViewPentestPage={canViewPentestPage}
       onToggleExpanded={toggleExpanded}
@@ -343,6 +410,7 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
       onSave={saveRecord}
       onCancelEditing={cancelEditing}
       onDelete={deleteRecord}
+      onResolveSyncConflict={resolveSyncConflict}
       onOpenHistory={(targetRecord) => navigate(`/records/record/${targetRecord.id}`)}
       onOpenPentest={(targetRecord) => navigate(`/pentest/record/${targetRecord.id}`)}
       theme={theme}
@@ -410,6 +478,8 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
         groupByApp={groupByApp}
         onToggleGroupByApp={setGroupByApp}
         canManageApps={canManageApps}
+        canCreateManualRecords={canCreateManualRecords}
+        onOpenCreateDialog={() => setCreateDialogOpen(true)}
         onOpenAppsDialog={() => setAppsDialogOpen(true)}
         theme={theme}
       />
@@ -460,6 +530,22 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
         onRenameApp={handleRenameApp}
         onDeleteApp={handleDeleteApp}
         theme={theme}
+      />
+
+      <CreateManualRecordDialog
+        open={createDialogOpen}
+        form={createForm}
+        apps={apps}
+        busy={createDialogBusy}
+        error={createDialogError}
+        onClose={resetCreateDialog}
+        onChange={(field, value) =>
+          setCreateForm((prev) => ({
+            ...prev,
+            [field]: value
+          }))
+        }
+        onSubmit={handleCreateManualRecord}
       />
     </Box>
   );
