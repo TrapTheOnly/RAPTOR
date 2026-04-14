@@ -12,6 +12,7 @@ import {
   Grid,
   IconButton,
   MenuItem,
+  Stack,
   TextField,
   Typography
 } from '@mui/material';
@@ -22,6 +23,7 @@ import {
   ExpandLess,
   ExpandMore,
   History,
+  SyncProblem,
   Save,
   Security
 } from '@mui/icons-material';
@@ -65,6 +67,24 @@ const getSourceAvatar = (source) => (
   </Avatar>
 );
 
+const getOriginChip = (origin, theme) => {
+  const isManual = origin === 'manual';
+  return (
+    <Chip
+      size="small"
+      label={isManual ? 'Manual' : 'Automated'}
+      sx={{
+        backgroundColor: isManual
+          ? alpha(theme.palette.info.main, 0.12)
+          : alpha(theme.palette.success.main, 0.12),
+        color: isManual ? theme.palette.info.main : theme.palette.success.main,
+        fontWeight: 600,
+        fontSize: '0.75rem'
+      }}
+    />
+  );
+};
+
 const DetailLabel = ({ children }) => (
   <Typography
     variant="caption"
@@ -87,6 +107,7 @@ const RecordCard = ({
   apps,
   canModifyRecords,
   canDeleteRecords,
+  canResolveSyncConflicts,
   canViewRecordDetails,
   canViewPentestPage,
   onToggleExpanded,
@@ -95,11 +116,15 @@ const RecordCard = ({
   onSave,
   onCancelEditing,
   onDelete,
+  onResolveSyncConflict,
   onOpenHistory,
   onOpenPentest,
   theme
-}) => (
-  <Card
+}) => {
+  const hasSyncConflict = Boolean(record.sync_conflict);
+
+  return (
+    <Card
     sx={{
       mb: 1,
       backgroundColor: 'background.paper',
@@ -114,12 +139,12 @@ const RecordCard = ({
     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
       <Box
         display="flex"
-        alignItems="center"
+        alignItems={{ xs: 'flex-start', md: 'center' }}
         justifyContent="space-between"
         onClick={() => onToggleExpanded(record.id)}
         sx={{ cursor: 'pointer' }}
       >
-        <Box display="flex" alignItems="center" flex={1}>
+        <Box display="flex" alignItems={{ xs: 'flex-start', md: 'center' }} flex={1} flexWrap="wrap">
           <IconButton size="small" sx={{ mr: 1 }}>
             {isExpanded ? <ExpandLess /> : <ExpandMore />}
           </IconButton>
@@ -145,7 +170,18 @@ const RecordCard = ({
             />
           )}
 
-          {getStatusChip(record.status, theme)}
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+            {getStatusChip(record.status, theme)}
+            {getOriginChip(record.origin, theme)}
+            {hasSyncConflict ? (
+              <Chip
+                size="small"
+                color="error"
+                label="Sync Conflict"
+                sx={{ fontWeight: 600 }}
+              />
+            ) : null}
+          </Stack>
         </Box>
 
         <Box display="flex" alignItems="center">
@@ -292,7 +328,7 @@ const RecordCard = ({
 
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
-                Security
+                Description
               </Typography>
 
               {isEditing ? (
@@ -312,6 +348,13 @@ const RecordCard = ({
                 </Box>
               ) : (
                 <Box>
+                  {hasSyncConflict ? (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="error.main" sx={{ fontWeight: 600 }}>
+                        This manual domain matches imported DNS data and requires admin resolution.
+                      </Typography>
+                    </Box>
+                  ) : null}
                   <Typography variant="body2" color="text.secondary">
                     {record.description || 'No description'}
                   </Typography>
@@ -373,6 +416,17 @@ const RecordCard = ({
                     Pentest
                   </Button>
                 )}
+                {hasSyncConflict && canResolveSyncConflicts && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="warning"
+                    startIcon={<SyncProblem />}
+                    onClick={() => onResolveSyncConflict(record.id)}
+                  >
+                    Resolve Conflict
+                  </Button>
+                )}
                 {canDeleteRecords && (
                   <Button
                     variant="outlined"
@@ -391,6 +445,7 @@ const RecordCard = ({
       </Collapse>
     </CardContent>
   </Card>
-);
+  );
+};
 
 export default RecordCard;

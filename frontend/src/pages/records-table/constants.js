@@ -16,6 +16,22 @@ export const SEARCH_PARAMETERS = [
     getValue: (record) => record.source
   },
   {
+    key: 'origin',
+    label: 'Origin',
+    icon: '🧭',
+    description: 'How this record entered the registry',
+    aliases: ['record_origin'],
+    getValue: (record) => record.origin
+  },
+  {
+    key: 'conflict',
+    label: 'Sync Conflict',
+    icon: '⚠️',
+    description: 'Whether this manual record conflicts with imported DNS data',
+    aliases: ['sync_conflict'],
+    getValue: (record) => (record.sync_conflict ? 'yes' : 'no')
+  },
+  {
     key: 'ip',
     label: 'IP Address',
     icon: '🌐',

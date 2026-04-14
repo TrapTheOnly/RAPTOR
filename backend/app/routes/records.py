@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, session
 
 from app.http.request_utils import parse_json_object
 from app.services import records_service
+from app.http.decorators.admin_required import admin_required
 from app.http.decorators.permission_required import permission_required
 
 records_bp = Blueprint("records", __name__)
@@ -18,6 +19,16 @@ def get_dashboard_data():
 @permission_required("view_records")
 def get_records():
     return jsonify(records_service.get_records())
+
+
+@records_bp.route("/api/records", methods=["POST"])
+@permission_required("create_manual_records")
+def create_record():
+    payload, status_code = records_service.create_manual_record(
+        parse_json_object(),
+        session.get("username", "unknown"),
+    )
+    return jsonify(payload), status_code
 
 
 @records_bp.route("/api/records/<int:record_id>", methods=["POST"])
@@ -65,6 +76,16 @@ def delete_application(app_id: int):
 @permission_required("delete_records")
 def delete_record(record_id: int):
     payload, status_code = records_service.delete_record(record_id, session["username"])
+    return jsonify(payload), status_code
+
+
+@records_bp.route("/api/records/<int:record_id>/resolve-sync-conflict", methods=["POST"])
+@admin_required
+def resolve_sync_conflict(record_id: int):
+    payload, status_code = records_service.resolve_sync_conflict(
+        record_id,
+        session.get("username", "unknown"),
+    )
     return jsonify(payload), status_code
 
 
