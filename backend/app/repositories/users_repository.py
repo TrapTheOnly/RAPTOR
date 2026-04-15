@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import DB_PATH
 from app.integrations.db.connection import get_db_connection
@@ -29,6 +29,7 @@ def add_allowed_user(
     must_reset: int,
     permissions_json: str,
     is_service_account: int = 0,
+    full_name: Optional[str] = None,
     db_path: str = DB_PATH,
 ) -> None:
     conn = get_db_connection(db_path)
@@ -44,11 +45,12 @@ def add_allowed_user(
             password,
             must_reset,
             permissions,
-            is_service_account
+            is_service_account,
+            full_name
         )
-        VALUES (?, ?, (NOW() + INTERVAL '4 hours'), ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, (NOW() + INTERVAL '4 hours'), ?, ?, ?, ?, ?, ?, ?)
         """,
-        (username, email, role, auth_type, password_hash, must_reset, permissions_json, is_service_account),
+        (username, email, role, auth_type, password_hash, must_reset, permissions_json, is_service_account, full_name),
     )
     conn.commit()
     conn.close()
@@ -86,6 +88,8 @@ def update_user_role(username: str, role: str, permissions_json: str, db_path: s
         (role, permissions_json, username),
     )
     rowcount = c.rowcount
+    if role not in {"pentester", "manager", "admin"}:
+        c.execute("DELETE FROM pentest_collaborators WHERE username = ?", (username,))
     conn.commit()
     conn.close()
     return rowcount
@@ -127,12 +131,42 @@ def update_user_permissions(username: str, permissions_json: str, db_path: str =
     conn.close()
 
 
+def remove_user_from_pentest_collaborations(username: str, db_path: str = DB_PATH) -> None:
+    conn = get_db_connection(db_path)
+    c = conn.cursor()
+    c.execute("DELETE FROM pentest_collaborators WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+
+
+def get_display_names(usernames: List[str], db_path: str = DB_PATH) -> Dict[str, str]:
+    if not usernames:
+        return {}
+    conn = get_db_connection(db_path)
+    c = conn.cursor()
+    placeholders = ", ".join(["?"] * len(usernames))
+    c.execute(
+        f"SELECT username, full_name FROM allowed_users WHERE username IN ({placeholders})",
+        tuple(usernames),
+    )
+    result = {}
+    for row in c.fetchall():
+        result[row[0]] = row[1] if row[1] else row[0]
+    conn.close()
+    for uname in usernames:
+        if uname not in result:
+            result[uname] = uname
+    return result
+
+
 __all__ = [
     "add_allowed_user",
     "get_allowed_user_for_login",
+    "get_display_names",
     "get_user_password",
     "get_user_role",
     "is_service_account_user",
+    "remove_user_from_pentest_collaborations",
     "update_local_user_password",
     "update_user_permissions",
     "update_user_role",

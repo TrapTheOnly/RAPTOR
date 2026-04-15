@@ -4,7 +4,8 @@ from io import BytesIO
 from flask import jsonify, request, send_file, session
 
 from app.repositories.offsec.offsec_records import (
-    enforce_pentest_record_access,
+    get_access_role_for_user,
+    get_pentest_capabilities,
     get_pentest_data_internal,
     get_record_details_internal,
 )
@@ -42,9 +43,9 @@ def generate_report(record_id):
     if not record:
         return jsonify({"error": "Record not found"}), 404
 
-    allowed, denial_reason = enforce_pentest_record_access(record_id, action_verb="generate reports for")
-    if not allowed:
-        return jsonify({"error": denial_reason}), 403
+    access_role = get_access_role_for_user(record_id, session.get("username"), session.get("user_type"))
+    if not get_pentest_capabilities(access_role).get("can_generate_reports"):
+        return jsonify({"error": "You are not allowed to generate reports for this pentest."}), 403
 
     payload = request.get_json(silent=True) or {}
     template_id = payload.get("template_id")
@@ -108,6 +109,7 @@ def generate_report(record_id):
                 template_definition,
                 checklist_templates=checklist_templates,
                 image_fetcher=fetch_image,
+                generated_by=session.get("username"),
             )
             generated_relative_path = save_report(record_id, pdf_content)
 
@@ -178,9 +180,9 @@ def generate_report(record_id):
 @permission_required("export_pentests")
 def get_generated_report(record_id):
     """GET /pentest/<record_id>/generated-report: Serve generated PDF report."""
-    allowed, denial_reason = enforce_pentest_record_access(record_id, action_verb="access generated reports for")
-    if not allowed:
-        return jsonify({"error": denial_reason}), 403
+    access_role = get_access_role_for_user(record_id, session.get("username"), session.get("user_type"))
+    if access_role not in {"owner", "collaborator", "manager_override", "admin_override"}:
+        return jsonify({"error": "You are not allowed to access generated reports for this pentest."}), 403
 
     pentest_data = get_pentest_data_internal(record_id)
     if not pentest_data or not pentest_data.get("generated_report_file"):
@@ -206,9 +208,9 @@ def get_generated_report(record_id):
 @permission_required("modify_pentests")
 def delete_generated_report_route(record_id):
     """DELETE /pentest/<record_id>/generated-report: Delete generated report file."""
-    allowed, denial_reason = enforce_pentest_record_access(record_id, action_verb="delete generated reports for")
-    if not allowed:
-        return jsonify({"error": denial_reason}), 403
+    access_role = get_access_role_for_user(record_id, session.get("username"), session.get("user_type"))
+    if not get_pentest_capabilities(access_role).get("can_delete_reports"):
+        return jsonify({"error": "You are not allowed to delete generated reports for this pentest."}), 403
 
     pentest_data = get_pentest_data_internal(record_id)
     if not pentest_data or not pentest_data.get("generated_report_file"):

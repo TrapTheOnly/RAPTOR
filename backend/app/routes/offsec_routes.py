@@ -1,6 +1,7 @@
 from flask import Flask
 
 from app.services.offsec import (
+    add_pentest_collaborator,
     create_checklist_template,
     create_or_update_pentest_data,
     create_report_template,
@@ -11,6 +12,7 @@ from app.services.offsec import (
     delete_report_template,
     generate_report,
     get_checklist_templates,
+    get_pentest_collaborators,
     get_generated_report,
     get_pentest_data,
     get_pentest_image,
@@ -19,6 +21,7 @@ from app.services.offsec import (
     get_report_templates,
     reset_checklist_template_to_canonical,
     reset_report_template_to_canonical,
+    remove_pentest_collaborator,
     update_checklist_template,
     update_report_template,
     upload_report_template_logo,
@@ -42,6 +45,21 @@ def register_offsec_routes(app: Flask) -> None:
     app.add_url_rule("/pentest_users", methods=["GET"], view_func=get_pentest_users)
     app.add_url_rule("/pentest/<int:record_id>/images", methods=["POST"], view_func=upload_pentest_image)
     app.add_url_rule("/pentest/images/<string:filename>", methods=["GET"], view_func=get_pentest_image)
+    app.add_url_rule(
+        "/pentest/<int:record_id>/collaborators",
+        methods=["GET"],
+        view_func=get_pentest_collaborators,
+    )
+    app.add_url_rule(
+        "/pentest/<int:record_id>/collaborators",
+        methods=["POST"],
+        view_func=add_pentest_collaborator,
+    )
+    app.add_url_rule(
+        "/pentest/<int:record_id>/collaborators/<string:username>",
+        methods=["DELETE"],
+        view_func=remove_pentest_collaborator,
+    )
     app.add_url_rule("/checklist-templates", methods=["GET"], view_func=get_checklist_templates)
     app.add_url_rule("/checklist-templates", methods=["POST"], view_func=create_checklist_template)
     app.add_url_rule(

@@ -168,29 +168,58 @@ def can_user_access_image(filename):
         c = conn.cursor()
         c.execute(
             """
-            SELECT 1
-            FROM pentest_data
-            WHERE tested_by = ?
-              AND (notes LIKE ? OR vulnerabilities LIKE ?)
-            LIMIT 1
+            SELECT
+                p.record_id,
+                p.tested_by,
+                p.notes,
+                p.vulnerabilities,
+                r.description,
+                CASE WHEN pc.username IS NULL THEN 0 ELSE 1 END AS is_collaborator
+            FROM pentest_data p
+            JOIN records r ON r.id = p.record_id
+            LEFT JOIN pentest_collaborators pc
+              ON pc.record_id = p.record_id
+             AND pc.username = ?
+            WHERE p.tested_by = ?
+               OR pc.username = ?
             """,
-            (username, like_value, like_value),
+            (username, username, username),
         )
-        if c.fetchone():
+        rows = c.fetchall()
+
+    for row in rows:
+        description = str(row.get("description") or "")
+        notes = str(row.get("notes") or "")
+        if filename in description or filename in notes:
             return True
 
-        c.execute(
-            """
-            SELECT 1
-            FROM records r
-            JOIN pentest_data p ON p.record_id = r.id
-            WHERE p.tested_by = ?
-              AND r.description LIKE ?
-            LIMIT 1
-            """,
-            (username, like_value),
-        )
-        return c.fetchone() is not None
+        vulnerabilities = []
+        raw_vulnerabilities = row.get("vulnerabilities")
+        if isinstance(raw_vulnerabilities, str) and raw_vulnerabilities.strip():
+            try:
+                vulnerabilities = json.loads(raw_vulnerabilities)
+            except Exception:
+                vulnerabilities = []
+        elif isinstance(raw_vulnerabilities, list):
+            vulnerabilities = raw_vulnerabilities
+
+        if not isinstance(vulnerabilities, list):
+            vulnerabilities = []
+
+        if not row.get("is_collaborator"):
+            if any(filename in str(vulnerability.get("description") or "") for vulnerability in vulnerabilities):
+                return True
+            continue
+
+        owner = str(row.get("tested_by") or "").strip()
+        for vulnerability in vulnerabilities:
+            if not isinstance(vulnerability, dict):
+                continue
+            vulnerability_owner = str(vulnerability.get("created_by") or owner).strip()
+            if vulnerability_owner == str(username).strip() and filename in str(vulnerability.get("description") or ""):
+                return True
+
+    return False
 
 
 def save_report(record_id, file_data):

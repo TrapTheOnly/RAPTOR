@@ -6,6 +6,7 @@ from app.bootstrap.schema_setup import (
     create_applications_table,
     create_auth_lockout_table,
     create_ip_sources_table,
+    create_pentest_collaborators_table,
     create_pentest_table,
     create_record_history_table,
     create_records_table,
@@ -33,6 +34,7 @@ def init_db(db_path: str = DB_PATH) -> None:
     create_ip_sources_table(c)
     create_record_history_table(c)
     create_pentest_table(c)
+    create_pentest_collaborators_table(c)
     create_service_checklists_table(c)
     create_report_templates_table(c)
     create_service_account_api_keys_table(c)

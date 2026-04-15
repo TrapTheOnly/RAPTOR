@@ -151,7 +151,7 @@ def build_service_name(port):
     return service_map.get(port, "Unknown")
 
 
-def build_report_model(record_data, checklist_templates):
+def build_report_model(record_data, checklist_templates, generated_by=None):
     vulnerabilities = safe_json_load(record_data.get("vulnerabilities"), [])
     if not isinstance(vulnerabilities, list):
         vulnerabilities = []
@@ -254,9 +254,19 @@ def build_report_model(record_data, checklist_templates):
 
     generated_at = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
+    raw_collaborators = record_data.get("collaborators") or []
+    if isinstance(raw_collaborators, list):
+        collaborator_usernames = [str(c).strip() for c in raw_collaborators if str(c).strip()]
+    else:
+        collaborator_usernames = []
+
+    assignee = record_data.get("tested_by") or "Unassigned"
+    resolved_generated_by = generated_by or assignee
+
     context = {
         "generated_at": generated_at,
         "generated_date": generated_at.split(" ")[0],
+        "generated_by": resolved_generated_by,
         "record": {
             "name": record_data.get("name", ""),
             "ip_address": record_data.get("ip_address", ""),
@@ -266,7 +276,7 @@ def build_report_model(record_data, checklist_templates):
         },
         "pentest": {
             "status": record_data.get("status", "Not Started"),
-            "tested_by": (record_data.get("tested_by") or "Unassigned"),
+            "tested_by": assignee,
             "test_start_date": record_data.get("test_start_date", ""),
             "test_end_date": record_data.get("test_end_date", ""),
             "service_desk_link": record_data.get("service_desk_link", ""),
@@ -274,6 +284,7 @@ def build_report_model(record_data, checklist_templates):
             "open_ports": ", ".join([str(port) for port in open_ports]),
             "vulnerable": "Yes" if to_int(record_data.get("vulnerable"), 0) == 1 else "No",
             "vulnerability_fixed": "Yes" if vulnerability_fixed else "No",
+            "collaborators": ", ".join(collaborator_usernames) if collaborator_usernames else "",
         },
         "metrics": {
             "vulnerability_count": vulnerability_count,
@@ -306,6 +317,7 @@ def build_report_model(record_data, checklist_templates):
         "vulnerabilities": vulnerabilities,
         "severity_counts": severity_counts,
         "checklist_progress_rows": checklist_progress_rows,
+        "collaborator_usernames": collaborator_usernames,
     }
 
 
@@ -314,6 +326,7 @@ __all__ = [
     "MARKDOWN_IMAGE_PATTERN",
     "build_report_model",
     "build_service_name",
+    "flatten",
     "replace_inline_markdown",
     "resolve_placeholders",
     "safe_json_load",

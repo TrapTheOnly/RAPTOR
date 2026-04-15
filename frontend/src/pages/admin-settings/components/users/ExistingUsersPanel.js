@@ -154,14 +154,14 @@ const ExistingUsersPanel = ({
                 >
                   <Box display="flex" alignItems="center" mb={2}>
                     <Avatar sx={{ mr: 1 }}>
-                      {user.username?.charAt(0)?.toUpperCase()}
+                      {(user.full_name || user.username)?.charAt(0)?.toUpperCase()}
                     </Avatar>
                     <Box flex={1} minWidth={0}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 600 }} noWrap>
-                        {user.username}
+                        {user.full_name || user.username}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" noWrap>
-                        {user.email || 'No email'}
+                        {user.full_name ? user.username : (user.email || 'No email')}
                       </Typography>
                     </Box>
                   </Box>
@@ -266,7 +266,7 @@ const ExistingUsersPanel = ({
             </Box>
             <Box>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                {selectedUser ? `Edit Access: ${selectedUser.username}` : 'Edit Access'}
+                {selectedUser ? `Edit Access: ${selectedUser.full_name || selectedUser.username}` : 'Edit Access'}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Update role and optional permissions

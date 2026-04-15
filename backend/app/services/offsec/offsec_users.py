@@ -4,7 +4,7 @@ from app.repositories.offsec.offsec_records import get_pentest_users_internal
 from app.http.decorators.permission_required import permission_required
 
 
-@permission_required("reassign_pentests_admin")
+@permission_required("modify_pentests")
 def get_pentest_users():
     """GET /pentest_users: Get users with pentest role."""
     try:

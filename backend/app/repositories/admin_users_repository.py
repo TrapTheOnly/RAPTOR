@@ -210,7 +210,7 @@ def get_existing_users():
             c = conn.cursor()
             c.execute(
                 """
-                SELECT username, email, added_date, role, auth_type, permissions, is_service_account
+                SELECT username, email, added_date, role, auth_type, permissions, is_service_account, full_name
                 FROM allowed_users
                 """
             )

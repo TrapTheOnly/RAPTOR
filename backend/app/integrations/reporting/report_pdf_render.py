@@ -16,12 +16,14 @@ from app.integrations.reporting.report_pdf_model import (
     MARKDOWN_IMAGE_PATTERN,
     build_report_model,
     build_service_name,
+    flatten,
     replace_inline_markdown,
     resolve_placeholders,
     severity_from_score,
     to_float,
     to_int,
 )
+from app.repositories.users_repository import get_display_names
 
 
 def render_pentest_report_pdf(
@@ -29,6 +31,7 @@ def render_pentest_report_pdf(
     template_definition,
     checklist_templates=None,
     image_fetcher=None,
+    generated_by=None,
 ):
     """Build a polished PDF report from pentest data and template definition."""
     try:
@@ -62,7 +65,33 @@ def render_pentest_report_pdf(
     if not isinstance(blocks, list) or not blocks:
         raise ValueError("Template must include a non-empty 'blocks' array.")
 
-    model = build_report_model(record_data or {}, checklist_templates or [])
+    model = build_report_model(record_data or {}, checklist_templates or [], generated_by=generated_by)
+
+    usernames_to_resolve = set()
+    model_generated_by = model["context"].get("generated_by", "")
+    model_tested_by = model["context"].get("pentest", {}).get("tested_by", "")
+    if model_generated_by and model_generated_by != "Unassigned":
+        usernames_to_resolve.add(model_generated_by)
+    if model_tested_by and model_tested_by != "Unassigned":
+        usernames_to_resolve.add(model_tested_by)
+    for collab in model.get("collaborator_usernames", []):
+        if collab:
+            usernames_to_resolve.add(collab)
+
+    display_names = get_display_names(list(usernames_to_resolve)) if usernames_to_resolve else {}
+
+    if model_generated_by in display_names:
+        model["context"]["generated_by"] = display_names[model_generated_by]
+    if model_tested_by in display_names:
+        model["context"]["pentest"]["tested_by"] = display_names[model_tested_by]
+    if model.get("collaborator_usernames"):
+        model["collaborator_usernames"] = [display_names.get(u, u) for u in model["collaborator_usernames"]]
+        model["context"]["pentest"]["collaborators"] = ", ".join(model["collaborator_usernames"])
+
+    rebuilt_flat = {}
+    flatten("", model["context"], rebuilt_flat)
+    model["flat_context"] = rebuilt_flat
+
     context = model["context"]
     flat_context = dict(model["flat_context"])
 
