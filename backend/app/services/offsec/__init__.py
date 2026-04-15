@@ -5,12 +5,15 @@ from app.services.offsec.offsec_generated_reports import (
     load_enabled_checklist_templates,
 )
 from app.services.offsec.offsec_pentest import (
+    add_pentest_collaborator,
     create_or_update_pentest_data,
     delete_pentest_data,
     delete_report_route,
+    get_pentest_collaborators,
     get_pentest_data,
     get_pentest_image,
     get_report,
+    remove_pentest_collaborator,
     upload_pentest_image,
 )
 from app.services.offsec.offsec_templates import (
@@ -30,6 +33,7 @@ from app.services.offsec.offsec_users import get_pentest_users
 
 __all__ = [
     "create_checklist_template",
+    "add_pentest_collaborator",
     "create_or_update_pentest_data",
     "create_report_template",
     "delete_checklist_template",
@@ -39,6 +43,7 @@ __all__ = [
     "delete_report_template",
     "generate_report",
     "get_checklist_templates",
+    "get_pentest_collaborators",
     "get_generated_report",
     "get_pentest_data",
     "get_pentest_image",
@@ -48,6 +53,7 @@ __all__ = [
     "load_enabled_checklist_templates",
     "reset_checklist_template_to_canonical",
     "reset_report_template_to_canonical",
+    "remove_pentest_collaborator",
     "upload_report_template_logo",
     "update_checklist_template",
     "update_report_template",

@@ -43,6 +43,11 @@ def test_init_db_is_idempotent(monkeypatch):
     monkeypatch.setattr(db_init, "create_ip_sources_table", lambda cursor: _track("create_ip_sources_table"))
     monkeypatch.setattr(db_init, "create_record_history_table", lambda cursor: _track("create_record_history_table"))
     monkeypatch.setattr(db_init, "create_pentest_table", lambda cursor: _track("create_pentest_table"))
+    monkeypatch.setattr(
+        db_init,
+        "create_pentest_collaborators_table",
+        lambda cursor: _track("create_pentest_collaborators_table"),
+    )
     monkeypatch.setattr(db_init, "create_service_checklists_table", lambda cursor: _track("create_service_checklists_table"))
     monkeypatch.setattr(db_init, "create_report_templates_table", lambda cursor: _track("create_report_templates_table"))
     monkeypatch.setattr(
@@ -68,4 +73,5 @@ def test_init_db_is_idempotent(monkeypatch):
     assert all(conn.commit_count == 1 for conn in created_connections)
     assert all(conn.close_count == 1 for conn in created_connections)
     assert call_counts["create_records_table"] == 2
+    assert call_counts["create_pentest_collaborators_table"] == 2
     assert call_counts["run_seed_routines"] == 2

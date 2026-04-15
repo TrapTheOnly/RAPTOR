@@ -11,6 +11,7 @@ from app.repositories.users_repository import (
     add_allowed_user,
     get_user_role,
     is_service_account_user,
+    remove_user_from_pentest_collaborations,
     update_user_permissions as update_user_permissions_repo,
     update_user_role as update_user_role_repo,
 )
@@ -35,6 +36,7 @@ def add_user_to_system(
     must_reset: int = 0,
     permissions: Any = None,
     is_service_account: bool = False,
+    full_name: str = None,
 ) -> None:
     try:
         sanitized_permissions = sanitize_extra_permissions(role, permissions)
@@ -47,6 +49,7 @@ def add_user_to_system(
             must_reset=must_reset,
             permissions_json=json.dumps(sanitized_permissions),
             is_service_account=1 if is_service_account else 0,
+            full_name=full_name,
         )
         logger.info(f"User {username} added to the system with role {role}.")
     except IntegrityError:
@@ -72,6 +75,7 @@ def add_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     email = str(data.get("email") or "").strip().lower()
     role = str(data.get("role", "user")).strip().lower()
     permissions = data.get("permissions", [])
+    full_name = str(data.get("full_name") or "").strip() or None
 
     if not username:
         return {"error": "Username is required."}, 400
@@ -83,7 +87,7 @@ def add_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         return {"error": "Invalid role specified."}, 400
 
     try:
-        add_user_to_system(username, email, role, auth_type="ldap", permissions=permissions)
+        add_user_to_system(username, email, role, auth_type="ldap", permissions=permissions, full_name=full_name)
         return {"message": f"User {username} added successfully with role {role}."}, 200
     except Exception as e:
         logger.error(f"Error adding user {username}: {e}")
@@ -95,6 +99,7 @@ def add_local_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     role = str(data.get("role", "user")).strip().lower()
     permissions = data.get("permissions", [])
     is_service_account = bool(data.get("is_service_account"))
+    full_name = str(data.get("full_name") or "").strip() or None
 
     if not username:
         return {"error": "Username is required."}, 400
@@ -116,6 +121,7 @@ def add_local_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
                 must_reset=0,
                 permissions=[],
                 is_service_account=True,
+                full_name=full_name,
             )
             return {
                 "message": f"Service account {username} created successfully.",
@@ -137,6 +143,7 @@ def add_local_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             must_reset=1,
             permissions=permissions,
             is_service_account=False,
+            full_name=full_name,
         )
         return {
             "message": f"Local user {username} created successfully.",
@@ -220,6 +227,11 @@ def delete_user_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 
     if not username:
         return {"error": "Username is required."}, 400
+
+    try:
+        remove_user_from_pentest_collaborations(username)
+    except Exception as e:
+        logger.warning(f"Failed to remove '{username}' from pentest collaborations before delete: {e}")
 
     response, status_code = delete_user(username)
     return response, status_code

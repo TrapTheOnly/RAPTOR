@@ -22,6 +22,8 @@ const LocalUsersPanel = ({
   loading,
   localUsername,
   setLocalUsername,
+  localFullName,
+  setLocalFullName,
   localIsServiceAccount,
   setLocalIsServiceAccount,
   localRole,
@@ -54,6 +56,14 @@ const LocalUsersPanel = ({
       />
       {!localIsServiceAccount && (
         <>
+          <TextField
+            label="Full Name"
+            variant="outlined"
+            fullWidth
+            value={localFullName}
+            onChange={(event) => setLocalFullName(event.target.value)}
+            placeholder="John Doe (optional)"
+          />
           <FormControl fullWidth size="small">
             <InputLabel id="local-user-role-label">Role</InputLabel>
             <Select

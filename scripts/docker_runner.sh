@@ -15,7 +15,12 @@ export RAPTOR_API_BASE_URL="${RAPTOR_API_BASE_URL:-http://app:5000}"
 export MCP_PORT="${MCP_PORT:-8081}"
 export RAPTOR_API_TIMEOUT_SECONDS="${RAPTOR_API_TIMEOUT_SECONDS:-30}"
 
-docker compose -f docker-compose.dev.yml down -v --remove-orphans
+VOLUME_FLAG=""
+if [[ "${1:-}" == "--clean" || "${1:-}" == "-v" ]]; then
+  VOLUME_FLAG="-v"
+fi
+
+docker compose -f docker-compose.dev.yml down ${VOLUME_FLAG} --remove-orphans
 docker compose -f docker-compose.dev.yml up -d --build postgres ftp sftp app mcp
 
 docker cp backend/appdata/shared/example.com_A_Records raptor-sftp-dev:/chroot/upload/example.com_A_Records

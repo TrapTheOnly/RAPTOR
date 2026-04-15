@@ -76,6 +76,16 @@ def append_story_block(
 
         prepared_for = resolve(context.get("placeholders", {}).get("prepared_for", "{{record.name}}"))
         prepared_by = resolve(context.get("placeholders", {}).get("prepared_by", "{{pentest.tested_by}}"))
+
+        generated_by = context.get("generated_by", "")
+        assignee = context.get("pentest", {}).get("tested_by", "")
+        collaborator_usernames = model.get("collaborator_usernames", [])
+
+        if generated_by and generated_by != assignee:
+            display_prepared_by = generated_by
+        else:
+            display_prepared_by = prepared_by or "N/A"
+
         meta_rows = [
             [
                 Paragraph("Prepared For", styles["ReportCoverMetaLabel"]),
@@ -83,20 +93,45 @@ def append_story_block(
             ],
             [
                 Paragraph("Prepared By", styles["ReportCoverMetaLabel"]),
-                Paragraph(replace_inline_markdown(prepared_by or "N/A"), styles["ReportCoverMetaValue"]),
-            ],
-            [
-                Paragraph("Application", styles["ReportCoverMetaLabel"]),
-                Paragraph(
-                    replace_inline_markdown(resolve("{{record.application_name}}") or "N/A"),
-                    styles["ReportCoverMetaValue"],
-                ),
-            ],
-            [
-                Paragraph("Generated", styles["ReportCoverMetaLabel"]),
-                Paragraph(replace_inline_markdown(context["generated_at"]), styles["ReportCoverMetaValue"]),
+                Paragraph(replace_inline_markdown(display_prepared_by or "N/A"), styles["ReportCoverMetaValue"]),
             ],
         ]
+
+        if generated_by and generated_by != assignee:
+            meta_rows.append(
+                [
+                    Paragraph("Assignee", styles["ReportCoverMetaLabel"]),
+                    Paragraph(replace_inline_markdown(assignee or "Unassigned"), styles["ReportCoverMetaValue"]),
+                ]
+            )
+
+        if collaborator_usernames:
+            display_collaborators = generated_by if (generated_by and generated_by != assignee) else None
+            collab_names = list(collaborator_usernames)
+            if display_collaborators and display_collaborators not in collab_names:
+                collab_names.append(display_collaborators)
+            meta_rows.append(
+                [
+                    Paragraph("Collaborators", styles["ReportCoverMetaLabel"]),
+                    Paragraph(replace_inline_markdown(", ".join(collab_names)), styles["ReportCoverMetaValue"]),
+                ]
+            )
+
+        meta_rows.extend(
+            [
+                [
+                    Paragraph("Application", styles["ReportCoverMetaLabel"]),
+                    Paragraph(
+                        replace_inline_markdown(resolve("{{record.application_name}}") or "N/A"),
+                        styles["ReportCoverMetaValue"],
+                    ),
+                ],
+                [
+                    Paragraph("Generated", styles["ReportCoverMetaLabel"]),
+                    Paragraph(replace_inline_markdown(context["generated_at"]), styles["ReportCoverMetaValue"]),
+                ],
+            ]
+        )
         meta_table = Table(meta_rows, colWidths=[42 * mm, 92 * mm], hAlign="CENTER")
         meta_table.setStyle(
             TableStyle(
@@ -129,6 +164,7 @@ def append_story_block(
         story.append(Spacer(1, 4))
 
     if block_type == "engagement_overview":
+        collaborator_list = resolve("{{pentest.collaborators}}")
         rows = [
             ["Field", "Value"],
             ["Target", resolve("{{record.name}}") or "N/A"],
@@ -136,11 +172,17 @@ def append_story_block(
             ["Source", resolve("{{record.source}}") or "N/A"],
             ["Application", resolve("{{record.application_name}}") or "N/A"],
             ["Assigned Tester", resolve("{{pentest.tested_by}}") or "Unassigned"],
-            ["Status", resolve("{{pentest.status}}") or "Not Started"],
-            ["Start Date", resolve("{{pentest.test_start_date}}") or "N/A"],
-            ["End Date", resolve("{{pentest.test_end_date}}") or "N/A"],
-            ["Service Desk Link", resolve("{{pentest.service_desk_link}}") or "N/A"],
         ]
+        if collaborator_list:
+            rows.append(["Collaborators", collaborator_list])
+        rows.extend(
+            [
+                ["Status", resolve("{{pentest.status}}") or "Not Started"],
+                ["Start Date", resolve("{{pentest.test_start_date}}") or "N/A"],
+                ["End Date", resolve("{{pentest.test_end_date}}") or "N/A"],
+                ["Service Desk Link", resolve("{{pentest.service_desk_link}}") or "N/A"],
+            ]
+        )
         story.append(table_with_style_fn(rows, [55 * mm, 123 * mm]))
         story.append(Spacer(1, 8))
         return

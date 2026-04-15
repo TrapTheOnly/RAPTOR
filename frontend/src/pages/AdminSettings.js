@@ -86,6 +86,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
   const [ipsToDelete, setIpsToDelete] = useState([]);
 
   const [localUsername, setLocalUsername] = useState('');
+  const [localFullName, setLocalFullName] = useState('');
   const [localIsServiceAccount, setLocalIsServiceAccount] = useState(false);
   const [localRole, setLocalRole] = useState('user');
   const [localTempPassword, setLocalTempPassword] = useState('');
@@ -491,6 +492,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       const usersWithRoles = selectedUsers.map((user) => ({
         username: user.username,
         email: user.email,
+        full_name: user.full_name,
         role: selectedUserRoles[user.username] || 'user',
         permissions: normalizeOptionalPermissions(
           selectedUserRoles[user.username] || 'user',
@@ -1054,6 +1056,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     try {
       const response = await axios.post('/add-local-user', {
         username: trimmedUsername,
+        full_name: localFullName.trim() || undefined,
         role: localIsServiceAccount ? 'user' : localRole,
         permissions: localIsServiceAccount
           ? []
@@ -1069,6 +1072,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         );
         setLocalTempPassword(localIsServiceAccount ? '' : response.data.temp_password || '');
         setLocalUsername('');
+        setLocalFullName('');
         setLocalIsServiceAccount(false);
         setLocalRole('user');
         setLocalPermissions([]);
@@ -1409,6 +1413,8 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
                 loading={loading}
                 localUsername={localUsername}
                 setLocalUsername={setLocalUsername}
+                localFullName={localFullName}
+                setLocalFullName={setLocalFullName}
                 localIsServiceAccount={localIsServiceAccount}
                 setLocalIsServiceAccount={setLocalIsServiceAccount}
                 localRole={localRole}

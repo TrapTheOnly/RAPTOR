@@ -53,7 +53,8 @@ def create_allowed_users_table(cursor: DatabaseCursor) -> None:
             password BYTEA,
             must_reset INTEGER NOT NULL DEFAULT 0,
             permissions TEXT,
-            is_service_account INTEGER NOT NULL DEFAULT 0
+            is_service_account INTEGER NOT NULL DEFAULT 0,
+            full_name TEXT
         )
         """
     )
@@ -68,6 +69,8 @@ def create_allowed_users_table(cursor: DatabaseCursor) -> None:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN permissions TEXT")
     if "is_service_account" not in allowed_user_columns:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN is_service_account INTEGER NOT NULL DEFAULT 0")
+    if "full_name" not in allowed_user_columns:
+        cursor.execute("ALTER TABLE allowed_users ADD COLUMN full_name TEXT")
     cursor.execute(
         """
         UPDATE allowed_users
@@ -202,6 +205,22 @@ def create_pentest_table(cursor: DatabaseCursor) -> None:
         cursor.execute("ALTER TABLE pentest_data ADD COLUMN generated_report_template_id INTEGER")
     if "generated_report_generated_at" not in pentest_columns:
         cursor.execute("ALTER TABLE pentest_data ADD COLUMN generated_report_generated_at TEXT")
+
+
+def create_pentest_collaborators_table(cursor: DatabaseCursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pentest_collaborators (
+            id SERIAL PRIMARY KEY,
+            record_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            added_by TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            UNIQUE(record_id, username),
+            FOREIGN KEY (record_id) REFERENCES records(id)
+        )
+        """
+    )
 
 
 def create_service_checklists_table(cursor: DatabaseCursor) -> None:
@@ -375,6 +394,7 @@ __all__ = [
     "create_applications_table",
     "create_auth_lockout_table",
     "create_ip_sources_table",
+    "create_pentest_collaborators_table",
     "create_pentest_table",
     "create_record_history_table",
     "create_records_table",

@@ -23,3 +23,11 @@ def test_create_records_table_adds_manual_origin_columns(monkeypatch):
     assert any("alter table records add column origin" in query for query in cursor.queries)
     assert any("alter table records add column sync_conflict" in query for query in cursor.queries)
     assert any("alter table records add column sync_conflict_reason" in query for query in cursor.queries)
+
+
+def test_create_pentest_collaborators_table_creates_table():
+    cursor = FakeCursor()
+
+    schema_setup.create_pentest_collaborators_table(cursor)
+
+    assert any("create table if not exists pentest_collaborators" in query for query in cursor.queries)
