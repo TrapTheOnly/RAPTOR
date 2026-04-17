@@ -157,8 +157,30 @@ def update_data() -> None:
             logger.info("No valid records found in any zone file.")
 
         logger.info(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        try:
+            from app.services.notifications_service import notify_by_roles
+            notify_by_roles(
+                notification_type="zone_sync_success",
+                roles=["admin"],
+                title="Zone sync completed",
+                message=f"Zone sync completed successfully. {len(all_records)} records processed.",
+                send_email_flag=True,
+            )
+        except Exception as notify_err:
+            logger.warning(f"Zone sync success notification failed: {notify_err}")
     except Exception as e:
         logger.error(f"Error during data update: {e}")
+        try:
+            from app.services.notifications_service import notify_by_roles
+            notify_by_roles(
+                notification_type="zone_sync_failure",
+                roles=["admin"],
+                title="Zone sync failed",
+                message=f"Zone sync failed: {e}",
+                send_email_flag=True,
+            )
+        except Exception as notify_err:
+            logger.warning(f"Zone sync failure notification failed: {notify_err}")
 
 
 def find_live_imported_record(name: str) -> Optional[Dict[str, str]]:

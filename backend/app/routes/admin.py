@@ -3,6 +3,8 @@ from flask import Blueprint, jsonify, session
 from app.http.request_utils import parse_json_object
 from app.services import dns_sync_service, offsec_admin_service, service_account_service, user_admin_service
 from app.http.decorators.admin_required import admin_required
+from app.repositories.email_config_repository import get_email_config, upsert_email_config
+from app.integrations.email.client import send_email
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -127,3 +129,58 @@ def update_service_account_privileges(username: str):
         data=parse_json_object(),
     )
     return jsonify(payload), status_code
+
+
+@admin_bp.route("/admin/email-config", methods=["GET"])
+@admin_required
+def api_get_email_config():
+    config = get_email_config()
+    if not config:
+        return jsonify({"config": None}), 200
+    safe_config = dict(config)
+    if safe_config.get("smtp_password"):
+        safe_config["smtp_password"] = "••••••••"
+    return jsonify({"config": safe_config}), 200
+
+
+@admin_bp.route("/admin/email-config", methods=["POST"])
+@admin_required
+def api_save_email_config():
+    data = parse_json_object()
+    required = ["smtp_host", "smtp_port", "sender_email"]
+    for field in required:
+        if not data.get(field):
+            return jsonify({"error": f"{field} is required."}), 400
+
+    existing = get_email_config()
+    if data.get("smtp_password") == "••••••••" and existing:
+        data["smtp_password"] = existing.get("smtp_password", "")
+
+    data["updated_by"] = session.get("username", "")
+    upsert_email_config(data)
+    return jsonify({"message": "Email configuration saved."}), 200
+
+
+@admin_bp.route("/admin/email-config/test", methods=["POST"])
+@admin_required
+def api_test_email():
+    config = get_email_config()
+    if not config:
+        return jsonify({"error": "No email configuration found. Save settings first."}), 400
+
+    admin_username = session.get("username", "")
+    from app.repositories.users_repository import get_user_email
+    admin_email = get_user_email(admin_username)
+    if not admin_email:
+        return jsonify({"error": "No email address found for your account."}), 400
+
+    body = """
+    <html><body style="font-family: sans-serif; padding: 20px;">
+        <h2 style="color: #1976d2;">RAPTOR Test Email</h2>
+        <p>If you received this email, your SMTP configuration is working correctly.</p>
+    </body></html>
+    """
+    success = send_email(admin_email, "RAPTOR: Test Email", body, config)
+    if success:
+        return jsonify({"message": f"Test email sent to {admin_email}."}), 200
+    return jsonify({"error": "Failed to send test email. Check SMTP settings and server logs."}), 500

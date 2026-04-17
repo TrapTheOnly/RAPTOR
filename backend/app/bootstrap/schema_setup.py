@@ -388,12 +388,57 @@ def create_service_account_api_keys_table(cursor: DatabaseCursor) -> None:
     )
 
 
+def create_notifications_table(cursor: DatabaseCursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notifications (
+            id SERIAL PRIMARY KEY,
+            recipient TEXT NOT NULL,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            actor TEXT,
+            metadata TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_notifications_recipient
+        ON notifications (recipient)
+        """
+    )
+
+
+def create_email_config_table(cursor: DatabaseCursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_config (
+            id SERIAL PRIMARY KEY,
+            smtp_host TEXT NOT NULL,
+            smtp_port INTEGER NOT NULL DEFAULT 587,
+            smtp_user TEXT,
+            smtp_password TEXT,
+            smtp_use_tls INTEGER NOT NULL DEFAULT 1,
+            sender_email TEXT NOT NULL,
+            sender_name TEXT NOT NULL DEFAULT 'RAPTOR',
+            enabled INTEGER NOT NULL DEFAULT 0,
+            updated_by TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
+
 __all__ = [
     "create_allowed_users_table",
     "create_app_meta_table",
     "create_applications_table",
     "create_auth_lockout_table",
+    "create_email_config_table",
     "create_ip_sources_table",
+    "create_notifications_table",
     "create_pentest_collaborators_table",
     "create_pentest_table",
     "create_record_history_table",

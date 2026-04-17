@@ -14,6 +14,7 @@ import {
   Article as ArticleIcon,
   BugReport as BugReportIcon,
   Build as BuildIcon,
+  Email as EmailIcon,
   FactCheck as FactCheckIcon,
   Menu as MenuIcon,
   People as PeopleIcon,
@@ -48,6 +49,7 @@ import ExistingUsersPanel from './admin-settings/components/users/ExistingUsersP
 import LocalUsersPanel from './admin-settings/components/users/LocalUsersPanel';
 import ServiceAccountsPanel from './admin-settings/components/users/ServiceAccountsPanel';
 import UserManagementSection from './admin-settings/components/users/UserManagementSection';
+import EmailSettingsPanel from './admin-settings/components/EmailSettingsPanel';
 
 const REQUIRED_RESET_PHRASE = 'RESET ALL BUT OPEN VULNERABILITIES';
 const EMPTY_CHECKLIST_TEMPLATE_FORM = {
@@ -190,6 +192,13 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         description: 'Run manual updates and manage pentest resets.',
         icon: BuildIcon,
         visible: canRunMaintenance
+      },
+      {
+        key: 'notifications',
+        label: 'Notifications',
+        description: 'Configure email notifications and SMTP settings.',
+        icon: EmailIcon,
+        visible: canManageSecurity
       }
     ],
     [
@@ -1538,6 +1547,8 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
             onOpenResetDialog={handleOpenResetDialog}
           />
         );
+      case 'notifications':
+        return <EmailSettingsPanel showMessage={showMessage} />;
       default:
         return null;
     }

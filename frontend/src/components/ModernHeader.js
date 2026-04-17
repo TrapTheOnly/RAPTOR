@@ -28,6 +28,7 @@ import {
   HelpOutline
 } from '@mui/icons-material';
 import { hasPermission as hasRolePermission } from '../utils/permissions';
+import NotificationBell from './NotificationBell';
 
 const ModernHeader = ({ 
   username, 
@@ -280,6 +281,7 @@ const ModernHeader = ({
               <HelpOutline />
             </IconButton>
           </Tooltip>
+          <NotificationBell username={username} />
           <IconButton 
             sx={{ color: theme.palette.text.secondary }} 
             onClick={() => setDarkMode(!darkMode)}
