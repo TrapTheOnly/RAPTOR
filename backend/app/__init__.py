@@ -13,6 +13,7 @@ def create_app():
     from app.routes.docs import docs_bp
     from app.routes.frontend import register_frontend_routes
     from app.routes.metadata import metadata_bp
+    from app.routes.notifications import notifications_bp
     from app.routes.offsec_routes import register_offsec_routes
     from app.routes.records import records_bp
     from app.routes.service_api import service_api_bp
@@ -45,6 +46,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(docs_bp)
     app.register_blueprint(service_api_bp)
+    app.register_blueprint(notifications_bp)
     register_offsec_routes(app)
     register_frontend_routes(app)
 

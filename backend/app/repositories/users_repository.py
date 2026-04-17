@@ -159,10 +159,23 @@ def get_display_names(usernames: List[str], db_path: str = DB_PATH) -> Dict[str,
     return result
 
 
+def get_user_email(username: str, db_path: str = DB_PATH) -> Optional[str]:
+    conn = get_db_connection(db_path)
+    c = conn.cursor()
+    c.execute("SELECT email FROM allowed_users WHERE username = ?", (username,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        email = row[0]
+        return email if email and "@" in str(email) else None
+    return None
+
+
 __all__ = [
     "add_allowed_user",
     "get_allowed_user_for_login",
     "get_display_names",
+    "get_user_email",
     "get_user_password",
     "get_user_role",
     "is_service_account_user",

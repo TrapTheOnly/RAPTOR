@@ -113,6 +113,17 @@ def store_records_in_db(records: List[Dict[str, Any]], db_path: str = DB_PATH) -
                         old_maintainer=existing_record["maintainer"],
                         new_maintainer=existing_record["maintainer"],
                     )
+                    try:
+                        from app.services.notifications_service import notify_by_roles
+                        notify_by_roles(
+                            notification_type="sync_conflict",
+                            roles=["admin", "manager"],
+                            title="Sync conflict detected",
+                            message=f"Record '{record['name']}' has a sync conflict requiring resolution.",
+                            metadata={"record_id": existing_record["id"]},
+                        )
+                    except Exception:
+                        pass
                 continue
 
             new_source = determine_source_with_cursor(c, record["ip_address"])

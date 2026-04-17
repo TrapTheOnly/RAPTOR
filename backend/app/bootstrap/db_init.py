@@ -5,7 +5,9 @@ from app.bootstrap.schema_setup import (
     create_app_meta_table,
     create_applications_table,
     create_auth_lockout_table,
+    create_email_config_table,
     create_ip_sources_table,
+    create_notifications_table,
     create_pentest_collaborators_table,
     create_pentest_table,
     create_record_history_table,
@@ -40,6 +42,8 @@ def init_db(db_path: str = DB_PATH) -> None:
     create_service_account_api_keys_table(c)
     create_app_meta_table(c)
     create_auth_lockout_table(c)
+    create_notifications_table(c)
+    create_email_config_table(c)
     run_seed_routines(c)
 
     conn.commit()
