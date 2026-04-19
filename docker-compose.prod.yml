@@ -94,7 +94,7 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:5000"]
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
