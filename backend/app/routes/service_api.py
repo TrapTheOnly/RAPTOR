@@ -1,7 +1,16 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from app.http.decorators.service_api_key_required import service_api_key_required
-from app.services.service_api_service import get_service_pentests_payload, get_service_records_payload
+from app.services.service_api_service import (
+    append_vulnerability_payload,
+    get_checklist_templates_payload,
+    get_service_pentests_payload,
+    get_service_records_payload,
+    get_single_pentest_payload,
+    notify_scan_complete_payload,
+    patch_pentest_payload,
+    set_scan_status_payload,
+)
 
 service_api_bp = Blueprint("service_api", __name__)
 
@@ -17,6 +26,58 @@ def service_records():
 @service_api_key_required("pentests.read")
 def service_pentests():
     payload, status_code = get_service_pentests_payload()
+    return jsonify(payload), status_code
+
+
+@service_api_bp.route("/service-api/v1/pentests/<int:record_id>", methods=["GET"])
+@service_api_key_required("pentests.read")
+def service_get_pentest(record_id):
+    payload, status_code = get_single_pentest_payload(record_id)
+    return jsonify(payload), status_code
+
+
+@service_api_bp.route("/service-api/v1/pentests/<int:record_id>", methods=["PATCH"])
+@service_api_key_required("pentests.write")
+def service_patch_pentest(record_id):
+    fields = request.get_json(silent=True) or {}
+    payload, status_code = patch_pentest_payload(record_id, fields)
+    return jsonify(payload), status_code
+
+
+@service_api_bp.route("/service-api/v1/pentests/<int:record_id>/scan-status", methods=["PUT"])
+@service_api_key_required("pentests.write")
+def service_set_scan_status(record_id):
+    body = request.get_json(silent=True) or {}
+    payload, status_code = set_scan_status_payload(record_id, str(body.get("scan_status", "")))
+    return jsonify(payload), status_code
+
+
+@service_api_bp.route("/service-api/v1/pentests/<int:record_id>/vulnerabilities", methods=["POST"])
+@service_api_key_required("pentests.write")
+def service_append_vulnerability(record_id):
+    body = request.get_json(silent=True) or {}
+    payload, status_code = append_vulnerability_payload(record_id, body)
+    return jsonify(payload), status_code
+
+
+@service_api_bp.route("/service-api/v1/pentests/<int:record_id>/notify-scan-complete", methods=["POST"])
+@service_api_key_required("pentests.write")
+def service_notify_scan_complete(record_id):
+    body = request.get_json(silent=True) or {}
+    payload, status_code = notify_scan_complete_payload(
+        record_id=record_id,
+        findings_count=int(body.get("findings_count", 0)),
+        input_tokens=int(body.get("input_tokens", 0)),
+        output_tokens=int(body.get("output_tokens", 0)),
+        cost_usd=float(body.get("cost_usd", 0.0)),
+    )
+    return jsonify(payload), status_code
+
+
+@service_api_bp.route("/service-api/v1/checklist-templates", methods=["GET"])
+@service_api_key_required("records.read")
+def service_checklist_templates():
+    payload, status_code = get_checklist_templates_payload()
     return jsonify(payload), status_code
 
 

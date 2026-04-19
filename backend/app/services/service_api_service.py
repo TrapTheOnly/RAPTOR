@@ -5,10 +5,16 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from app.repositories.service_api_repository import (
+    PENTEST_WRITABLE_FIELDS,
+    VALID_SCAN_STATUSES,
+    append_pentest_vulnerability,
+    fetch_checklist_templates_dataset,
     fetch_pentests_dataset,
     fetch_records_dataset,
+    fetch_single_pentest_dataset,
     get_service_account_key_by_fingerprint,
     touch_service_api_key_last_used,
+    update_pentest_fields,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,8 +113,112 @@ def get_service_pentests_payload() -> Tuple[Dict[str, Any], int]:
         return {"error": "Failed to fetch pentests dataset."}, 500
 
 
+def patch_pentest_payload(record_id: int, fields: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    unknown = [k for k in fields if k not in PENTEST_WRITABLE_FIELDS]
+    if unknown:
+        return {"error": f"Unknown or non-writable fields: {unknown}"}, 400
+    try:
+        found = update_pentest_fields(record_id, fields)
+    except Exception as exc:
+        logger.error(f"Failed to patch pentest {record_id}: {exc}")
+        return {"error": "Failed to update pentest."}, 500
+    if not found:
+        return {"error": "Pentest record not found."}, 404
+    return {"message": "Pentest updated."}, 200
+
+
+def get_single_pentest_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
+    try:
+        row = fetch_single_pentest_dataset(record_id)
+    except Exception as exc:
+        logger.error(f"Failed to fetch pentest {record_id}: {exc}")
+        return {"error": "Failed to fetch pentest."}, 500
+    if not row:
+        return {"error": "Pentest record not found."}, 404
+    return {"pentest": row}, 200
+
+
+def set_scan_status_payload(record_id: int, scan_status: str) -> Tuple[Dict[str, Any], int]:
+    if scan_status not in VALID_SCAN_STATUSES:
+        return {"error": f"scan_status must be one of: {sorted(VALID_SCAN_STATUSES)}"}, 400
+    try:
+        found = update_pentest_fields(record_id, {"scan_status": scan_status})
+    except Exception as exc:
+        logger.error(f"Failed to set scan_status for pentest {record_id}: {exc}")
+        return {"error": "Failed to update scan status."}, 500
+    if not found:
+        return {"error": "Pentest record not found."}, 404
+    return {"message": "Scan status updated."}, 200
+
+
+def append_vulnerability_payload(
+    record_id: int, vulnerability: Dict[str, Any]
+) -> Tuple[Dict[str, Any], int]:
+    try:
+        found = append_pentest_vulnerability(record_id, vulnerability)
+    except Exception as exc:
+        logger.error(f"Failed to append vulnerability for pentest {record_id}: {exc}")
+        return {"error": "Failed to append vulnerability."}, 500
+    if not found:
+        return {"error": "Pentest record not found."}, 404
+    return {"message": "Vulnerability appended."}, 200
+
+
+def get_checklist_templates_payload() -> Tuple[Dict[str, Any], int]:
+    try:
+        rows = fetch_checklist_templates_dataset()
+        return {"count": len(rows), "templates": rows}, 200
+    except Exception as exc:
+        logger.error(f"Failed to fetch checklist templates: {exc}")
+        return {"error": "Failed to fetch checklist templates."}, 500
+
+
+def notify_scan_complete_payload(
+    record_id: int,
+    findings_count: int,
+    input_tokens: int,
+    output_tokens: int,
+    cost_usd: float,
+) -> Tuple[Dict[str, Any], int]:
+    try:
+        from app.repositories.offsec.offsec_records import get_pentest_data_internal
+        from app.services.notifications_service import notify, _get_usernames_by_roles
+
+        pentest = get_pentest_data_internal(record_id)
+        if not pentest:
+            return {"error": "Pentest record not found."}, 404
+
+        recipients = list({r for r in [pentest.get("tested_by")] if r})
+        recipients += _get_usernames_by_roles(["manager", "admin"])
+        message = (
+            f"Automated scan completed for {pentest.get('dns_name', f'record {record_id}')}. "
+            f"Findings: {findings_count}. "
+            f"Tokens: {input_tokens} in / {output_tokens} out. "
+            f"Estimated cost: ${cost_usd:.4f}."
+        )
+        notify(
+            notification_type="scan_completed",
+            recipients=recipients,
+            title="RAPTOR scan completed",
+            message=message,
+            actor="RAPTOR-Scanner",
+            metadata={"record_id": record_id, "findings_count": findings_count},
+            send_email_flag=True,
+        )
+        return {"message": "Notifications sent."}, 200
+    except Exception as exc:
+        logger.error(f"Failed to send scan-complete notification for record {record_id}: {exc}")
+        return {"error": "Failed to send notifications."}, 500
+
+
 __all__ = [
+    "append_vulnerability_payload",
     "authenticate_service_api_key",
+    "get_checklist_templates_payload",
     "get_service_pentests_payload",
     "get_service_records_payload",
+    "get_single_pentest_payload",
+    "notify_scan_complete_payload",
+    "patch_pentest_payload",
+    "set_scan_status_payload",
 ]

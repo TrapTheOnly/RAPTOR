@@ -13,6 +13,7 @@ NOTIFICATION_TYPES = {
     "collaborator_added",
     "collaborator_removed",
     "finding_added",
+    "scan_completed",
     "sync_conflict",
     "zone_sync_success",
     "zone_sync_failure",
@@ -23,29 +24,28 @@ def _get_usernames_by_roles(
     roles: List[str],
     db_path: str = DB_PATH,
 ) -> List[str]:
-    conn = get_db_connection(db_path)
-    c = conn.cursor()
-    placeholders = ", ".join(["?"] * len(roles))
-    c.execute(
-        f"SELECT username FROM allowed_users WHERE role IN ({placeholders}) AND is_service_account = 0",
-        tuple(roles),
-    )
-    usernames = [row[0] for row in c.fetchall()]
-    conn.close()
-    return usernames
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
+        c = conn.cursor()
+        placeholders = ", ".join(["?"] * len(roles))
+        c.execute(
+            f"SELECT username FROM allowed_users WHERE role IN ({placeholders}) AND is_service_account = 0",
+            tuple(roles),
+        )
+        return [str(row["username"]) for row in c.fetchall()]
 
 
 def _get_user_email(username: str, db_path: str = DB_PATH) -> Optional[str]:
-    conn = get_db_connection(db_path)
-    c = conn.cursor()
-    c.execute(
-        "SELECT email FROM allowed_users WHERE username = ? AND is_service_account = 0",
-        (username,),
-    )
-    row = c.fetchone()
-    conn.close()
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
+        c = conn.cursor()
+        c.execute(
+            "SELECT email FROM allowed_users WHERE username = ? AND is_service_account = 0",
+            (username,),
+        )
+        row = c.fetchone()
     if row:
-        email = row[0] if not isinstance(row, dict) else row.get("email")
+        email = row.get("email")
         return email if email and "@" in str(email) else None
     return None
 

@@ -1,10 +1,13 @@
 import asyncio
+import json
 
 import httpx
 import pytest
 
 import raptor_mcp.server as server_module
+import raptor_mcp.write_tools as write_tools_module
 from raptor_mcp.settings import MCPSettings
+from raptor_mcp.write_tools import _calculate_cvss_base
 
 
 class _FakeResponse:
@@ -27,6 +30,15 @@ class _FakeAsyncClient:
         return False
 
     async def get(self, url, headers=None):
+        raise NotImplementedError
+
+    async def patch(self, url, json=None, headers=None):
+        raise NotImplementedError
+
+    async def post(self, url, json=None, headers=None):
+        raise NotImplementedError
+
+    async def put(self, url, json=None, headers=None):
         raise NotImplementedError
 
 
@@ -132,3 +144,199 @@ def test_run_pentests_tool_sync_uses_pentests_path(monkeypatch):
     assert payload == {"pentests": []}
     assert captured["path"] == "/service-api/v1/pentests"
     assert captured["settings"] is settings
+
+
+# ── mutate_service_dataset ──────────────────────────────────────────────────
+
+def test_mutate_service_dataset_success(monkeypatch):
+    class Client(_FakeAsyncClient):
+        async def patch(self, url, json=None, headers=None):
+            assert url == "http://app:5000/service-api/v1/pentests/1"
+            assert headers.get("X-RAPTOR-Scanner") == "1"
+            assert headers.get("X-API-Key") == "service-key"
+            return _FakeResponse(200, {"message": "Pentest updated."})
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    result = asyncio.run(
+        write_tools_module.mutate_service_dataset("patch", "/service-api/v1/pentests/1", {}, _settings())
+    )
+    assert result == {"message": "Pentest updated."}
+
+
+@pytest.mark.parametrize("status_code", [400, 403, 500])
+def test_mutate_service_dataset_propagates_error(monkeypatch, status_code):
+    class Client(_FakeAsyncClient):
+        async def patch(self, url, json=None, headers=None):
+            return _FakeResponse(status_code, {"error": "bad"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    with pytest.raises(RuntimeError, match=rf"RAPTOR API error \({status_code}\)"):
+        asyncio.run(
+            write_tools_module.mutate_service_dataset("patch", "/service-api/v1/pentests/1", {}, _settings())
+        )
+
+
+def test_mutate_service_dataset_timeout(monkeypatch):
+    class Client(_FakeAsyncClient):
+        async def patch(self, url, json=None, headers=None):
+            raise httpx.TimeoutException("timeout")
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    with pytest.raises(RuntimeError, match="timed out"):
+        asyncio.run(
+            write_tools_module.mutate_service_dataset("patch", "/service-api/v1/pentests/1", {}, _settings())
+        )
+
+
+# ── get_checklist_templates ─────────────────────────────────────────────────
+
+def test_get_checklist_templates_uses_correct_path(monkeypatch):
+    class Client(_FakeAsyncClient):
+        async def get(self, url, headers=None):
+            assert url == "http://app:5000/service-api/v1/checklist-templates"
+            return _FakeResponse(200, {"count": 1, "templates": [{"key": "ssh-security"}]})
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    result = asyncio.run(server_module.fetch_service_dataset("/service-api/v1/checklist-templates", _settings()))
+    assert result["count"] == 1
+
+
+# ── update_pentest_ports ────────────────────────────────────────────────────
+
+def test_update_pentest_ports_sends_correct_body(monkeypatch):
+    captured: dict = {}
+
+    class Client(_FakeAsyncClient):
+        async def patch(self, url, json=None, headers=None):
+            captured["url"] = url
+            captured["body"] = json
+            return _FakeResponse(200, {"message": "Pentest updated."})
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    asyncio.run(write_tools_module.do_update_pentest_ports(7, "22,80,443", _settings()))
+    assert captured["url"].endswith("/pentests/7")
+    assert captured["body"] == {"open_ports": "22,80,443"}
+
+
+# ── add_pentest_vulnerability ───────────────────────────────────────────────
+
+def test_calculate_cvss_base_high_severity():
+    metrics = {"AV": "N", "AC": "L", "PR": "N", "UI": "N", "S": "U", "C": "H", "I": "H", "A": "H"}
+    score = _calculate_cvss_base(metrics)
+    assert score >= 9.0
+
+
+def test_calculate_cvss_base_zero_impact():
+    metrics = {"AV": "N", "AC": "L", "PR": "N", "UI": "N", "S": "U", "C": "N", "I": "N", "A": "N"}
+    assert _calculate_cvss_base(metrics) == 0.0
+
+
+def test_add_pentest_vulnerability_posts_to_dedicated_endpoint(monkeypatch):
+    post_captured: dict = {}
+
+    class Client(_FakeAsyncClient):
+        async def post(self, url, json=None, headers=None):
+            post_captured["url"] = url
+            post_captured["body"] = json
+            post_captured["headers"] = headers or {}
+            return _FakeResponse(200, {"message": "Vulnerability appended."})
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+    asyncio.run(
+        write_tools_module.do_add_pentest_vulnerability(
+            3, "XSS in login", "", "N", "L", "N", "N", "U", "N", "L", "N", _settings()
+        )
+    )
+    assert post_captured["url"].endswith("/pentests/3/vulnerabilities")
+    assert post_captured["body"]["description"] == "XSS in login"
+    assert post_captured["body"]["created_by"] == "RAPTOR-Scanner"
+    assert post_captured["body"]["baseScore"] > 0
+    assert post_captured["headers"].get("X-RAPTOR-Scanner") == "1"
+
+
+# ── update_checklist_item ───────────────────────────────────────────────────
+
+def test_update_checklist_item_adds_template_and_sets_status(monkeypatch):
+    pentest_response = {
+        "pentest": {"record_id": 5, "checklist_states": json.dumps({"selected": [], "statuses": {}})}
+    }
+    patch_captured: dict = {}
+
+    async def fake_fetch(path, settings):
+        return pentest_response
+
+    class Client(_FakeAsyncClient):
+        async def patch(self, url, json=None, headers=None):
+            patch_captured["body"] = json
+            return _FakeResponse(200, {"message": "ok"})
+
+    monkeypatch.setattr(write_tools_module, "fetch_service_dataset", fake_fetch)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+    asyncio.run(
+        write_tools_module.do_update_checklist_item(5, "ssh-security", "SSH-001", "completed", _settings())
+    )
+    states = json.loads(patch_captured["body"]["checklist_states"])
+    assert "ssh-security" in states["selected"]
+    assert states["statuses"]["SSH-001"] == "completed"
+
+
+def test_update_checklist_item_rejects_invalid_status():
+    with pytest.raises(ValueError, match="status must be one of"):
+        asyncio.run(
+            write_tools_module.do_update_checklist_item(5, "ssh-security", "SSH-001", "bad_status", _settings())
+        )
+
+
+# ── notify_scan_complete ────────────────────────────────────────────────────
+
+def test_notify_scan_complete_sends_correct_body(monkeypatch):
+    post_captured: dict = {}
+
+    class Client(_FakeAsyncClient):
+        async def post(self, url, json=None, headers=None):
+            post_captured["url"] = url
+            post_captured["body"] = json
+            return _FakeResponse(200, {"message": "Notifications sent."})
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    asyncio.run(
+        write_tools_module.do_notify_scan_complete(4, 3, 12000, 4000, 0.14, _settings())
+    )
+    assert post_captured["url"].endswith("/pentests/4/notify-scan-complete")
+    assert post_captured["body"]["findings_count"] == 3
+    assert post_captured["body"]["cost_usd"] == 0.14
+
+
+# ── get_pentest ─────────────────────────────────────────────────────────────
+
+def test_get_pentest_uses_single_record_path(monkeypatch):
+    class Client(_FakeAsyncClient):
+        async def get(self, url, headers=None):
+            assert url == "http://app:5000/service-api/v1/pentests/7"
+            return _FakeResponse(200, {"pentest": {"record_id": 7, "scan_status": "idle"}})
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    result = asyncio.run(server_module.fetch_service_dataset("/service-api/v1/pentests/7", _settings()))
+    assert result["pentest"]["record_id"] == 7
+    assert result["pentest"]["scan_status"] == "idle"
+
+
+# ── set_scan_status ─────────────────────────────────────────────────────────
+
+def test_set_scan_status_sends_correct_body(monkeypatch):
+    put_captured: dict = {}
+
+    class Client(_FakeAsyncClient):
+        async def put(self, url, json=None, headers=None):
+            put_captured["url"] = url
+            put_captured["body"] = json
+            put_captured["headers"] = headers
+            return _FakeResponse(200, {"message": "Scan status updated."})
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    asyncio.run(write_tools_module.do_set_scan_status(9, "running", _settings()))
+    assert put_captured["url"].endswith("/pentests/9/scan-status")
+    assert put_captured["body"] == {"scan_status": "running"}
+    assert put_captured["headers"].get("X-RAPTOR-Scanner") == "1"
