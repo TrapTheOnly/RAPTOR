@@ -18,8 +18,20 @@ RUN set -eux; \
 
 COPY scanner/ /usr/app/src/scanner/
 
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+RUN git clone --depth=1 https://github.com/Wh0am123/MCP-Kali-Server.git /opt/mcp-kali-server
+RUN set -eux; \
+    pip_proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"; \
+    if [ -n "$pip_proxy" ]; then \
+      pip install --no-cache-dir --proxy "$pip_proxy" -r /opt/mcp-kali-server/requirements.txt; \
+    else \
+      pip install --no-cache-dir -r /opt/mcp-kali-server/requirements.txt; \
+    fi
+
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/usr/app/src/scanner
+ENV KALI_CLIENT_PATH=/opt/mcp-kali-server/mcp_server.py
 
 EXPOSE 8082
 

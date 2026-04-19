@@ -1,4 +1,4 @@
-"""Thin async wrapper around the RAPTOR MCP session."""
+"""Thin async wrappers around RAPTOR MCP and Kali MCP sessions."""
 
 import json
 import logging
@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,18 @@ async def raptor_mcp_session(base_url: str, token: str) -> AsyncIterator[ClientS
     headers = {"Authorization": f"Bearer {token}"}
     url = f"{base_url.rstrip('/')}/mcp"
     async with streamablehttp_client(url, headers=headers) as (r, w, _):
+        async with ClientSession(r, w) as session:
+            await session.initialize()
+            yield session
+
+
+@asynccontextmanager
+async def kali_mcp_session(client_path: str, server_url: str) -> AsyncIterator[ClientSession]:
+    params = StdioServerParameters(
+        command="python3",
+        args=[client_path, "--server", server_url],
+    )
+    async with stdio_client(params) as (r, w):
         async with ClientSession(r, w) as session:
             await session.initialize()
             yield session
@@ -34,4 +47,4 @@ async def call_tool(session: ClientSession, tool_name: str, arguments: dict) -> 
     return None
 
 
-__all__ = ["call_tool", "raptor_mcp_session"]
+__all__ = ["call_tool", "kali_mcp_session", "raptor_mcp_session"]

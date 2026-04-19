@@ -1,4 +1,4 @@
-"""Core scan execution: connects to Bedrock + RAPTOR MCP and drives the agentic loop."""
+"""Core scan execution: connects to Bedrock + RAPTOR MCP + Kali MCP and drives the agentic loop."""
 
 import json
 import logging
@@ -7,7 +7,7 @@ from typing import Any
 import anthropic
 
 from scanner.cost import TokenTracker
-from scanner.mcp_client import call_tool, raptor_mcp_session
+from scanner.mcp_client import call_tool, kali_mcp_session, raptor_mcp_session
 from scanner.prompt import SYSTEM_PROMPT
 from scanner.settings import ScanSettings
 
@@ -27,23 +27,34 @@ async def run_scan(settings: ScanSettings) -> None:
     client = anthropic.AnthropicBedrock(aws_region=settings.aws_region)
 
     findings_count = 0
-    async with raptor_mcp_session(settings.mcp_base_url, settings.mcp_server_token) as mcp:
-        tools = await _get_mcp_tools_for_anthropic(mcp)
+    async with raptor_mcp_session(settings.mcp_base_url, settings.mcp_server_token) as raptor_mcp:
         try:
-            await _set_scan_status(mcp, record_id, "running")
-            findings_count = await _agent_loop(client, mcp, tools, settings, tracker)
-            await _set_scan_status(mcp, record_id, "completed")
+            async with kali_mcp_session(settings.kali_client_path, settings.kali_server_url) as kali_mcp:
+                raptor_tools = await _get_mcp_tools_for_anthropic(raptor_mcp)
+                kali_tools = await _get_mcp_tools_for_anthropic(kali_mcp)
+                all_tools = raptor_tools + kali_tools
+                tool_registry = {
+                    **{t["name"]: raptor_mcp for t in raptor_tools},
+                    **{t["name"]: kali_mcp for t in kali_tools},
+                }
+                logger.info(
+                    f"[record {record_id}] RAPTOR tools: {[t['name'] for t in raptor_tools]}  "
+                    f"Kali tools: {[t['name'] for t in kali_tools]}"
+                )
+                await _set_scan_status(raptor_mcp, record_id, "running")
+                findings_count = await _agent_loop(client, tool_registry, all_tools, settings, tracker)
+                await _set_scan_status(raptor_mcp, record_id, "completed")
         except _CostLimitExceeded:
             logger.warning(f"[record {record_id}] Cost limit ${settings.cost_limit_usd} reached — marking failed")
-            await _set_scan_status(mcp, record_id, "failed")
+            await _set_scan_status(raptor_mcp, record_id, "failed")
             findings_count = 0
         except Exception as exc:
             logger.error(f"[record {record_id}] Scan error: {exc}", exc_info=True)
-            await _set_scan_status(mcp, record_id, "failed")
+            await _set_scan_status(raptor_mcp, record_id, "failed")
             findings_count = 0
         finally:
             try:
-                await call_tool(mcp, "notify_scan_complete", {
+                await call_tool(raptor_mcp, "notify_scan_complete", {
                     "record_id": record_id,
                     "findings_count": findings_count,
                     "input_tokens": tracker.input_tokens,
@@ -56,7 +67,7 @@ async def run_scan(settings: ScanSettings) -> None:
 
 async def _agent_loop(
     client: anthropic.AnthropicBedrock,
-    mcp,
+    tool_registry: dict,
     tools: list,
     settings: ScanSettings,
     tracker: TokenTracker,
@@ -109,8 +120,18 @@ async def _agent_loop(
             tool_name = block.name
             tool_input = block.input or {}
             logger.info(f"[record {record_id}] → {tool_name}({_safe_log(tool_input)})")
+            session = tool_registry.get(tool_name)
+            if session is None:
+                logger.warning(f"[record {record_id}] Unknown tool: {tool_name!r}")
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "is_error": True,
+                    "content": f"Unknown tool: {tool_name!r}",
+                })
+                continue
             try:
-                result = await call_tool(mcp, tool_name, tool_input)
+                result = await call_tool(session, tool_name, tool_input)
                 if tool_name == "add_pentest_vulnerability":
                     findings_count += 1
                 tool_results.append({
