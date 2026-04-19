@@ -78,9 +78,11 @@ async def _agent_loop(
         {
             "role": "user",
             "content": (
-                f"Begin security assessment for pentest record ID {record_id}. "
-                f"Follow the workflow in your instructions. "
-                f"Cost limit: ${settings.cost_limit_usd:.2f} USD."
+                f"Begin security assessment for pentest record ID {record_id}.\n"
+                f"Cost limit: ${settings.cost_limit_usd:.2f} USD. "
+                f"Stop and call notify_scan_complete before this limit is reached.\n"
+                f"Follow the workflow in your system instructions exactly. "
+                f"Start with get_pentest({record_id})."
             ),
         }
     ]
