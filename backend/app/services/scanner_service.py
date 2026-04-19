@@ -133,6 +133,8 @@ def _dispatch_scan(record_id: int, cfg: Dict[str, Any]) -> None:
         "cost_limit_usd": float(cfg.get("cost_limit_usd") or 5.0),
         "input_cost_per_1m": float(cfg.get("input_cost_per_1m") or 3.0),
         "output_cost_per_1m": float(cfg.get("output_cost_per_1m") or 15.0),
+        "kali_server_url": os.getenv("KALI_SERVER_URL", "http://kali:5000"),
+        "kali_client_path": os.getenv("KALI_CLIENT_PATH", "/opt/mcp-kali-server/mcp_server.py"),
     }
     with httpx.Client(timeout=10.0) as client:
         resp = client.post(url, json=body, headers=headers)

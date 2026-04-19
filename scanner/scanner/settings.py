@@ -42,6 +42,8 @@ class ScanSettings:
     output_cost_per_1m: float
     mcp_base_url: str
     mcp_server_token: str
+    kali_server_url: str
+    kali_client_path: str
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,8 @@ class ServiceSettings:
     mcp_base_url: str
     mcp_server_token: str
     max_concurrent_scans: int
+    kali_server_url: str
+    kali_client_path: str
 
 
 def load_service_settings() -> ServiceSettings:
@@ -63,6 +67,8 @@ def load_service_settings() -> ServiceSettings:
         mcp_base_url=_optional("MCP_BASE_URL", "http://mcp:8081"),
         mcp_server_token=_require("MCP_SERVER_TOKEN"),
         max_concurrent_scans=_int_env("SCANNER_MAX_CONCURRENT", 2),
+        kali_server_url=_optional("KALI_SERVER_URL", "http://kali:5000"),
+        kali_client_path=_optional("KALI_CLIENT_PATH", "/opt/mcp-kali-server/mcp_server.py"),
     )
 
 
@@ -89,6 +95,8 @@ def build_scan_settings(job: dict, service: ServiceSettings) -> ScanSettings:
         output_cost_per_1m=output_cost,
         mcp_base_url=service.mcp_base_url,
         mcp_server_token=service.mcp_server_token,
+        kali_server_url=str(job.get("kali_server_url") or service.kali_server_url),
+        kali_client_path=str(job.get("kali_client_path") or service.kali_client_path),
     )
 
 

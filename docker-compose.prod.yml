@@ -40,6 +40,8 @@ services:
       - FTP_HOST=ftp
       - SCANNER_BASE_URL=${SCANNER_BASE_URL:-http://scanner:8082}
       - SCANNER_INTERNAL_TOKEN=${SCANNER_INTERNAL_TOKEN:?SCANNER_INTERNAL_TOKEN must be set}
+      - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
+      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/mcp_server.py}
     depends_on:
       ftp:
         condition: service_started
@@ -83,6 +85,22 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  kali:
+    build:
+      context: .
+      dockerfile: Dockerfile.kali
+    image: raptor-kali-prod
+    container_name: raptor-kali-prod
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
   scanner:
     build:
       context: .
@@ -102,8 +120,12 @@ services:
       - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:?AWS_BEARER_TOKEN_BEDROCK must be set}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - SCANNER_MAX_CONCURRENT=${SCANNER_MAX_CONCURRENT:-2}
+      - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
+      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/mcp_server.py}
     depends_on:
       mcp:
+        condition: service_healthy
+      kali:
         condition: service_healthy
     healthcheck:
       test:
