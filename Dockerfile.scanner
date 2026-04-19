@@ -1,0 +1,26 @@
+FROM python:3.12-slim
+
+WORKDIR /usr/app/src
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy
+ARG https_proxy
+
+COPY scanner/requirements.txt /usr/app/src/scanner/requirements.txt
+RUN set -eux; \
+    pip_proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"; \
+    if [ -n "$pip_proxy" ]; then \
+      pip install --no-cache-dir --proxy "$pip_proxy" -r /usr/app/src/scanner/requirements.txt; \
+    else \
+      pip install --no-cache-dir -r /usr/app/src/scanner/requirements.txt; \
+    fi
+
+COPY scanner/ /usr/app/src/scanner/
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/usr/app/src/scanner
+
+EXPOSE 8082
+
+CMD ["python", "-m", "scanner.main"]

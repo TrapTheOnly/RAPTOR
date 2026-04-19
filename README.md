@@ -70,6 +70,12 @@ SESSION_COOKIE_SAMESITE=Lax
 # MCP service (standalone container)
 MCP_SERVER_TOKEN=replace-with-a-random-mcp-bearer-token
 RAPTOR_SERVICE_API_KEY=replace-with-a-service-account-api-key
+
+# AI Scanner service
+SCANNER_INTERNAL_TOKEN=replace-with-a-random-scanner-internal-token
+# AWS Bedrock credentials for the scanner container (bearer token auth)
+AWS_BEARER_TOKEN_BEDROCK=replace-with-your-bedrock-bearer-token
+AWS_REGION=us-east-1
 RAPTOR_API_BASE_URL=http://app:5000
 MCP_PORT=8081
 RAPTOR_API_TIMEOUT_SECONDS=30
