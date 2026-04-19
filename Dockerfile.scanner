@@ -1,0 +1,38 @@
+FROM python:3.12-slim
+
+WORKDIR /usr/app/src
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy
+ARG https_proxy
+
+COPY scanner/requirements.txt /usr/app/src/scanner/requirements.txt
+RUN set -eux; \
+    pip_proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"; \
+    if [ -n "$pip_proxy" ]; then \
+      pip install --no-cache-dir --proxy "$pip_proxy" -r /usr/app/src/scanner/requirements.txt; \
+    else \
+      pip install --no-cache-dir -r /usr/app/src/scanner/requirements.txt; \
+    fi
+
+COPY scanner/ /usr/app/src/scanner/
+
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+RUN git clone --depth=1 https://github.com/Wh0am123/MCP-Kali-Server.git /opt/mcp-kali-server
+RUN set -eux; \
+    pip_proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"; \
+    if [ -n "$pip_proxy" ]; then \
+      pip install --no-cache-dir --proxy "$pip_proxy" -r /opt/mcp-kali-server/requirements.txt; \
+    else \
+      pip install --no-cache-dir -r /opt/mcp-kali-server/requirements.txt; \
+    fi
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/usr/app/src/scanner
+ENV KALI_CLIENT_PATH=/opt/mcp-kali-server/mcp_server.py
+
+EXPOSE 8082
+
+CMD ["python", "-m", "scanner.main"]

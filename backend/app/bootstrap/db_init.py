@@ -13,6 +13,7 @@ from app.bootstrap.schema_setup import (
     create_record_history_table,
     create_records_table,
     create_report_templates_table,
+    create_scanner_config_table,
     create_service_account_api_keys_table,
     create_service_checklists_table,
     repair_legacy_application_mapping,
@@ -44,6 +45,7 @@ def init_db(db_path: str = DB_PATH) -> None:
     create_auth_lockout_table(c)
     create_notifications_table(c)
     create_email_config_table(c)
+    create_scanner_config_table(c)
     run_seed_routines(c)
 
     conn.commit()

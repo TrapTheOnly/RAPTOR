@@ -38,6 +38,10 @@ services:
       - FTP_USER=${FTP_USER:-raptor_ftp_user}
       - FTP_PASS=${FTP_PASS:-raptor_ftp_pass}
       - FTP_HOST=ftp
+      - SCANNER_BASE_URL=${SCANNER_BASE_URL:-http://scanner:8082}
+      - SCANNER_INTERNAL_TOKEN=${SCANNER_INTERNAL_TOKEN:?SCANNER_INTERNAL_TOKEN must be set}
+      - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
+      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/mcp_server.py}
     depends_on:
       ftp:
         condition: service_started
@@ -75,6 +79,60 @@ services:
         - python
         - -c
         - import os,sys,urllib.request;port=os.getenv("MCP_PORT","8081");url=f"http://127.0.0.1:{port}/healthz";sys.exit(0 if urllib.request.urlopen(url, timeout=5).status==200 else 1)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  kali:
+    build:
+      context: .
+      dockerfile: Dockerfile.kali
+    image: raptor-kali-dev
+    container_name: raptor-kali-dev
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile.scanner
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+    image: raptor-scanner-dev
+    container_name: raptor-scanner-dev
+    networks:
+      - app_network
+    environment:
+      - SCANNER_INTERNAL_TOKEN=${SCANNER_INTERNAL_TOKEN:?SCANNER_INTERNAL_TOKEN must be set}
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://mcp:8081}
+      - MCP_SERVER_TOKEN=${MCP_SERVER_TOKEN:?MCP_SERVER_TOKEN must be set}
+      - SCANNER_PORT=8082
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:?AWS_BEARER_TOKEN_BEDROCK must be set}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - SCANNER_MAX_CONCURRENT=${SCANNER_MAX_CONCURRENT:-2}
+      - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
+      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/mcp_server.py}
+    depends_on:
+      mcp:
+        condition: service_healthy
+      kali:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8082/healthz',timeout=5).status==200 else 1)
       interval: 15s
       timeout: 5s
       retries: 5

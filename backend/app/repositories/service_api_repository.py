@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from app.config import DB_PATH
 from app.integrations.db.connection import IntegrityError, ROW_AS_DICT, get_db_connection
 
-SERVICE_API_SCOPES = {"records.read", "pentests.read"}
+SERVICE_API_SCOPES = {"records.read", "pentests.read", "pentests.write"}
 
 
 def _load_scopes(raw_scopes: Any) -> List[str]:
@@ -280,6 +280,144 @@ def touch_service_api_key_last_used(key_id: int, used_at: str, db_path: str = DB
         conn.commit()
 
 
+PENTEST_WRITABLE_FIELDS = {
+    "open_ports",
+    "status",
+    "scan_status",
+    "tested_by",
+    "test_start_date",
+    "test_end_date",
+    "vulnerable",
+    "vulnerability_fixed",
+    "notes",
+    "vulnerabilities",
+    "checklist_states",
+}
+
+VALID_SCAN_STATUSES = {"idle", "running", "completed", "failed"}
+
+
+def fetch_pentest_row(record_id: int, db_path: str = DB_PATH) -> Optional[Dict[str, Any]]:
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
+        c = conn.cursor()
+        c.execute("SELECT * FROM pentest_data WHERE record_id = ?", (record_id,))
+        row = c.fetchone()
+    return dict(row) if row else None
+
+
+def fetch_single_pentest_dataset(record_id: int, db_path: str = DB_PATH) -> Optional[Dict[str, Any]]:
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT
+                p.id,
+                p.record_id,
+                p.dns_name,
+                p.ip_address,
+                p.source,
+                p.report_file,
+                p.generated_report_file,
+                p.generated_report_template_id,
+                p.generated_report_generated_at,
+                p.vulnerable,
+                p.tested_by,
+                p.test_start_date,
+                p.test_end_date,
+                p.vulnerability_fixed,
+                p.service_desk_link,
+                p.status,
+                p.scan_status,
+                p.open_ports,
+                p.notes,
+                p.owasp_checklist,
+                p.checklist_states,
+                p.vulnerabilities,
+                r.name AS record_name,
+                r.description AS record_description,
+                r.application_owner,
+                r.maintainer,
+                r.status AS record_status,
+                r.creation_date AS record_creation_date,
+                r.last_modification_date AS record_last_modification_date,
+                r.application_id,
+                a.name AS application_name
+            FROM pentest_data p
+            INNER JOIN records r ON r.id = p.record_id
+            LEFT JOIN applications a ON a.id = r.application_id
+            WHERE p.record_id = ?
+            """,
+            (record_id,),
+        )
+        row = c.fetchone()
+    return dict(row) if row else None
+
+
+def update_pentest_fields(record_id: int, fields: Dict[str, Any], db_path: str = DB_PATH) -> bool:
+    """Merge provided fields into existing pentest row. Returns False if record not found."""
+    existing = fetch_pentest_row(record_id, db_path)
+    if existing is None:
+        return False
+    updates = {k: v for k, v in fields.items() if k in PENTEST_WRITABLE_FIELDS}
+    if not updates:
+        return True
+    with get_db_connection(db_path) as conn:
+        c = conn.cursor()
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [record_id]
+        c.execute(f"UPDATE pentest_data SET {set_clause} WHERE record_id = ?", values)
+        conn.commit()
+    return True
+
+
+def append_pentest_vulnerability(
+    record_id: int, vulnerability: Dict[str, Any], db_path: str = DB_PATH
+) -> bool:
+    """Atomically append one vulnerability to the pentest row. Returns False if record not found."""
+    import json as _json
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
+        c = conn.cursor()
+        c.execute(
+            "SELECT vulnerabilities FROM pentest_data WHERE record_id = ? FOR UPDATE",
+            (record_id,),
+        )
+        row = c.fetchone()
+        if row is None:
+            return False
+        raw = row["vulnerabilities"] if isinstance(row, dict) else (row[0] if row else None)
+        try:
+            existing = _json.loads(raw) if raw else []
+            if not isinstance(existing, list):
+                existing = []
+        except (_json.JSONDecodeError, TypeError):
+            existing = []
+        existing.append(vulnerability)
+        c.execute(
+            "UPDATE pentest_data SET vulnerabilities = ? WHERE record_id = ?",
+            (_json.dumps(existing), record_id),
+        )
+        conn.commit()
+    return True
+
+
+def fetch_checklist_templates_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
+    with get_db_connection(db_path) as conn:
+        conn.row_factory = ROW_AS_DICT
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT id, key, name, service, auto_ports, sections, enabled
+            FROM service_checklists
+            ORDER BY name ASC
+            """
+        )
+        rows = c.fetchall()
+    return [dict(row) for row in rows]
+
+
 def fetch_records_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
     with get_db_connection(db_path) as conn:
         conn.row_factory = ROW_AS_DICT
@@ -382,6 +520,7 @@ def fetch_pentests_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
                 p.vulnerability_fixed,
                 p.service_desk_link,
                 p.status,
+                p.scan_status,
                 p.open_ports,
                 p.notes,
                 p.owasp_checklist,
@@ -408,16 +547,23 @@ def fetch_pentests_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
 
 __all__ = [
     "IntegrityError",
+    "PENTEST_WRITABLE_FIELDS",
     "SERVICE_API_SCOPES",
+    "VALID_SCAN_STATUSES",
+    "append_pentest_vulnerability",
     "create_service_account",
     "create_service_account_key",
+    "fetch_checklist_templates_dataset",
+    "fetch_pentest_row",
     "fetch_pentests_dataset",
     "fetch_records_dataset",
+    "fetch_single_pentest_dataset",
     "get_service_account_by_username",
     "get_service_account_key_by_fingerprint",
     "get_service_account_with_key",
     "list_service_accounts",
     "rotate_service_account_key",
     "touch_service_api_key_last_used",
+    "update_pentest_fields",
     "update_service_account_scopes",
 ]
