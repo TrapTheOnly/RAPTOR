@@ -19,6 +19,7 @@ import {
   Menu as MenuIcon,
   People as PeopleIcon,
   Security as SecurityIcon,
+  SmartToy as SmartToyIcon,
   Storage as StorageIcon
 } from '@mui/icons-material';
 import {
@@ -50,6 +51,7 @@ import LocalUsersPanel from './admin-settings/components/users/LocalUsersPanel';
 import ServiceAccountsPanel from './admin-settings/components/users/ServiceAccountsPanel';
 import UserManagementSection from './admin-settings/components/users/UserManagementSection';
 import EmailSettingsPanel from './admin-settings/components/EmailSettingsPanel';
+import ScannerSettingsPanel from './admin-settings/components/ScannerSettingsPanel';
 
 const REQUIRED_RESET_PHRASE = 'RESET ALL BUT OPEN VULNERABILITIES';
 const EMPTY_CHECKLIST_TEMPLATE_FORM = {
@@ -198,6 +200,13 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         label: 'Notifications',
         description: 'Configure email notifications and SMTP settings.',
         icon: EmailIcon,
+        visible: canManageSecurity
+      },
+      {
+        key: 'ai-scanner',
+        label: 'AI Scanner',
+        description: 'Configure the AI-powered security scanner using AWS Bedrock.',
+        icon: SmartToyIcon,
         visible: canManageSecurity
       }
     ],
@@ -1549,6 +1558,8 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         );
       case 'notifications':
         return <EmailSettingsPanel showMessage={showMessage} />;
+      case 'ai-scanner':
+        return <ScannerSettingsPanel showMessage={showMessage} />;
       default:
         return null;
     }
