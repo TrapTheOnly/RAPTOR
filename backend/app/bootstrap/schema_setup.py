@@ -185,6 +185,7 @@ def create_pentest_table(cursor: DatabaseCursor) -> None:
             vulnerability_fixed INTEGER,
             service_desk_link TEXT,
             status TEXT NOT NULL DEFAULT 'Not Started',
+            scan_status TEXT NOT NULL DEFAULT 'idle',
             open_ports TEXT,
             notes TEXT,
             owasp_checklist TEXT,
@@ -205,6 +206,10 @@ def create_pentest_table(cursor: DatabaseCursor) -> None:
         cursor.execute("ALTER TABLE pentest_data ADD COLUMN generated_report_template_id INTEGER")
     if "generated_report_generated_at" not in pentest_columns:
         cursor.execute("ALTER TABLE pentest_data ADD COLUMN generated_report_generated_at TEXT")
+    if "scan_status" not in pentest_columns:
+        cursor.execute(
+            "ALTER TABLE pentest_data ADD COLUMN scan_status TEXT NOT NULL DEFAULT 'idle'"
+        )
 
 
 def create_pentest_collaborators_table(cursor: DatabaseCursor) -> None:
