@@ -520,6 +520,7 @@ def fetch_pentests_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
                 p.vulnerability_fixed,
                 p.service_desk_link,
                 p.status,
+                p.scan_status,
                 p.open_ports,
                 p.notes,
                 p.owasp_checklist,
