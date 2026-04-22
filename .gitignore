@@ -22,4 +22,4 @@ sqleditor.py
 runner.py
 tree_db.py
 *.ipynb
-scripts/seed_test_env.py
+scripts/*.py
