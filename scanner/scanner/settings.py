@@ -68,7 +68,7 @@ def load_service_settings() -> ServiceSettings:
         mcp_server_token=_require("MCP_SERVER_TOKEN"),
         max_concurrent_scans=_int_env("SCANNER_MAX_CONCURRENT", 2),
         kali_server_url=_optional("KALI_SERVER_URL", "http://kali:5000"),
-        kali_client_path=_optional("KALI_CLIENT_PATH", "/opt/mcp-kali-server/mcp_server.py"),
+        kali_client_path=_optional("KALI_CLIENT_PATH", "/opt/mcp-kali-server/client.py"),
     )
 
 

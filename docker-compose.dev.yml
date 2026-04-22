@@ -40,8 +40,9 @@ services:
       - FTP_HOST=ftp
       - SCANNER_BASE_URL=${SCANNER_BASE_URL:-http://scanner:8082}
       - SCANNER_INTERNAL_TOKEN=${SCANNER_INTERNAL_TOKEN:?SCANNER_INTERNAL_TOKEN must be set}
+      - RAPTOR_SERVICE_API_KEY=${RAPTOR_SERVICE_API_KEY:?RAPTOR_SERVICE_API_KEY must be set}
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
-      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/mcp_server.py}
+      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/client.py}
     depends_on:
       ftp:
         condition: service_started
@@ -121,7 +122,7 @@ services:
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - SCANNER_MAX_CONCURRENT=${SCANNER_MAX_CONCURRENT:-2}
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
-      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/mcp_server.py}
+      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/client.py}
     depends_on:
       mcp:
         condition: service_healthy
