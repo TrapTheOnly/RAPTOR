@@ -31,7 +31,7 @@ RUN set -eux; \
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/usr/app/src/scanner
-ENV KALI_CLIENT_PATH=/opt/mcp-kali-server/mcp_server.py
+ENV KALI_CLIENT_PATH=/opt/mcp-kali-server/client.py
 
 EXPOSE 8082
 
