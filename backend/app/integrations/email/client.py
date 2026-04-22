@@ -2,9 +2,44 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def test_smtp_connection(config: Dict[str, Any]) -> Tuple[bool, str]:
+    """Test SMTP connectivity and auth without sending email. Returns (success, message)."""
+    if not config:
+        return False, "No configuration provided."
+    server = None
+    try:
+        smtp_host = config["smtp_host"]
+        smtp_port = int(config.get("smtp_port", 587))
+        use_tls = bool(int(config.get("smtp_use_tls", 1)))
+
+        server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+        if use_tls:
+            server.starttls()
+
+        smtp_user = config.get("smtp_user")
+        smtp_password = config.get("smtp_password")
+        if smtp_user and smtp_password:
+            server.login(smtp_user, smtp_password)
+
+        server.quit()
+        return True, "SMTP connection successful."
+    except smtplib.SMTPAuthenticationError as e:
+        return False, f"Authentication failed: {e}"
+    except smtplib.SMTPConnectError as e:
+        return False, f"Connection failed: {e}"
+    except Exception as e:
+        return False, str(e)
+    finally:
+        if server:
+            try:
+                server.close()
+            except Exception:
+                pass
 
 
 def send_email(

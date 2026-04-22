@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  CheckCircleOutline as ConnectIcon,
   Email as EmailIcon,
   Save as SaveIcon,
   Send as SendIcon,
@@ -33,6 +34,8 @@ const EmailSettingsPanel = ({ showMessage }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [testRecipient, setTestRecipient] = useState('');
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -82,10 +85,26 @@ const EmailSettingsPanel = ({ showMessage }) => {
     }
   };
 
+  const handleTestConnection = async () => {
+    setConnecting(true);
+    try {
+      const res = await axios.post('/admin/email-config/test-connection');
+      showMessage('success', res.data.message || 'SMTP connection successful.');
+    } catch (err) {
+      showMessage('error', err.response?.data?.error || 'SMTP connection failed.');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
   const handleTest = async () => {
+    if (!testRecipient || !testRecipient.includes('@')) {
+      showMessage('error', 'Enter a valid recipient email address.');
+      return;
+    }
     setTesting(true);
     try {
-      const res = await axios.post('/admin/email-config/test');
+      const res = await axios.post('/admin/email-config/test', { to_email: testRecipient });
       showMessage('success', res.data.message || 'Test email sent.');
     } catch (err) {
       showMessage('error', err.response?.data?.error || 'Failed to send test email.');
@@ -191,23 +210,43 @@ const EmailSettingsPanel = ({ showMessage }) => {
           </Grid>
         </Grid>
 
-        <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-          <Button
-            variant="contained"
-            startIcon={<SaveIcon />}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Saving...' : 'Save Settings'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<SendIcon />}
-            onClick={handleTest}
-            disabled={testing}
-          >
-            {testing ? 'Sending...' : 'Send Test Email'}
-          </Button>
+        <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={<SaveIcon />}
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : 'Save Settings'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<ConnectIcon />}
+              onClick={handleTestConnection}
+              disabled={connecting}
+            >
+              {connecting ? 'Connecting...' : 'Test Connection'}
+            </Button>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <TextField
+              label="Test Recipient Email"
+              size="small"
+              value={testRecipient}
+              onChange={(e) => setTestRecipient(e.target.value)}
+              placeholder="you@example.com"
+              sx={{ minWidth: 260 }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<SendIcon />}
+              onClick={handleTest}
+              disabled={testing}
+            >
+              {testing ? 'Sending...' : 'Send Test Email'}
+            </Button>
+          </Box>
         </Box>
       </CardContent>
     </Card>
