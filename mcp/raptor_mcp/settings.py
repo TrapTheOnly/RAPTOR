@@ -81,7 +81,7 @@ def load_settings() -> MCPSettings:
         mcp_allowed_origins=_parse_csv_env("MCP_ALLOWED_ORIGINS"),
     )
 
-DEFAULT_ALLOWED_HOSTS = ("127.0.0.1:*", "localhost:*", "[::1]:*")
+DEFAULT_ALLOWED_HOSTS = ("127.0.0.1:*", "localhost:*", "[::1]:*", "mcp:*")
 DEFAULT_ALLOWED_ORIGINS = ("http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*")
 
 
