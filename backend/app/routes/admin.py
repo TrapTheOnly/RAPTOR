@@ -4,7 +4,7 @@ from app.http.request_utils import parse_json_object
 from app.services import dns_sync_service, offsec_admin_service, service_account_service, user_admin_service
 from app.http.decorators.admin_required import admin_required
 from app.repositories.email_config_repository import get_email_config, upsert_email_config
-from app.integrations.email.client import send_email
+from app.integrations.email.client import send_email, test_smtp_connection
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -161,6 +161,18 @@ def api_save_email_config():
     return jsonify({"message": "Email configuration saved."}), 200
 
 
+@admin_bp.route("/admin/email-config/test-connection", methods=["POST"])
+@admin_required
+def api_test_smtp_connection():
+    config = get_email_config()
+    if not config:
+        return jsonify({"error": "No email configuration found. Save settings first."}), 400
+    success, message = test_smtp_connection(config)
+    if success:
+        return jsonify({"message": message}), 200
+    return jsonify({"error": message}), 500
+
+
 @admin_bp.route("/admin/email-config/test", methods=["POST"])
 @admin_required
 def api_test_email():
@@ -168,19 +180,18 @@ def api_test_email():
     if not config:
         return jsonify({"error": "No email configuration found. Save settings first."}), 400
 
-    admin_username = session.get("username", "")
-    from app.repositories.users_repository import get_user_email
-    admin_email = get_user_email(admin_username)
-    if not admin_email:
-        return jsonify({"error": "No email address found for your account."}), 400
+    data = parse_json_object()
+    to_email = (data.get("to_email") or "").strip()
+    if not to_email or "@" not in to_email:
+        return jsonify({"error": "A valid recipient email address is required."}), 400
 
     body = """
     <html><body style="font-family: sans-serif; padding: 20px;">
         <h2 style="color: #1976d2;">RAPTOR Test Email</h2>
-        <p>If you received this email, your SMTP configuration is working correctly.</p>
+        <p>This is a test email from RAPTOR to verify your SMTP notification settings are working correctly.</p>
     </body></html>
     """
-    success = send_email(admin_email, "RAPTOR: Test Email", body, config)
+    success = send_email(to_email, "RAPTOR: Test Email", body, config)
     if success:
-        return jsonify({"message": f"Test email sent to {admin_email}."}), 200
+        return jsonify({"message": f"Test email sent to {to_email}."}), 200
     return jsonify({"error": "Failed to send test email. Check SMTP settings and server logs."}), 500
