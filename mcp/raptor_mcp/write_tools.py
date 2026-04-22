@@ -169,6 +169,20 @@ async def do_update_checklist_item(
     )
 
 
+async def do_log_scan_event(
+    record_id: int,
+    event_type: str,
+    payload: dict,
+    settings: MCPSettings,
+) -> Any:
+    return await mutate_service_dataset(
+        "post",
+        f"/service-api/v1/pentests/{record_id}/scan-events",
+        {"event_type": event_type, "payload": payload},
+        settings,
+    )
+
+
 async def do_notify_scan_complete(
     record_id: int,
     findings_count: int,
@@ -194,6 +208,7 @@ __all__ = [
     "VALID_CHECKLIST_STATUSES",
     "_calculate_cvss_base",
     "do_add_pentest_vulnerability",
+    "do_log_scan_event",
     "do_notify_scan_complete",
     "do_set_scan_status",
     "do_update_checklist_item",

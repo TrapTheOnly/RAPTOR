@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from app.http.decorators.internal_api_required import internal_api_required
+from app.http.decorators.service_api_key_required import service_api_key_required
 from app.services.service_api_service import (
     append_vulnerability_payload,
     get_checklist_templates_payload,
@@ -17,28 +17,28 @@ service_api_bp = Blueprint("service_api", __name__)
 
 
 @service_api_bp.route("/service-api/v1/records", methods=["GET"])
-@internal_api_required
+@service_api_key_required("records.read")
 def service_records():
     payload, status_code = get_service_records_payload()
     return jsonify(payload), status_code
 
 
 @service_api_bp.route("/service-api/v1/pentests", methods=["GET"])
-@internal_api_required
+@service_api_key_required("pentests.read")
 def service_pentests():
     payload, status_code = get_service_pentests_payload()
     return jsonify(payload), status_code
 
 
 @service_api_bp.route("/service-api/v1/pentests/<int:record_id>", methods=["GET"])
-@internal_api_required
+@service_api_key_required("pentests.read")
 def service_get_pentest(record_id):
     payload, status_code = get_single_pentest_payload(record_id)
     return jsonify(payload), status_code
 
 
 @service_api_bp.route("/service-api/v1/pentests/<int:record_id>", methods=["PATCH"])
-@internal_api_required
+@service_api_key_required("pentests.write")
 def service_patch_pentest(record_id):
     fields = request.get_json(silent=True) or {}
     payload, status_code = patch_pentest_payload(record_id, fields)
@@ -46,7 +46,7 @@ def service_patch_pentest(record_id):
 
 
 @service_api_bp.route("/service-api/v1/pentests/<int:record_id>/scan-status", methods=["PUT"])
-@internal_api_required
+@service_api_key_required("pentests.write")
 def service_set_scan_status(record_id):
     body = request.get_json(silent=True) or {}
     payload, status_code = set_scan_status_payload(record_id, str(body.get("scan_status", "")))
@@ -54,7 +54,7 @@ def service_set_scan_status(record_id):
 
 
 @service_api_bp.route("/service-api/v1/pentests/<int:record_id>/vulnerabilities", methods=["POST"])
-@internal_api_required
+@service_api_key_required("pentests.write")
 def service_append_vulnerability(record_id):
     body = request.get_json(silent=True) or {}
     payload, status_code = append_vulnerability_payload(record_id, body)
@@ -62,7 +62,7 @@ def service_append_vulnerability(record_id):
 
 
 @service_api_bp.route("/service-api/v1/pentests/<int:record_id>/notify-scan-complete", methods=["POST"])
-@internal_api_required
+@service_api_key_required("pentests.write")
 def service_notify_scan_complete(record_id):
     body = request.get_json(silent=True) or {}
     payload, status_code = notify_scan_complete_payload(
@@ -76,7 +76,7 @@ def service_notify_scan_complete(record_id):
 
 
 @service_api_bp.route("/service-api/v1/pentests/<int:record_id>/scan-events", methods=["POST"])
-@internal_api_required
+@service_api_key_required("pentests.write")
 def service_append_scan_event(record_id):
     body = request.get_json(silent=True) or {}
     payload, status_code = append_scan_event_payload(
@@ -88,7 +88,7 @@ def service_append_scan_event(record_id):
 
 
 @service_api_bp.route("/service-api/v1/checklist-templates", methods=["GET"])
-@internal_api_required
+@service_api_key_required("records.read")
 def service_checklist_templates():
     payload, status_code = get_checklist_templates_payload()
     return jsonify(payload), status_code

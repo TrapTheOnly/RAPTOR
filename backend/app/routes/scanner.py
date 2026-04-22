@@ -1,4 +1,7 @@
-from flask import Blueprint, jsonify, request, session
+import json
+import time
+
+from flask import Blueprint, Response, jsonify, request, session
 
 from app.http.decorators.admin_required import admin_required
 from app.http.decorators.login_required import login_required_json
@@ -46,6 +49,48 @@ def launch_scan_ui_route(record_id):
         return jsonify({"error": "You do not have permission to launch a scan for this record."}), 403
     payload, status_code = launch_scan_payload(record_id)
     return jsonify(payload), status_code
+
+
+@scanner_bp.route("/pentest/<int:record_id>/scan-events/stream", methods=["GET"])
+@login_required_json
+def scan_events_stream(record_id):
+    from app.repositories.offsec.offsec_records import get_pentest_access_role
+    from app.repositories.scan_events_repository import fetch_scan_events_after
+
+    access_role = get_pentest_access_role(record_id)
+    if not access_role:
+        return jsonify({"error": "Access denied."}), 403
+
+    after_id = int(request.args.get("after", 0))
+
+    def event_stream():
+        nonlocal after_id
+        idle_ticks = 0
+        while True:
+            events = fetch_scan_events_after(record_id, after_id, limit=50)
+            if events:
+                idle_ticks = 0
+                for ev in events:
+                    after_id = ev["id"]
+                    data = json.dumps({
+                        "id": ev["id"],
+                        "event_type": ev["event_type"],
+                        "payload": ev["payload"],
+                        "ts": ev["ts"],
+                    })
+                    yield f"data: {data}\n\n"
+                    if ev["event_type"] == "status" and ev["payload"].get("scan_status") in ("completed", "failed"):
+                        yield "data: {\"__done__\": true}\n\n"
+                        return
+            else:
+                idle_ticks += 1
+                yield ": heartbeat\n\n"
+                if idle_ticks >= 120:
+                    return
+            time.sleep(1)
+
+    return Response(event_stream(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 __all__ = ["scanner_bp"]
