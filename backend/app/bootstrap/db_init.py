@@ -18,6 +18,7 @@ from app.bootstrap.schema_setup import (
     create_service_checklists_table,
     repair_legacy_application_mapping,
 )
+from app.bootstrap.migration_runner import run_migrations
 from app.bootstrap.seed_orchestrator import run_seed_routines
 from app.config import DB_PATH
 from app.integrations.db.connection import get_db_connection
@@ -47,6 +48,7 @@ def init_db(db_path: str = DB_PATH) -> None:
     create_email_config_table(c)
     create_scanner_config_table(c)
     run_seed_routines(c)
+    run_migrations(c)
 
     conn.commit()
     conn.close()

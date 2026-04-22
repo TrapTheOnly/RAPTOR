@@ -20,6 +20,7 @@ import AdminSettings from './pages/AdminSettings';
 import PentestDashboard from './pages/PentestDashboard';
 import Record from './pages/Record';
 import PentestRecord from './pages/PentestRecord';
+import ScanLive from './pages/ScanLive';
 import DocumentationPortal from './pages/DocumentationPortal';
 import Error from './pages/Error';
 import { hasPermission as hasRolePermission } from './utils/permissions';
@@ -331,6 +332,14 @@ const App = () => {
         <Route
           path="/records/:domain"
           element={loggedIn && hasPermission('view_record_details') ? <Record darkMode={darkMode} userPermissions={userPermissions} userRole={userRole} /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/pentest/record/:recordId/scan-live"
+          element={
+            loggedIn && hasPermission('view_pentest_page') ?
+              <ScanLive darkMode={darkMode} /> :
+              <Navigate to={loggedIn ? "/pentest" : "/login"} />
+          }
         />
         <Route
           path="/docs"

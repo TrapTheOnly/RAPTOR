@@ -14,6 +14,7 @@ from raptor_mcp.settings import (
 )
 from raptor_mcp.write_tools import (
     do_add_pentest_vulnerability,
+    do_log_scan_event,
     do_notify_scan_complete,
     do_set_scan_status,
     do_update_checklist_item,
@@ -126,6 +127,15 @@ async def update_checklist_item(record_id: int, template_key: str, item_id: str,
 
 
 @mcp.tool(
+    name="log_scan_event",
+    description="Record a structured scan progress event (api_call, tool_call, tool_result, finding, status).",
+)
+async def log_scan_event(record_id: int, event_type: str, payload: dict) -> Any:
+    settings = load_settings()
+    return await do_log_scan_event(record_id, event_type, payload, settings)
+
+
+@mcp.tool(
     name="notify_scan_complete",
     description=(
         "Send a scan-completion notification (in-app + email) to the assigned tester and managers. "
@@ -158,6 +168,7 @@ __all__ = [
     "get_pentest",
     "list_pentests",
     "list_records",
+    "log_scan_event",
     "mcp",
     "mutate_service_dataset",
     "notify_scan_complete",

@@ -11,6 +11,7 @@ from app.services.service_api_service import (
     patch_pentest_payload,
     set_scan_status_payload,
 )
+from app.services.scan_events_service import append_scan_event_payload
 
 service_api_bp = Blueprint("service_api", __name__)
 
@@ -70,6 +71,18 @@ def service_notify_scan_complete(record_id):
         input_tokens=int(body.get("input_tokens", 0)),
         output_tokens=int(body.get("output_tokens", 0)),
         cost_usd=float(body.get("cost_usd", 0.0)),
+    )
+    return jsonify(payload), status_code
+
+
+@service_api_bp.route("/service-api/v1/pentests/<int:record_id>/scan-events", methods=["POST"])
+@service_api_key_required("pentests.write")
+def service_append_scan_event(record_id):
+    body = request.get_json(silent=True) or {}
+    payload, status_code = append_scan_event_payload(
+        record_id=record_id,
+        event_type=str(body.get("event_type", "")),
+        event_payload=body.get("payload", {}),
     )
     return jsonify(payload), status_code
 
