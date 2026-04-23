@@ -51,6 +51,18 @@ def launch_scan_ui_route(record_id):
     return jsonify(payload), status_code
 
 
+@scanner_bp.route("/pentest/<int:record_id>/reset-scan", methods=["POST"])
+@login_required_json
+def reset_scan_ui_route(record_id):
+    from app.repositories.offsec.offsec_records import get_pentest_access_role
+    from app.services.service_api_service import reset_scan_payload
+    access_role = get_pentest_access_role(record_id)
+    if access_role not in {"owner", "manager_override", "admin_override"}:
+        return jsonify({"error": "You do not have permission to reset this scan."}), 403
+    payload, status_code = reset_scan_payload(record_id)
+    return jsonify(payload), status_code
+
+
 @scanner_bp.route("/pentest/<int:record_id>/scan-events/stream", methods=["GET"])
 @login_required_json
 def scan_events_stream(record_id):

@@ -158,7 +158,10 @@ async def do_update_checklist_item(
         selected.append(template_key)
 
     statuses = dict(checklist_states.get("statuses") or {})
-    statuses[item_id] = status
+    template_statuses_raw = statuses.get(template_key)
+    template_statuses = dict(template_statuses_raw) if isinstance(template_statuses_raw, dict) else {}
+    template_statuses[item_id] = status
+    statuses[template_key] = template_statuses
 
     updated_states = {"selected": selected, "statuses": statuses}
     return await mutate_service_dataset(
@@ -188,6 +191,8 @@ async def do_notify_scan_complete(
     findings_count: int,
     input_tokens: int,
     output_tokens: int,
+    cache_read_input_tokens: int,
+    cache_creation_input_tokens: int,
     cost_usd: float,
     settings: MCPSettings,
 ) -> Any:
@@ -198,8 +203,38 @@ async def do_notify_scan_complete(
             "findings_count": findings_count,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
+            "cache_read_input_tokens": cache_read_input_tokens,
+            "cache_creation_input_tokens": cache_creation_input_tokens,
             "cost_usd": cost_usd,
         },
+        settings,
+    )
+
+
+async def do_get_or_create_vuln_category(name: str, settings: MCPSettings) -> Any:
+    name = name.strip()
+    if not name:
+        raise ValueError("Category name must not be empty.")
+    categories_payload = await fetch_service_dataset("/service-api/v1/vuln-categories", settings)
+    categories = categories_payload.get("categories", []) if isinstance(categories_payload, dict) else []
+    name_lower = name.lower()
+    for cat in categories:
+        if str(cat.get("name") or "").lower() == name_lower:
+            return {"id": cat["id"], "name": cat["name"], "created": False}
+    result = await mutate_service_dataset(
+        "post",
+        "/service-api/v1/vuln-categories",
+        {"name": name},
+        settings,
+    )
+    return {"id": result.get("id"), "name": name, "created": True}
+
+
+async def do_reset_scan(record_id: int, settings: MCPSettings) -> Any:
+    return await mutate_service_dataset(
+        "post",
+        f"/service-api/v1/pentests/{record_id}/reset-scan",
+        {},
         settings,
     )
 
@@ -208,8 +243,10 @@ __all__ = [
     "VALID_CHECKLIST_STATUSES",
     "_calculate_cvss_base",
     "do_add_pentest_vulnerability",
+    "do_get_or_create_vuln_category",
     "do_log_scan_event",
     "do_notify_scan_complete",
+    "do_reset_scan",
     "do_set_scan_status",
     "do_update_checklist_item",
     "do_update_pentest_ports",

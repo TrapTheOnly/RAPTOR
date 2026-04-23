@@ -1,4 +1,4 @@
-anthropic[bedrock]==0.52.0
+anthropic[bedrock]>=0.56.0
 mcp==1.26.0
 httpx==0.28.1
 starlette==0.41.3

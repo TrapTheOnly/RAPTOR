@@ -57,6 +57,12 @@ function formatTs(ts) {
   }
 }
 
+function toEpochMs(ts) {
+  if (!ts) return null;
+  const value = new Date(ts).getTime();
+  return Number.isFinite(value) ? value : null;
+}
+
 function StatusBadge({ status }) {
   const map = {
     running: { color: 'info', label: 'Running', icon: <CircularProgress size={12} color="inherit" /> },
@@ -234,7 +240,9 @@ const ScanLive = ({ darkMode }) => {
         cost_usd: payload.cost_usd ?? s.cost_usd,
       }));
       if (status === 'running' && !startTimeRef.current) {
-        startTimeRef.current = Date.now();
+        const eventTimeMs = toEpochMs(ts);
+        startTimeRef.current = eventTimeMs || Date.now();
+        setElapsedMs(Math.max(0, Date.now() - startTimeRef.current));
         setScanStarted(true);
       }
       if (status === 'completed' || status === 'failed') {

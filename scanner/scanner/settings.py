@@ -40,6 +40,9 @@ class ScanSettings:
     cost_limit_usd: float
     input_cost_per_1m: float
     output_cost_per_1m: float
+    proxy_url: str
+    proxy_username: str
+    proxy_password: str
     mcp_base_url: str
     mcp_server_token: str
     kali_server_url: str
@@ -93,6 +96,9 @@ def build_scan_settings(job: dict, service: ServiceSettings) -> ScanSettings:
         cost_limit_usd=cost_limit,
         input_cost_per_1m=input_cost,
         output_cost_per_1m=output_cost,
+        proxy_url=str(job.get("proxy_url") or ""),
+        proxy_username=str(job.get("proxy_username") or ""),
+        proxy_password=str(job.get("proxy_password") or ""),
         mcp_base_url=service.mcp_base_url,
         mcp_server_token=service.mcp_server_token,
         kali_server_url=str(job.get("kali_server_url") or service.kali_server_url),

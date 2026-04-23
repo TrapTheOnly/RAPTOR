@@ -173,11 +173,30 @@ def get_checklist_templates_payload() -> Tuple[Dict[str, Any], int]:
         return {"error": "Failed to fetch checklist templates."}, 500
 
 
+def reset_scan_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
+    try:
+        from app.repositories.scan_events_repository import delete_scan_events_for_record
+        found = update_pentest_fields(record_id, {
+            "scan_status": "idle",
+            "vulnerabilities": "[]",
+            "checklist_states": "",
+        })
+        if not found:
+            return {"error": "Pentest record not found."}, 404
+        delete_scan_events_for_record(record_id)
+        return {"message": "Scan reset. Previous results cleared."}, 200
+    except Exception as exc:
+        logger.error(f"Failed to reset scan for pentest {record_id}: {exc}")
+        return {"error": "Failed to reset scan."}, 500
+
+
 def notify_scan_complete_payload(
     record_id: int,
     findings_count: int,
     input_tokens: int,
     output_tokens: int,
+    cache_read_input_tokens: int,
+    cache_creation_input_tokens: int,
     cost_usd: float,
 ) -> Tuple[Dict[str, Any], int]:
     try:
@@ -193,7 +212,8 @@ def notify_scan_complete_payload(
         message = (
             f"Automated scan completed for {pentest.get('dns_name', f'record {record_id}')}. "
             f"Findings: {findings_count}. "
-            f"Tokens: {input_tokens} in / {output_tokens} out. "
+            f"Tokens: {input_tokens} in / {output_tokens} out "
+            f"(cache read {cache_read_input_tokens}, cache write {cache_creation_input_tokens}). "
             f"Estimated cost: ${cost_usd:.4f}."
         )
         notify(
@@ -202,7 +222,15 @@ def notify_scan_complete_payload(
             title="RAPTOR scan completed",
             message=message,
             actor="RAPTOR-Scanner",
-            metadata={"record_id": record_id, "findings_count": findings_count},
+            metadata={
+                "record_id": record_id,
+                "findings_count": findings_count,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_input_tokens": cache_read_input_tokens,
+                "cache_creation_input_tokens": cache_creation_input_tokens,
+                "cost_usd": cost_usd,
+            },
             send_email_flag=True,
         )
         return {"message": "Notifications sent."}, 200
@@ -220,5 +248,6 @@ __all__ = [
     "get_single_pentest_payload",
     "notify_scan_complete_payload",
     "patch_pentest_payload",
+    "reset_scan_payload",
     "set_scan_status_payload",
 ]

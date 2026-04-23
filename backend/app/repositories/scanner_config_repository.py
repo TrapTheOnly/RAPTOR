@@ -20,7 +20,9 @@ def update_scanner_config(fields: Dict[str, Any], db_path: str = DB_PATH) -> boo
     allowed = {
         "aws_region", "bedrock_model_id", "cost_limit_usd",
         "input_cost_per_1m", "output_cost_per_1m",
-        "max_concurrent_scans", "enabled", "updated_by", "updated_at",
+        "max_concurrent_scans", "enabled",
+        "proxy_url", "proxy_username", "proxy_password",
+        "updated_by", "updated_at",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:

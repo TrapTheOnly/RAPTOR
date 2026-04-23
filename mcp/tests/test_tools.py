@@ -279,7 +279,37 @@ def test_update_checklist_item_adds_template_and_sets_status(monkeypatch):
     )
     states = json.loads(patch_captured["body"]["checklist_states"])
     assert "ssh-security" in states["selected"]
-    assert states["statuses"]["SSH-001"] == "completed"
+    assert states["statuses"]["ssh-security"]["SSH-001"] == "completed"
+
+
+def test_update_checklist_item_preserves_legacy_flat_statuses(monkeypatch):
+    pentest_response = {
+        "pentest": {
+            "record_id": 5,
+            "checklist_states": json.dumps(
+                {"selected": ["owasp-web"], "statuses": {"INFO-001": "completed"}}
+            ),
+        }
+    }
+    patch_captured: dict = {}
+
+    async def fake_fetch(path, settings):
+        return pentest_response
+
+    class Client(_FakeAsyncClient):
+        async def patch(self, url, json=None, headers=None):
+            patch_captured["body"] = json
+            return _FakeResponse(200, {"message": "ok"})
+
+    monkeypatch.setattr(write_tools_module, "fetch_service_dataset", fake_fetch)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+    asyncio.run(
+        write_tools_module.do_update_checklist_item(5, "ssh-security", "SSH-001", "completed", _settings())
+    )
+    states = json.loads(patch_captured["body"]["checklist_states"])
+    assert states["statuses"]["INFO-001"] == "completed"
+    assert states["statuses"]["ssh-security"]["SSH-001"] == "completed"
 
 
 def test_update_checklist_item_rejects_invalid_status():
@@ -302,10 +332,12 @@ def test_notify_scan_complete_sends_correct_body(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", Client)
     asyncio.run(
-        write_tools_module.do_notify_scan_complete(4, 3, 12000, 4000, 0.14, _settings())
+        write_tools_module.do_notify_scan_complete(4, 3, 12000, 4000, 80000, 12000, 0.14, _settings())
     )
     assert post_captured["url"].endswith("/pentests/4/notify-scan-complete")
     assert post_captured["body"]["findings_count"] == 3
+    assert post_captured["body"]["cache_read_input_tokens"] == 80000
+    assert post_captured["body"]["cache_creation_input_tokens"] == 12000
     assert post_captured["body"]["cost_usd"] == 0.14
 
 
