@@ -428,6 +428,9 @@ def create_scanner_config_table(cursor: DatabaseCursor) -> None:
             output_cost_per_1m NUMERIC(10,6) NOT NULL DEFAULT 15.0,
             max_concurrent_scans INTEGER NOT NULL DEFAULT 2,
             enabled INTEGER NOT NULL DEFAULT 0,
+            proxy_url TEXT NOT NULL DEFAULT '',
+            proxy_username TEXT NOT NULL DEFAULT '',
+            proxy_password TEXT NOT NULL DEFAULT '',
             updated_by TEXT,
             updated_at TEXT NOT NULL DEFAULT ''
         )

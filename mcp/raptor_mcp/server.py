@@ -14,8 +14,10 @@ from raptor_mcp.settings import (
 )
 from raptor_mcp.write_tools import (
     do_add_pentest_vulnerability,
+    do_get_or_create_vuln_category,
     do_log_scan_event,
     do_notify_scan_complete,
+    do_reset_scan,
     do_set_scan_status,
     do_update_checklist_item,
     do_update_pentest_ports,
@@ -87,11 +89,45 @@ async def update_pentest_ports(record_id: int, open_ports: str) -> Any:
 
 
 @mcp.tool(
+    name="list_vuln_categories",
+    description="List all available vulnerability categories (id and name). Use this before add_pentest_vulnerability to pick or create the right category.",
+)
+async def list_vuln_categories() -> Any:
+    settings = load_settings()
+    return await fetch_service_dataset("/service-api/v1/vuln-categories", settings)
+
+
+@mcp.tool(
+    name="get_or_create_vuln_category",
+    description=(
+        "Look up a vulnerability category by name (case-insensitive). "
+        "If it already exists, returns its id. "
+        "If it does not exist, creates it and returns the new id. "
+        "Always call this before add_pentest_vulnerability to resolve category_id."
+    ),
+)
+async def get_or_create_vuln_category(name: str) -> Any:
+    settings = load_settings()
+    return await do_get_or_create_vuln_category(name, settings)
+
+
+@mcp.tool(
     name="add_pentest_vulnerability",
     description=(
         "Append a new vulnerability to a pentest record. "
         "Provide CVSS v3.1 vector metrics individually. "
-        "category_id may be empty string if unknown."
+        "Always resolve category_id first with get_or_create_vuln_category — never pass an empty string. "
+        "The description field MUST be a markdown document using this exact template:\n\n"
+        "# <Vulnerability Title>\n\n"
+        "## Description\n"
+        "<What the issue is and why it exists.>\n\n"
+        "## Proof of Concept\n"
+        "<Step-by-step reproduction or tool output snippet that confirms the issue.>\n\n"
+        "## Impact\n"
+        "<What an attacker can achieve; business/technical consequence.>\n\n"
+        "## Remediation\n"
+        "<Specific, actionable fix — not generic advice.>\n\n"
+        "All four sections are mandatory. Keep total description under 500 words."
     ),
 )
 async def add_pentest_vulnerability(
@@ -111,6 +147,20 @@ async def add_pentest_vulnerability(
     return await do_add_pentest_vulnerability(
         record_id, description, category_id, av, ac, pr, ui, s, c, i, a, settings
     )
+
+
+@mcp.tool(
+    name="reset_scan",
+    description=(
+        "Clear all previous scan results for a pentest record before re-running a scan. "
+        "Deletes all scan events, clears vulnerabilities, resets checklist_states to empty, "
+        "clears open_ports, and sets scan_status back to 'idle'. "
+        "Call this ONLY when explicitly restarting a scan from scratch."
+    ),
+)
+async def reset_scan(record_id: int) -> Any:
+    settings = load_settings()
+    return await do_reset_scan(record_id, settings)
 
 
 @mcp.tool(
@@ -147,10 +197,21 @@ async def notify_scan_complete(
     findings_count: int,
     input_tokens: int,
     output_tokens: int,
+    cache_read_input_tokens: int,
+    cache_creation_input_tokens: int,
     cost_usd: float,
 ) -> Any:
     settings = load_settings()
-    return await do_notify_scan_complete(record_id, findings_count, input_tokens, output_tokens, cost_usd, settings)
+    return await do_notify_scan_complete(
+        record_id,
+        findings_count,
+        input_tokens,
+        output_tokens,
+        cache_read_input_tokens,
+        cache_creation_input_tokens,
+        cost_usd,
+        settings,
+    )
 
 
 def run_records_tool_sync(settings: MCPSettings) -> Any:
@@ -165,13 +226,16 @@ __all__ = [
     "add_pentest_vulnerability",
     "fetch_service_dataset",
     "get_checklist_templates",
+    "get_or_create_vuln_category",
     "get_pentest",
     "list_pentests",
     "list_records",
+    "list_vuln_categories",
     "log_scan_event",
     "mcp",
     "mutate_service_dataset",
     "notify_scan_complete",
+    "reset_scan",
     "run_pentests_tool_sync",
     "run_records_tool_sync",
     "set_scan_status",

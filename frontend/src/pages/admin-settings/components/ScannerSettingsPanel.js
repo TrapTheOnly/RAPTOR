@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   CardContent,
+  Divider,
   FormControlLabel,
   Grid,
   InputAdornment,
@@ -14,7 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Save as SaveIcon, SmartToy as SmartToyIcon } from '@mui/icons-material';
+import { Save as SaveIcon, SmartToy as SmartToyIcon, VpnLock as ProxyIcon } from '@mui/icons-material';
 import SectionHeader from './SectionHeader';
 
 const ScannerSettingsPanel = ({ showMessage }) => {
@@ -26,6 +27,9 @@ const ScannerSettingsPanel = ({ showMessage }) => {
     output_cost_per_1m: 15.0,
     max_concurrent_scans: 2,
     enabled: false,
+    proxy_url: '',
+    proxy_username: '',
+    proxy_password: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,6 +47,9 @@ const ScannerSettingsPanel = ({ showMessage }) => {
           output_cost_per_1m: Number(c.output_cost_per_1m) || 15.0,
           max_concurrent_scans: Number(c.max_concurrent_scans) || 2,
           enabled: Boolean(Number(c.enabled ?? 0)),
+          proxy_url: c.proxy_url || '',
+          proxy_username: c.proxy_username || '',
+          proxy_password: c.proxy_password || '',
         });
       }
     } catch (err) {
@@ -207,6 +214,53 @@ const ScannerSettingsPanel = ({ showMessage }) => {
                 InputProps={{
                   startAdornment: <InputAdornment position="start">$</InputAdornment>,
                 }}
+              />
+            </Stack>
+          </Grid>
+        </Grid>
+
+        <Divider sx={{ my: 3 }} />
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <ProxyIcon fontSize="small" color="action" />
+          <Typography variant="subtitle2">Proxy Settings</Typography>
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Optional HTTP/HTTPS proxy for all AI API communications. Leave blank to connect directly.
+        </Typography>
+
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Stack spacing={2.5}>
+              <TextField
+                label="Proxy URL"
+                size="small"
+                fullWidth
+                value={config.proxy_url}
+                onChange={handleChange('proxy_url')}
+                placeholder="http://proxy.example.com:8080"
+                helperText="Include scheme and port, e.g. http://proxy:3128"
+              />
+            </Stack>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Stack spacing={2.5}>
+              <TextField
+                label="Proxy Username"
+                size="small"
+                fullWidth
+                value={config.proxy_username}
+                onChange={handleChange('proxy_username')}
+                autoComplete="off"
+              />
+              <TextField
+                label="Proxy Password"
+                size="small"
+                fullWidth
+                type="password"
+                value={config.proxy_password}
+                onChange={handleChange('proxy_password')}
+                autoComplete="new-password"
               />
             </Stack>
           </Grid>

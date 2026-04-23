@@ -27,7 +27,10 @@ def get_scanner_config_payload() -> Tuple[Dict[str, Any], int]:
         cfg = get_scanner_config()
         if not cfg:
             return {"error": "Scanner config not found."}, 404
-        return {"config": cfg}, 200
+        safe = dict(cfg)
+        if safe.get("proxy_password"):
+            safe["proxy_password"] = "••••••••"
+        return {"config": safe}, 200
     except Exception as exc:
         logger.error(f"Failed to fetch scanner config: {exc}")
         return {"error": "Failed to fetch scanner config."}, 500
@@ -40,10 +43,16 @@ def update_scanner_config_payload(
         "aws_region", "bedrock_model_id", "cost_limit_usd",
         "input_cost_per_1m", "output_cost_per_1m",
         "max_concurrent_scans", "enabled",
+        "proxy_url", "proxy_username", "proxy_password",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return {"error": "No valid fields to update."}, 400
+
+    # Preserve existing proxy_password when the masked placeholder is sent back
+    if updates.get("proxy_password") == "••••••••":
+        existing = get_scanner_config()
+        updates["proxy_password"] = (existing or {}).get("proxy_password", "") if existing else ""
 
     if "enabled" in updates:
         updates["enabled"] = 1 if updates["enabled"] else 0
@@ -133,6 +142,9 @@ def _dispatch_scan(record_id: int, cfg: Dict[str, Any]) -> None:
         "cost_limit_usd": float(cfg.get("cost_limit_usd") or 5.0),
         "input_cost_per_1m": float(cfg.get("input_cost_per_1m") or 3.0),
         "output_cost_per_1m": float(cfg.get("output_cost_per_1m") or 15.0),
+        "proxy_url": str(cfg.get("proxy_url") or ""),
+        "proxy_username": str(cfg.get("proxy_username") or ""),
+        "proxy_password": str(cfg.get("proxy_password") or ""),
         "kali_server_url": os.getenv("KALI_SERVER_URL", "http://kali:5000"),
         "kali_client_path": os.getenv("KALI_CLIENT_PATH", "/opt/mcp-kali-server/client.py"),
     }

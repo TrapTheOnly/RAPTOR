@@ -10,10 +10,20 @@ class TokenTracker:
         self.output_cost_per_1m = output_cost_per_1m
         self.input_tokens = 0
         self.output_tokens = 0
+        self.cache_read_input_tokens = 0
+        self.cache_creation_input_tokens = 0
 
-    def add(self, input_tokens: int, output_tokens: int) -> None:
+    def add(
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        cache_read_input_tokens: int = 0,
+        cache_creation_input_tokens: int = 0,
+    ) -> None:
         self.input_tokens += input_tokens
         self.output_tokens += output_tokens
+        self.cache_read_input_tokens += cache_read_input_tokens
+        self.cache_creation_input_tokens += cache_creation_input_tokens
 
     @property
     def cost_usd(self) -> float:

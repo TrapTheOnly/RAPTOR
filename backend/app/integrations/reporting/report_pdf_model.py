@@ -166,6 +166,19 @@ def build_report_model(record_data, checklist_templates, generated_by=None):
     if not isinstance(checklist_statuses, dict):
         checklist_statuses = {}
 
+    def get_template_status_map(template_key, item_ids):
+        nested_statuses = checklist_statuses.get(template_key, {})
+        if not isinstance(nested_statuses, dict):
+            nested_statuses = {}
+        status_map = {}
+        for item_id in item_ids:
+            nested_value = nested_statuses.get(item_id)
+            flat_value = checklist_statuses.get(item_id)
+            value = nested_value if nested_value is not None else flat_value
+            if isinstance(value, str):
+                status_map[item_id] = value
+        return status_map
+
     templates = []
     for template in checklist_templates or []:
         if not isinstance(template, dict):
@@ -205,9 +218,7 @@ def build_report_model(record_data, checklist_templates, generated_by=None):
         if not item_ids:
             continue
 
-        status_map = checklist_statuses.get(key, {})
-        if not isinstance(status_map, dict):
-            status_map = {}
+        status_map = get_template_status_map(key, item_ids)
         completed = 0
         irrelevant = 0
         for item_id in item_ids:
