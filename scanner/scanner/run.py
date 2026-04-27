@@ -700,7 +700,8 @@ def _summarize_pentest_result(result: Any) -> str:
         return _truncate_text(str(result), _TOOL_RESULT_CHAR_LIMIT)
     pentest = result.get("pentest", {}) if isinstance(result.get("pentest"), dict) else {}
     fields = {
-        "record_id": pentest.get("id"),
+        "record_id": pentest.get("record_id") or pentest.get("id"),
+        "pentest_id": pentest.get("id"),
         "target_ip": pentest.get("ip_address"),
         "target_host": pentest.get("dns_name"),
         "open_ports": pentest.get("open_ports"),

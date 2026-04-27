@@ -1,3 +1,5 @@
+name: raptor
+
 services:
   app:
     build:
@@ -22,7 +24,7 @@ services:
       - CORS_ORIGINS
       - UPDATE_TIME
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
-      - DATA_PATH
+      - DATA_PATH=${DATA_PATH:-/appdata/data}
       - SHARED_PATH
       - BACKUP_FOLDER
       - LDAP_DOMAIN
@@ -42,7 +44,7 @@ services:
       - SCANNER_INTERNAL_TOKEN=${SCANNER_INTERNAL_TOKEN:?SCANNER_INTERNAL_TOKEN must be set}
       - RAPTOR_SERVICE_API_KEY=${RAPTOR_SERVICE_API_KEY:?RAPTOR_SERVICE_API_KEY must be set}
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
-      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/client.py}
+      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}
     depends_on:
       ftp:
         condition: service_started
@@ -90,6 +92,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.kali
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
     image: raptor-kali-dev
     container_name: raptor-kali-dev
     networks:
@@ -122,7 +127,7 @@ services:
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - SCANNER_MAX_CONCURRENT=${SCANNER_MAX_CONCURRENT:-2}
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
-      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/opt/mcp-kali-server/client.py}
+      - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}
     depends_on:
       mcp:
         condition: service_healthy
@@ -190,14 +195,19 @@ services:
 
 volumes:
   db_and_backups_volume:
+    name: ${DB_AND_BACKUPS_VOLUME_NAME:-raptor_db_and_backups_volume}
     driver: local
   dns_zonefiles_volume:
+    name: ${DNS_ZONEFILES_VOLUME_NAME:-raptor_dns_zonefiles_volume}
     driver: local
   certs_volume:
+    name: ${CERTS_VOLUME_NAME:-raptor_certs_volume}
     driver: local
   ftp_volume:
+    name: ${FTP_VOLUME_NAME:-raptor_ftp_volume}
     driver: local
   postgres_data_volume:
+    name: ${POSTGRES_DATA_VOLUME_NAME:-raptor_postgres_data_volume}
     driver: local
 
 networks:

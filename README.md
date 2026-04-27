@@ -60,6 +60,15 @@ DATA_PATH=/appdata/data
 BACKUP_FOLDER=/appdata/backups
 SHARED_PATH=/usr/app/src/shared
 
+# Optional: pin persistent Docker volume names explicitly.
+# Set these when migrating from an older Compose project name so existing data
+# keeps mounting after a rename like web-application-monitoring-software -> raptor.
+DB_AND_BACKUPS_VOLUME_NAME=raptor_db_and_backups_volume
+DNS_ZONEFILES_VOLUME_NAME=raptor_dns_zonefiles_volume
+CERTS_VOLUME_NAME=raptor_certs_volume
+FTP_VOLUME_NAME=raptor_ftp_volume
+POSTGRES_DATA_VOLUME_NAME=raptor_postgres_data_volume
+
 # Zone refresh interval in seconds
 UPDATE_TIME=86400
 
@@ -184,6 +193,12 @@ docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 `docker-compose.prod.yml` maps host `1337` to container `5000`. TLS is optional and controlled by `APP_USE_TLS` (`false` by default).
+
+Persistent volumes are now pinned by explicit Docker volume names. For existing installations that were previously deployed under another Compose project name, set the `*_VOLUME_NAME` variables in `.env` to the old Docker volume names before the first deploy after migration. Example:
+
+```env
+POSTGRES_DATA_VOLUME_NAME=web-application-monitoring-software_postgres_data_volume
+```
 
 ## Local Development (Without Docker)
 
