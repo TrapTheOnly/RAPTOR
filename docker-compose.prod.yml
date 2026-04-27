@@ -99,16 +99,13 @@ services:
     container_name: raptor-kali-prod
     networks:
       - app_network
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
     environment:
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - NO_PROXY=
-      - no_proxy=
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - http_proxy=${HTTP_PROXY:-}
+      - https_proxy=${HTTPS_PROXY:-}
+      - NO_PROXY=mcp,app,scanner,localhost,127.0.0.1
+      - no_proxy=mcp,app,scanner,localhost,127.0.0.1
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
       interval: 30s

@@ -505,7 +505,14 @@ def nuclei():
         if not target:
             return jsonify({"error": "Target parameter is required"}), 400
 
+        # Use -automatic-scan when no explicit template flags provided so nuclei
+        # selects templates itself even if custom paths are absent.
+        has_template_flag = additional_args and any(
+            f in additional_args for f in ["-t ", "-tags ", "-template-id ", "-automatic-scan"]
+        )
         command = ["nuclei", "-u", target, "-nc", "-silent"]
+        if not has_template_flag:
+            command.append("-automatic-scan")
 
         if additional_args:
             command += shlex.split(additional_args)

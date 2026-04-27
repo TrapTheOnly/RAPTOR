@@ -35,20 +35,28 @@ RUN set -eux; \
       dirb \
       gobuster \
       ffuf \
+      nuclei \
       sqlmap \
       hydra \
       john \
       wpscan \
       enum4linux \
-      golang-go \
+      wordlists \
+      seclists \
       curl \
       dnsutils \
       netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /etc/apt/apt.conf.d/99proxy
 
-RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
-    && mv /root/go/bin/nuclei /usr/local/bin/nuclei
+# Pre-download nuclei templates at build time (proxy available here via ARG)
+RUN set -eux; \
+    proxy_https="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"; \
+    if [ -n "$proxy_https" ]; then \
+      HTTPS_PROXY="$proxy_https" HTTP_PROXY="$proxy_https" nuclei -update-templates 2>/dev/null || true; \
+    else \
+      nuclei -update-templates 2>/dev/null || true; \
+    fi
 
 COPY scanner/mcp-kali-server/requirements.txt /opt/kali-server/requirements.txt
 RUN set -eux; \
