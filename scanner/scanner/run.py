@@ -21,8 +21,8 @@ _CACHE_TTL = "5m"
 _CACHE_CONTROL = {"type": "ephemeral", "ttl": _CACHE_TTL}
 _REQUEST_TOKEN_SOFT_LIMIT = 18000
 _RECENT_MESSAGE_COUNT = 6
-_TOOL_RESULT_CHAR_LIMIT = 1800
-_COMMAND_EVIDENCE_LINE_LIMIT = 10
+_TOOL_RESULT_CHAR_LIMIT = 3000
+_COMMAND_EVIDENCE_LINE_LIMIT = 20
 _MAX_MEMORY_ITEMS = 12
 _SUMMARY_MARKER = "Scan memory summary"
 _SUMMARY_CONTINUE_MARKER = "Continue from the summarized scan state."
@@ -34,6 +34,7 @@ class ScanMemory:
     target_host: str = ""
     open_ports: str = ""
     tested_by: str = ""
+    security_details: str = ""
     checklist_template_count: int = 0
     matching_template_keys: list[str] = field(default_factory=list)
     existing_finding_titles: list[str] = field(default_factory=list)
@@ -56,6 +57,9 @@ class ScanMemory:
             self.target_host = str(pentest.get("dns_name") or self.target_host).strip()
             self.open_ports = str(pentest.get("open_ports") or self.open_ports).strip()
             self.tested_by = str(pentest.get("tested_by") or self.tested_by).strip()
+            notes = str(pentest.get("notes") or "").strip()
+            if notes:
+                self.security_details = notes
             self.existing_finding_titles = _extract_existing_finding_titles(pentest.get("vulnerabilities"))
             return
 
@@ -103,6 +107,8 @@ class ScanMemory:
         lines.append(f"- Target: ip={target}, host={host}, open_ports={ports}")
         if self.tested_by:
             lines.append(f"- Assigned tester: {self.tested_by}")
+        if self.security_details:
+            lines.append(f"- Security details / credentials: {self.security_details[:400]}")
         if self.matching_template_keys:
             lines.append(f"- Matching checklist templates: {', '.join(self.matching_template_keys)}")
         elif self.checklist_template_count:
@@ -369,13 +375,19 @@ async def _agent_loop(
                 messages=request_messages,
             )
 
-        response = client.messages.create(
+        create_kwargs: dict = dict(
             model=settings.bedrock_model_id,
-            max_tokens=4096,
+            max_tokens=16000,
             system=request_system,
             tools=request_tools,
             messages=request_messages,
         )
+        if settings.thinking_budget_tokens > 0:
+            create_kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": settings.thinking_budget_tokens,
+            }
+        response = client.messages.create(**create_kwargs)
 
         api_call_count += 1
         cache_read_input_tokens = response.usage.cache_read_input_tokens or 0
@@ -486,7 +498,7 @@ async def _agent_loop(
     return findings_count
 
 
-_INTERNAL_TOOLS = {"log_scan_event"}
+_INTERNAL_TOOLS: set[str] = set()
 _KALI_ALLOWED_TOOLS = {
     "execute_command",
     "server_health",
@@ -494,6 +506,8 @@ _KALI_ALLOWED_TOOLS = {
     "gobuster_scan",
     "dirb_scan",
     "nikto_scan",
+    "nuclei_scan",
+    "ffuf_scan",
     "sqlmap_scan",
     "metasploit_run",
     "hydra_attack",
@@ -722,6 +736,12 @@ def _summarize_pentest_result(result: Any) -> str:
         "scan_status": pentest.get("scan_status"),
     }
     lines = [f"{key}={value}" for key, value in fields.items() if value not in (None, "", [])]
+    notes = str(pentest.get("notes") or "").strip()
+    if notes:
+        lines.append(f"security_details={notes}")
+    record_description = str(pentest.get("record_description") or "").strip()
+    if record_description:
+        lines.append(f"record_description={record_description}")
     titles = _extract_existing_finding_titles(pentest.get("vulnerabilities"))
     if titles:
         lines.append(f"existing_findings={', '.join(titles[:6])}")
@@ -923,7 +943,12 @@ def _extract_evidence_lines(text: str) -> list[str]:
         return []
     interesting = [
         line for line in lines
-        if re.search(r"(open|closed|error|warning|http|https|ssl|title|server|found|forbidden|redirect|timeout|cloudflare)", line, re.I)
+        if re.search(
+            r"(open|closed|error|warning|http|https|ssl|title|server|found|forbidden|"
+            r"redirect|timeout|cloudflare|vuln|critical|high|medium|low|cve-|nuclei|"
+            r"inject|xss|sqli|traversal|exposure|disclosure|misconfiguration)",
+            line, re.I,
+        )
     ]
     selected = interesting[:_COMMAND_EVIDENCE_LINE_LIMIT]
     if len(selected) < min(len(lines), _COMMAND_EVIDENCE_LINE_LIMIT):

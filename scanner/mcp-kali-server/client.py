@@ -386,6 +386,37 @@ def setup_mcp_server(kali_client: KaliToolsClient) -> FastMCP:
         """
         return kali_client.check_health()
     
+    @mcp.tool(name="nuclei_scan")
+    def nuclei_scan(target: str, additional_args: str = "") -> Dict[str, Any]:
+        """
+        Execute Nuclei vulnerability scanner against a target URL.
+
+        Args:
+            target: The target URL (e.g. https://example.com)
+            additional_args: Additional Nuclei arguments (e.g. "-t cves/ -severity high,critical")
+
+        Returns:
+            Scan results
+        """
+        data = {"target": target, "additional_args": additional_args}
+        return kali_client.safe_post("api/tools/nuclei", data)
+
+    @mcp.tool(name="ffuf_scan")
+    def ffuf_scan(url: str, wordlist: str = "/usr/share/wordlists/dirb/common.txt", additional_args: str = "") -> Dict[str, Any]:
+        """
+        Execute ffuf web fuzzer for content/endpoint discovery.
+
+        Args:
+            url: Target URL with FUZZ keyword placeholder (e.g. https://example.com/FUZZ)
+            wordlist: Path to wordlist file
+            additional_args: Additional ffuf arguments
+
+        Returns:
+            Fuzzing results
+        """
+        data = {"url": url, "wordlist": wordlist, "additional_args": additional_args}
+        return kali_client.safe_post("api/tools/ffuf", data)
+
     @mcp.tool(name="execute_command")
     def execute_command(command: str) -> Dict[str, Any]:
         """

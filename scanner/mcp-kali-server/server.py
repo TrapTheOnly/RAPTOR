@@ -494,6 +494,55 @@ def wpscan():
             "error": f"Server error: {str(e)}"
         }), 500
 
+@app.route("/api/tools/nuclei", methods=["POST"])
+def nuclei():
+    """Execute nuclei with the provided parameters."""
+    try:
+        params = request.json
+        target = params.get("target", "")
+        additional_args = params.get("additional_args", "")
+
+        if not target:
+            return jsonify({"error": "Target parameter is required"}), 400
+
+        command = ["nuclei", "-u", target, "-nc", "-silent"]
+
+        if additional_args:
+            command += shlex.split(additional_args)
+
+        result = execute_command(command)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in nuclei endpoint: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+
+@app.route("/api/tools/ffuf", methods=["POST"])
+def ffuf():
+    """Execute ffuf with the provided parameters."""
+    try:
+        params = request.json
+        url = params.get("url", "")
+        wordlist = params.get("wordlist", "/usr/share/wordlists/dirb/common.txt")
+        additional_args = params.get("additional_args", "")
+
+        if not url:
+            return jsonify({"error": "URL parameter is required"}), 400
+
+        command = ["ffuf", "-u", url, "-w", wordlist, "-noninteractive", "-mc", "200,201,204,301,302,307,401,403,405,500"]
+
+        if additional_args:
+            command += shlex.split(additional_args)
+
+        result = execute_command(command)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in ffuf endpoint: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+
 @app.route("/api/tools/enum4linux", methods=["POST"])
 def enum4linux():
     """Execute enum4linux with the provided parameters."""
@@ -525,7 +574,7 @@ def enum4linux():
 def health_check():
     """Health check endpoint."""
     # Check if essential tools are installed
-    essential_tools = ["nmap", "gobuster", "dirb", "nikto"]
+    essential_tools = ["nmap", "gobuster", "dirb", "nikto", "nuclei", "ffuf"]
     tools_status = {}
     
     for tool in essential_tools:
