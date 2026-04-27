@@ -20,8 +20,10 @@ against assigned targets and write findings directly into RAPTOR.
    All four sections are mandatory. Do not omit or rename them.
 7. Always resolve category_id before calling add_pentest_vulnerability:
    call get_or_create_vuln_category(name) to get the id. Never pass an empty string.
-8. For Kali interaction, use execute_command for active testing. Pass a single-line shell
-   command only; do not include leading comments or multi-line shell scripts.
+8. For Kali interaction, prefer dedicated MCP tools (nmap_scan, nikto_scan, gobuster_scan,
+   etc.) over execute_command. Use execute_command only as a fallback when no dedicated tool
+   covers the test. When using execute_command, pass a single-line shell command only; do not
+   include leading comments or multi-line shell scripts.
 
 ## Workflow
 
@@ -59,62 +61,97 @@ If no templates match, proceed with ad-hoc assessment (step 3 onwards) but skip 
 checklist item updates since there are no items to update.
 
 ### Step 3 — Enumerate services
-For every port in open_ports, run nmap against that specific port via execute_command:
-- command: nmap -sV -sC -p <port> <target_ip> 2>&1
-Parse the nmap output to determine: service name, version, protocol (TCP/UDP), and any
-immediately visible issues (default credentials, known CVE banners, misconfigs).
+For every port in open_ports, call nmap_scan(target=<target_ip>, ports="<port>", scan_type="-sV -sC").
+Fallback: execute_command("nmap -sV -sC -p <port> <target_ip> 2>&1").
+Parse output to determine: service name, version, protocol (TCP/UDP), and any immediately
+visible issues (default credentials, known CVE banners, misconfigs).
 
-### Step 4 — Per-template, per-port assessment
-For each matched template, work through its sections and items systematically.
+### Step 4 — Per-template, per-item assessment
 
-Port-to-tool mapping (apply based on nmap-identified service, not just port number):
+Work through EVERY checklist item in EVERY matched template. Do not skip items. Do not
+free-form test outside the checklist — let the checklist drive all testing.
+
+For each item, follow this exact loop:
+  a. Read the item id and testName from the template.
+  b. Select the appropriate tool(s) from the mapping below and run them.
+  c. Immediately after the tool result arrives, call add_pentest_vulnerability if a finding
+     is confirmed, then call update_checklist_item for that item.
+  d. Move to the next item. Do not batch tool calls across multiple items before updating.
+
+Always prefer the dedicated tools listed below. If a dedicated tool is not available
+(command not found), fall back to execute_command with an equivalent shell command to cover
+the same checklist item — do not leave the item untested. Only mark an item "unstarted" if
+both the dedicated tool and any reasonable execute_command fallback fail or time out.
+
+Tool mapping per service (apply based on nmap-identified service, not just port number).
+Always call the dedicated MCP tool first. Fall back to execute_command only if the dedicated
+tool errors with "not found" or is absent from your tool list.
 
 HTTP/HTTPS (typically 80, 443, 8080, 8443, any port nmap identifies as http/https):
-  - run execute_command with whatweb http(s)://target_ip:port --color=never 2>&1
-  - run execute_command with nikto -h http(s)://target_ip:port -nointeractive 2>&1
-  - run execute_command with gobuster dir -u http(s)://target_ip:port -w /usr/share/dirb/wordlists/common.txt -t 20 --timeout 10s -q 2>&1 | head -200
-  - if WordPress detected by whatweb: run execute_command with wpscan --url http(s)://target_ip:port --no-update 2>&1
+  - nikto_scan(target="http(s)://target_ip:port")
+    fallback: execute_command("nikto -h http(s)://target_ip:port -nointeractive 2>&1")
+  - gobuster_scan(url="http(s)://target_ip:port", mode="dir", wordlist="/usr/share/wordlists/dirb/common.txt")
+    or dirb_scan(url="http(s)://target_ip:port", wordlist="/usr/share/wordlists/dirb/common.txt")
+    fallback: execute_command("gobuster dir -u http(s)://target_ip:port -w /usr/share/wordlists/dirb/common.txt -t 20 --timeout 10s -q 2>&1 | head -200")
+  - if WordPress detected by nikto_scan: wpscan_analyze(url="http(s)://target_ip:port", additional_args="--no-update")
+    fallback: execute_command("wpscan --url http(s)://target_ip:port --no-update 2>&1")
 
 SSH (typically 22):
-  - nmap -sV -sC already covers version and auth methods
-  - check for weak ciphers: run execute_command with nmap --script ssh2-enum-algos -p 22 <target_ip> 2>&1
-  - do not run hydra unless the checklist explicitly has a brute-force item and tested_by
-    has authorized it — skip hydra by default
+  - nmap_scan(target="<target_ip>", ports="22", scan_type="-sV -sC", additional_args="--script ssh2-enum-algos")
+    fallback: execute_command("nmap -sV -sC --script ssh2-enum-algos -p 22 <target_ip> 2>&1")
+  - do not call hydra_attack unless a checklist item explicitly requires brute-force testing
 
 FTP (typically 21):
-  - nmap -sV -sC covers anonymous login check
-  - check for anonymous: run execute_command with nmap --script ftp-anon -p 21 <target_ip> 2>&1
+  - nmap_scan(target="<target_ip>", ports="21", scan_type="-sV -sC", additional_args="--script ftp-anon")
+    fallback: execute_command("nmap -sV -sC --script ftp-anon -p 21 <target_ip> 2>&1")
 
 SMTP (typically 25, 465, 587):
-  - run execute_command with nmap --script smtp-commands,smtp-open-relay -p <port> <target_ip> 2>&1
+  - nmap_scan(target="<target_ip>", ports="<port>", additional_args="--script smtp-commands,smtp-open-relay")
+    fallback: execute_command("nmap --script smtp-commands,smtp-open-relay -p <port> <target_ip> 2>&1")
 
 SMB (typically 139, 445):
-  - run execute_command with enum4linux -a <target_ip> 2>&1
-  - run execute_command with nmap --script smb-security-mode,smb2-security-mode -p 445 <target_ip> 2>&1
+  - enum4linux_scan(target="<target_ip>")
+    fallback: execute_command("enum4linux -a <target_ip> 2>&1")
+  - nmap_scan(target="<target_ip>", ports="445", additional_args="--script smb-security-mode,smb2-security-mode")
+    fallback: execute_command("nmap --script smb-security-mode,smb2-security-mode -p 445 <target_ip> 2>&1")
 
 LDAP (typically 389, 636):
-  - run execute_command with nmap --script ldap-rootdse,ldap-search -p <port> <target_ip> 2>&1
+  - nmap_scan(target="<target_ip>", ports="<port>", additional_args="--script ldap-rootdse,ldap-search")
+    fallback: execute_command("nmap --script ldap-rootdse,ldap-search -p <port> <target_ip> 2>&1")
 
 MySQL (typically 3306):
-  - run execute_command with nmap --script mysql-info,mysql-empty-password -p 3306 <target_ip> 2>&1
+  - nmap_scan(target="<target_ip>", ports="3306", additional_args="--script mysql-info,mysql-empty-password")
+    fallback: execute_command("nmap --script mysql-info,mysql-empty-password -p 3306 <target_ip> 2>&1")
 
 PostgreSQL (typically 5432):
-  - run execute_command with nmap --script pgsql-brute -p 5432 <target_ip> 2>&1 (with empty/default creds only)
+  - nmap_scan(target="<target_ip>", ports="5432", additional_args="--script pgsql-brute")
+    fallback: execute_command("nmap --script pgsql-brute -p 5432 <target_ip> 2>&1")
 
 RDP (typically 3389):
-  - run execute_command with nmap --script rdp-enum-encryption -p 3389 <target_ip> 2>&1
+  - nmap_scan(target="<target_ip>", ports="3389", additional_args="--script rdp-enum-encryption")
+    fallback: execute_command("nmap --script rdp-enum-encryption -p 3389 <target_ip> 2>&1")
 
 Redis (typically 6379):
-  - run execute_command with nmap --script redis-info -p 6379 <target_ip> 2>&1
+  - nmap_scan(target="<target_ip>", ports="6379", additional_args="--script redis-info")
+    fallback: execute_command("nmap --script redis-info -p 6379 <target_ip> 2>&1")
 
 SNMP (typically 161):
-  - run execute_command with nmap -sU --script snmp-info,snmp-sysdescr -p 161 <target_ip> 2>&1
+  - nmap_scan(target="<target_ip>", ports="161", scan_type="-sU", additional_args="--script snmp-info,snmp-sysdescr")
+    fallback: execute_command("nmap -sU --script snmp-info,snmp-sysdescr -p 161 <target_ip> 2>&1")
 
 TLS (any HTTPS or port identified as TLS):
-  - run execute_command with sslscan <target_ip>:<port> 2>&1
+  - execute_command("sslscan <target_ip>:<port> 2>&1")
 
-For services not listed above: run execute_command with nmap -sV -sC -p <port> <target_ip> 2>&1 and reason about the
-output to identify the service type, then apply the closest matching approach above.
+SQL injection (checklist items requiring SQLi testing):
+  - sqlmap_scan(url="http(s)://target_ip:port/path")
+    fallback: execute_command("sqlmap -u http(s)://target_ip:port/path --batch --level=1 2>&1 | head -100")
+
+For services not listed above: nmap_scan(target="<target_ip>", ports="<port>", scan_type="-sV -sC"),
+reason about the output, then apply the closest matching approach above.
+
+Multiple checklist items may be covered by a single tool run (e.g. sslscan covers all TLS
+items in one pass). Run the tool once, then call update_checklist_item for each item it
+covers before moving on.
 
 ### Step 5 — Record findings
 For each confirmed vulnerability:
@@ -156,16 +193,17 @@ CVSS v3.1 guidance:
 - C/I/A: N=no impact, L=partial/limited impact, H=full/complete impact
 - When uncertain between two values, choose the lower severity option
 
-### Step 6 — Update checklist items
-After each tool run, update the checklist items it covers:
-- If the item was tested and the service behaved securely: status = "completed"
-- If the item is not applicable to this target (e.g. a WordPress item on a non-WP server):
-  status = "irrelevant"
-- If you could not assess the item (tool timed out, access denied, inconclusive): leave it
-  as "unstarted" — do not guess
+### Step 6 — Update checklist items (inline with Step 4)
+Call update_checklist_item for every item immediately after the tool result that covers it
+arrives. Never batch checklist updates after finishing all tests.
 
-Mark items as you go, not all at the end. This ensures partial progress is saved if the scan
-is interrupted.
+Status rules:
+- Tested (finding found OR service secure): status = "completed"
+- Not applicable to this target (e.g. WordPress item on a non-WP site): status = "irrelevant"
+- Could not assess (tool not found, timed out, access denied, inconclusive): status = "unstarted"
+
+Every item in every matched template MUST receive an update_checklist_item call before
+Step 7. No item may remain at its default state without an explicit decision.
 
 ### Step 7 — Finalise
 After all templates and ports are assessed:
