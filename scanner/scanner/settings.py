@@ -40,6 +40,7 @@ class ScanSettings:
     cost_limit_usd: float
     input_cost_per_1m: float
     output_cost_per_1m: float
+    thinking_budget_tokens: int
     proxy_url: str
     proxy_username: str
     proxy_password: str
@@ -89,6 +90,7 @@ def build_scan_settings(job: dict, service: ServiceSettings) -> ScanSettings:
     cost_limit = float(job.get("cost_limit_usd") or 5.0)
     input_cost = float(job.get("input_cost_per_1m") or 3.0)
     output_cost = float(job.get("output_cost_per_1m") or 15.0)
+    thinking_budget = int(job.get("thinking_budget_tokens") or 8000)
     return ScanSettings(
         record_id=record_id,
         aws_region=aws_region,
@@ -96,6 +98,7 @@ def build_scan_settings(job: dict, service: ServiceSettings) -> ScanSettings:
         cost_limit_usd=cost_limit,
         input_cost_per_1m=input_cost,
         output_cost_per_1m=output_cost,
+        thinking_budget_tokens=thinking_budget,
         proxy_url=str(job.get("proxy_url") or ""),
         proxy_username=str(job.get("proxy_username") or ""),
         proxy_password=str(job.get("proxy_password") or ""),

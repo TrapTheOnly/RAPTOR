@@ -431,6 +431,25 @@ def create_email_config_table(cursor: DatabaseCursor) -> None:
     )
 
 
+def create_scanner_config_table(cursor: DatabaseCursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scanner_config (
+            id SERIAL PRIMARY KEY,
+            aws_region TEXT NOT NULL DEFAULT 'us-east-1',
+            bedrock_model_id TEXT NOT NULL DEFAULT '',
+            cost_limit_usd NUMERIC(10,4) NOT NULL DEFAULT 5.0,
+            input_cost_per_1m NUMERIC(10,6) NOT NULL DEFAULT 3.0,
+            output_cost_per_1m NUMERIC(10,6) NOT NULL DEFAULT 15.0,
+            max_concurrent_scans INTEGER NOT NULL DEFAULT 2,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            updated_by TEXT,
+            updated_at TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+
+
 __all__ = [
     "create_allowed_users_table",
     "create_app_meta_table",
@@ -445,6 +464,7 @@ __all__ = [
     "create_records_table",
     "create_report_templates_table",
     "create_service_account_api_keys_table",
+    "create_scanner_config_table",
     "create_service_checklists_table",
     "repair_legacy_application_mapping",
 ]
