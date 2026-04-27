@@ -36,7 +36,7 @@ def create_app():
     app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
     app.config["SESSION_COOKIE_SECURE"] = env_flag(
         "SESSION_COOKIE_SECURE",
-        bool(os.getenv("CERT_FILE") and os.getenv("KEY_FILE")),
+        env_flag("APP_USE_TLS"),
     )
 
     CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(",")}})
