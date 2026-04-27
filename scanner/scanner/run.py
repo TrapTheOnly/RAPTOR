@@ -487,7 +487,20 @@ async def _agent_loop(
 
 
 _INTERNAL_TOOLS = {"log_scan_event"}
-_KALI_ALLOWED_TOOLS = {"execute_command", "server_health"}
+_KALI_ALLOWED_TOOLS = {
+    "execute_command",
+    "server_health",
+    "nmap_scan",
+    "gobuster_scan",
+    "dirb_scan",
+    "nikto_scan",
+    "sqlmap_scan",
+    "metasploit_run",
+    "hydra_attack",
+    "john_crack",
+    "wpscan_analyze",
+    "enum4linux_scan",
+}
 
 
 async def _get_mcp_tools_for_anthropic(mcp, source: str) -> list:
