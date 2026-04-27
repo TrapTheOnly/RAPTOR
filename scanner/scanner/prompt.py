@@ -134,8 +134,8 @@ Apply based on nmap-identified service, not just port number.
 HTTP/HTTPS (80, 443, 8080, 8443, any port nmap identifies as http/https):
 
   **Fingerprinting / scanning:**
-  - nuclei_scan(target="https://dns_name", additional_args="-t cves/ -t exposures/ -t misconfiguration/ -severity low,medium,high,critical -rl 10")
-    fallback: execute_command("nuclei -u https://dns_name -nc -silent -t cves/ -t exposures/ -t misconfiguration/ -severity low,medium,high,critical -rl 10 2>&1 | head -200")
+  - nuclei_scan(target="https://dns_name", additional_args="-tags cve,exposure,misconfiguration,default-login -severity low,medium,high,critical -rl 10")
+    fallback: execute_command("nuclei -u https://dns_name -nc -silent -automatic-scan -severity low,medium,high,critical -rl 10 2>&1 | head -200")
   - nikto_scan(target="https://dns_name", additional_args="-nointeractive -maxtime 120s")
     fallback: execute_command("nikto -h https://dns_name -nointeractive -maxtime 120s 2>&1 | head -100")
 
