@@ -36,6 +36,6 @@ if __name__ == "__main__":
             raise RuntimeError(
                 "APP_USE_TLS is enabled but CERT_FILE/KEY_FILE are not set."
             )
-        app.run(host="0.0.0.0", port=port, ssl_context=(cert_file, key_file), debug=True)
-    else:
-        app.run(host="0.0.0.0", port=port, debug=True)
+            app.run(host="127.0.0.1", port=port, ssl_context=(cert_file, key_file), debug=True)
+        else:
+            app.run(host="127.0.0.1", port=port, debug=True)
