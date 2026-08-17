@@ -5,7 +5,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from raptor_mcp.http_client import fetch_service_dataset
+from raptor_mcp.http_client import fetch_all_service_pages, fetch_service_dataset
 from raptor_mcp.settings import (
     MCPSettings,
     load_settings,
@@ -40,13 +40,13 @@ mcp = FastMCP(
 @mcp.tool(name="list_records", description="Fetch full records dataset from RAPTOR service API")
 async def list_records() -> Any:
     settings = load_settings()
-    return await fetch_service_dataset("/service-api/v1/records", settings)
+    return await fetch_all_service_pages("/service-api/v1/records", "records", settings)
 
 
 @mcp.tool(name="list_pentests", description="Fetch full pentests dataset from RAPTOR service API")
 async def list_pentests() -> Any:
     settings = load_settings()
-    return await fetch_service_dataset("/service-api/v1/pentests", settings)
+    return await fetch_all_service_pages("/service-api/v1/pentests", "pentests", settings)
 
 
 @mcp.tool(
@@ -215,15 +215,16 @@ async def notify_scan_complete(
 
 
 def run_records_tool_sync(settings: MCPSettings) -> Any:
-    return asyncio.run(fetch_service_dataset("/service-api/v1/records", settings))
+    return asyncio.run(fetch_all_service_pages("/service-api/v1/records", "records", settings))
 
 
 def run_pentests_tool_sync(settings: MCPSettings) -> Any:
-    return asyncio.run(fetch_service_dataset("/service-api/v1/pentests", settings))
+    return asyncio.run(fetch_all_service_pages("/service-api/v1/pentests", "pentests", settings))
 
 
 __all__ = [
     "add_pentest_vulnerability",
+    "fetch_all_service_pages",
     "fetch_service_dataset",
     "get_checklist_templates",
     "get_or_create_vuln_category",

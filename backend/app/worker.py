@@ -47,7 +47,6 @@ def _run_dns_sync() -> None:
 
 
 def process_due_jobs() -> None:
-    _ensure_dns_sync_job()
     job = claim_next_job()
     if not job:
         return
@@ -66,7 +65,7 @@ def process_due_jobs() -> None:
 
 def _loop() -> None:
     interval = _update_interval_seconds()
-    last_periodic = 0.0
+    last_periodic = time.time()
     while True:
         now = time.time()
         if now - last_periodic >= interval:
