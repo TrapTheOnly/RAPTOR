@@ -21,6 +21,14 @@ def env_flag(name: str, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def environment_name() -> str:
+    return str(os.getenv("ENVIRONMENT") or "development").strip().lower() or "development"
+
+
+def is_production() -> bool:
+    return environment_name() == "production"
+
+
 def configure_logging(db_path: Optional[str] = None) -> None:
     target = str(db_path or "").strip()
     if target and not target.startswith(("postgres://", "postgresql://")):
@@ -29,11 +37,12 @@ def configure_logging(db_path: Optional[str] = None) -> None:
         log_folder = DATA_PATH
     os.makedirs(log_folder, exist_ok=True)
 
+    level = logging.INFO if is_production() else logging.DEBUG
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         handlers=[
-            logging.FileHandler(os.path.join(log_folder, "application.log"), mode="w"),
+            logging.FileHandler(os.path.join(log_folder, "application.log"), mode="a"),
             logging.StreamHandler(),
         ],
         force=True,

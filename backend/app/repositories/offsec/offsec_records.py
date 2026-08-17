@@ -338,7 +338,23 @@ def get_pentest_data_internal(record_id=None):
                 pentest_row = get_pentest_row(record_id, cursor=c)
                 pentest = dict(pentest_row) if pentest_row else {}
                 collaborators = get_collaborator_usernames(record_id, cursor=c)
-                return _build_record_payload(record, pentest, collaborators)
+                payload = _build_record_payload(record, pentest, collaborators)
+                from app.repositories.pentest_findings_repository import (
+                    list_findings_for_record,
+                    migrate_json_blob,
+                )
+
+                findings = list_findings_for_record(record_id)
+                if not findings:
+                    migrate_json_blob(
+                        record_id,
+                        pentest.get("vulnerabilities") if pentest else "",
+                        default_owner=_normalize_username(pentest.get("tested_by")) if pentest else "",
+                    )
+                    findings = list_findings_for_record(record_id)
+                if findings:
+                    payload["vulnerabilities"] = findings
+                return payload
 
             c.execute(
                 """

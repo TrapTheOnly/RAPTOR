@@ -20,14 +20,20 @@ service_api_bp = Blueprint("service_api", __name__)
 @service_api_bp.route("/service-api/v1/records", methods=["GET"])
 @internal_api_required
 def service_records():
-    payload, status_code = get_service_records_payload()
+    payload, status_code = get_service_records_payload(
+        request.args.get("limit"),
+        request.args.get("offset"),
+    )
     return jsonify(payload), status_code
 
 
 @service_api_bp.route("/service-api/v1/pentests", methods=["GET"])
 @internal_api_required
 def service_pentests():
-    payload, status_code = get_service_pentests_payload()
+    payload, status_code = get_service_pentests_payload(
+        request.args.get("limit"),
+        request.args.get("offset"),
+    )
     return jsonify(payload), status_code
 
 

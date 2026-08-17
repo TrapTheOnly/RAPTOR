@@ -27,6 +27,7 @@ const ScannerSettingsPanel = ({ showMessage }) => {
     output_cost_per_1m: 15.0,
     max_concurrent_scans: 2,
     enabled: false,
+    allow_destructive_tools: false,
     proxy_url: '',
     proxy_username: '',
     proxy_password: '',
@@ -47,6 +48,7 @@ const ScannerSettingsPanel = ({ showMessage }) => {
           output_cost_per_1m: Number(c.output_cost_per_1m) || 15.0,
           max_concurrent_scans: Number(c.max_concurrent_scans) || 2,
           enabled: Boolean(Number(c.enabled ?? 0)),
+          allow_destructive_tools: Boolean(Number(c.allow_destructive_tools ?? 0)),
           proxy_url: c.proxy_url || '',
           proxy_username: c.proxy_username || '',
           proxy_password: c.proxy_password || '',
@@ -146,6 +148,28 @@ const ScannerSettingsPanel = ({ showMessage }) => {
                   </Box>
                 }
               />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={config.allow_destructive_tools}
+                    onChange={handleChange('allow_destructive_tools')}
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2">Allow destructive Kali tools</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Enables sqlmap, Metasploit, Hydra, John, and raw command execution
+                    </Typography>
+                  </Box>
+                }
+              />
+              {config.allow_destructive_tools && (
+                <Alert severity="warning">
+                  Destructive tools can modify or disrupt targets. Leave this off unless the
+                  engagement explicitly requires them.
+                </Alert>
+              )}
               <TextField
                 label="AWS Region"
                 size="small"

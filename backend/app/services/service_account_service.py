@@ -175,9 +175,21 @@ def create_service_account_key_service(
         refreshed = get_service_account_with_key(normalized_username)
         if not refreshed:
             return {"error": "API key created but could not be loaded."}, 500
+        payload = _build_service_account_payload(refreshed, include_key=False)
+        payload["api_key"] = api_key
+        from app.services.audit_service import record_audit_event
+
+        record_audit_event(
+            actor=_normalize_username(actor_username),
+            actor_type="user",
+            action="api_key.create",
+            entity_type="service_account",
+            entity_id=normalized_username,
+            metadata={},
+        )
         return {
             "message": "API key created successfully.",
-            "service_account": _build_service_account_payload(refreshed, include_key=True),
+            "service_account": payload,
         }, 201
     except IntegrityError:
         return {"error": "API key collision detected. Retry creation."}, 409
@@ -193,7 +205,9 @@ def view_service_account_key_service(username: str) -> Tuple[Dict[str, Any], int
         return {"error": "Service account not found."}, 404
     if not row.get("has_api_key"):
         return {"error": "API key not created yet."}, 404
-    return {"service_account": _build_service_account_payload(row, include_key=True)}, 200
+    return {
+        "error": "API keys cannot be viewed after creation. Rotate to issue a new key.",
+    }, 410
 
 
 def rotate_service_account_key_service(
@@ -231,9 +245,21 @@ def rotate_service_account_key_service(
         refreshed = get_service_account_with_key(normalized_username)
         if not refreshed:
             return {"error": "API key rotated but could not be loaded."}, 500
+        payload = _build_service_account_payload(refreshed, include_key=False)
+        payload["api_key"] = api_key
+        from app.services.audit_service import record_audit_event
+
+        record_audit_event(
+            actor=_normalize_username(actor_username),
+            actor_type="user",
+            action="api_key.rotate",
+            entity_type="service_account",
+            entity_id=normalized_username,
+            metadata={},
+        )
         return {
             "message": "API key rotated successfully.",
-            "service_account": _build_service_account_payload(refreshed, include_key=True),
+            "service_account": payload,
         }, 200
     except IntegrityError:
         return {"error": "API key collision detected. Retry rotation."}, 409

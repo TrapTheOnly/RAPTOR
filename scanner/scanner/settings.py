@@ -48,6 +48,7 @@ class ScanSettings:
     mcp_server_token: str
     kali_server_url: str
     kali_client_path: str
+    allow_destructive_tools: bool
 
 
 @dataclass(frozen=True)
@@ -104,8 +105,9 @@ def build_scan_settings(job: dict, service: ServiceSettings) -> ScanSettings:
         proxy_password=str(job.get("proxy_password") or ""),
         mcp_base_url=service.mcp_base_url,
         mcp_server_token=service.mcp_server_token,
-        kali_server_url=str(job.get("kali_server_url") or service.kali_server_url),
-        kali_client_path=str(job.get("kali_client_path") or service.kali_client_path),
+        kali_server_url=service.kali_server_url,
+        kali_client_path=service.kali_client_path,
+        allow_destructive_tools=bool(job.get("allow_destructive_tools")),
     )
 
 

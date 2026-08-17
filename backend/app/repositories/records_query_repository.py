@@ -46,7 +46,10 @@ def fetch_dashboard_data(db_path: str = DB_PATH) -> Dict[str, List[Dict[str, Any
                 COALESCE(p.status, 'Not Started') AS status,
                 COALESCE(p.vulnerable, 0) AS vulnerable,
                 COALESCE(p.vulnerability_fixed, 0) AS vulnerability_fixed,
-                COALESCE(p.vulnerabilities, '') AS vulnerabilities,
+                COALESCE(
+                    (SELECT COUNT(*) FROM pentest_findings f WHERE f.record_id = r.id),
+                    0
+                ) AS finding_count,
                 p.tested_by,
                 p.test_start_date,
                 p.test_end_date

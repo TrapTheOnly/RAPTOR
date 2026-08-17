@@ -19,6 +19,8 @@ class FakeCursor:
             self._fetchall = list(self.state["records"])
         elif normalized.startswith("update records set sync_conflict = 1"):
             self.state["conflict_updates"].append(params)
+        elif normalized.startswith("select distinct fqdn from dns_observations"):
+            self._fetchall = list(self.state.get("observations", []))
         elif normalized.startswith("update records set status = 'missing'"):
             self.state["missing_updates"].append(params)
         elif normalized.startswith("insert into record_history"):
@@ -182,3 +184,34 @@ def test_delete_record_removes_pentest_row_before_record(monkeypatch):
         idx for idx, (query, _) in enumerate(state["queries"]) if query.startswith("delete from records")
     )
     assert pentest_delete_index < record_delete_index
+
+
+def test_store_records_in_db_missing_is_source_scoped(monkeypatch):
+    state = {
+        "records": [
+            (1, "bind-only.example.com", "10.0.0.1", "Other", "", "automated", 0),
+            (2, "cloud-only.example.com", "10.0.0.9", "Other", "", "automated", 0),
+        ],
+        "observations": [("bind-only.example.com",), ("keep.example.com",)],
+        "queries": [],
+        "conflict_updates": [],
+        "missing_updates": [],
+        "history_writes": 0,
+        "resolved_updates": [],
+        "pentest_updates": [],
+        "pentest_deletes": [],
+        "record_deletes": [],
+        "inserted_record_id": 3,
+    }
+    monkeypatch.setattr(repo, "get_db_connection", lambda db_path: FakeConnection(state))
+
+    repo.store_records_in_db(
+        [{"name": "keep.example.com", "ip_address": "10.0.0.2", "source": "Other"}],
+        source_id=1,
+    )
+
+    assert state["missing_updates"]
+    missing_names = state["missing_updates"][0]
+    assert "bind-only.example.com" in missing_names
+    assert "cloud-only.example.com" not in missing_names
+    assert "keep.example.com" not in missing_names

@@ -20,8 +20,8 @@ services:
       - db_and_backups_volume:/appdata
       - ftp_volume:/ftp/reports
     environment:
-      - ENVIRONMENT=development
-      - CORS_ORIGINS
+      - ENVIRONMENT=production
+      - CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS must be set}
       - UPDATE_TIME
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
       - DATA_PATH=${DATA_PATH:-/appdata/data}
@@ -49,7 +49,41 @@ services:
       ftp:
         condition: service_started
       postgres:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/healthz',timeout=5).status==200 else 1)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    restart: unless-stopped
+
+  worker:
+    image: raptor-prod
+    container_name: raptor-worker-prod
+    networks:
+      - app_network
+    volumes:
+      - dns_zonefiles_volume:/usr/app/src/shared
+      - db_and_backups_volume:/appdata
+    environment:
+      - RAPTOR_ROLE=worker
+      - ENVIRONMENT=production
+      - CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS must be set}
+      - UPDATE_TIME
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
+      - DATA_PATH=${DATA_PATH:-/appdata/data}
+      - SHARED_PATH
+      - BACKUP_FOLDER
+      - SECRET_KEY
+      - APP_PORT
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   mcp:
@@ -61,8 +95,6 @@ services:
         - https_proxy=${HTTP_PROXY}
     image: raptor-mcp-prod
     container_name: raptor-mcp-prod
-    ports:
-      - "${MCP_PORT:-8081}:${MCP_PORT:-8081}"
     networks:
       - app_network
     environment:
@@ -106,6 +138,7 @@ services:
       - https_proxy=${HTTPS_PROXY:-}
       - NO_PROXY=mcp,app,scanner,localhost,127.0.0.1
       - no_proxy=mcp,app,scanner,localhost,127.0.0.1
+      - KALI_INTERNAL_TOKEN=${KALI_INTERNAL_TOKEN:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
       interval: 30s
@@ -130,11 +163,12 @@ services:
       - MCP_BASE_URL=${MCP_BASE_URL:-http://mcp:8081}
       - MCP_SERVER_TOKEN=${MCP_SERVER_TOKEN:?MCP_SERVER_TOKEN must be set}
       - SCANNER_PORT=8082
-      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:?AWS_BEARER_TOKEN_BEDROCK must be set}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:-}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - SCANNER_MAX_CONCURRENT=${SCANNER_MAX_CONCURRENT:-2}
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
       - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}
+      - KALI_INTERNAL_TOKEN=${KALI_INTERNAL_TOKEN:-}
     depends_on:
       mcp:
         condition: service_healthy
@@ -195,6 +229,12 @@ services:
       - postgres_data_volume:/var/lib/postgresql/data
     networks:
       - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
 volumes:

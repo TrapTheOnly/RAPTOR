@@ -183,9 +183,17 @@ async def run_scan(settings: ScanSettings) -> None:
     async with raptor_mcp_session(settings.mcp_base_url, settings.mcp_server_token) as raptor_mcp:
         reporter = ScanEventReporter(record_id=record_id, raptor_mcp=raptor_mcp)
         try:
-            async with kali_mcp_session(settings.kali_client_path, settings.kali_server_url) as kali_mcp:
+            async with kali_mcp_session(
+                settings.kali_client_path,
+                settings.kali_server_url,
+                allow_destructive=settings.allow_destructive_tools,
+            ) as kali_mcp:
                 raptor_tools = await _get_mcp_tools_for_anthropic(raptor_mcp, source="raptor")
-                kali_tools = await _get_mcp_tools_for_anthropic(kali_mcp, source="kali")
+                kali_tools = await _get_mcp_tools_for_anthropic(
+                    kali_mcp,
+                    source="kali",
+                    allow_destructive=settings.allow_destructive_tools,
+                )
                 all_tools = raptor_tools + kali_tools
                 raptor_tool_names = {t["name"] for t in raptor_tools}
                 kali_tool_names = {t["name"] for t in kali_tools}
@@ -499,8 +507,7 @@ async def _agent_loop(
 
 
 _INTERNAL_TOOLS: set[str] = set()
-_KALI_ALLOWED_TOOLS = {
-    "execute_command",
+_KALI_SAFE_TOOLS = {
     "server_health",
     "nmap_scan",
     "gobuster_scan",
@@ -508,22 +515,26 @@ _KALI_ALLOWED_TOOLS = {
     "nikto_scan",
     "nuclei_scan",
     "ffuf_scan",
+    "wpscan_analyze",
+    "enum4linux_scan",
+}
+_KALI_DESTRUCTIVE_TOOLS = {
+    "execute_command",
     "sqlmap_scan",
     "metasploit_run",
     "hydra_attack",
     "john_crack",
-    "wpscan_analyze",
-    "enum4linux_scan",
 }
 
 
-async def _get_mcp_tools_for_anthropic(mcp, source: str) -> list:
+async def _get_mcp_tools_for_anthropic(mcp, source: str, allow_destructive: bool = False) -> list:
     tools_list = await mcp.list_tools()
     result = []
+    allowed = _KALI_SAFE_TOOLS | (_KALI_DESTRUCTIVE_TOOLS if allow_destructive else set())
     for tool in tools_list.tools:
         if tool.name in _INTERNAL_TOOLS:
             continue
-        if source == "kali" and tool.name not in _KALI_ALLOWED_TOOLS:
+        if source == "kali" and tool.name not in allowed:
             continue
         schema = tool.inputSchema if hasattr(tool, "inputSchema") else {}
         result.append({

@@ -6,6 +6,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from typing import Any, Dict, Optional
 
@@ -25,6 +26,13 @@ logger = logging.getLogger(__name__)
 # Default configuration
 DEFAULT_KALI_SERVER = "http://localhost:5000" # change to your linux IP
 DEFAULT_REQUEST_TIMEOUT = 300  # 5 minutes default timeout for API requests
+DESTRUCTIVE_ENDPOINTS = {
+    "api/command",
+    "api/tools/sqlmap",
+    "api/tools/metasploit",
+    "api/tools/hydra",
+    "api/tools/john",
+}
 
 class KaliToolsClient:
     """Client for communicating with the Kali Linux Tools API Server"""
@@ -40,6 +48,21 @@ class KaliToolsClient:
         self.server_url = server_url.rstrip("/")
         self.timeout = timeout
         logger.info(f"Initialized Kali Tools Client connecting to {server_url}")
+
+    def _request_headers(self, endpoint: str) -> Dict[str, str]:
+        headers: Dict[str, str] = {}
+        token = str(os.getenv("KALI_INTERNAL_TOKEN") or "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        destructive_allowed = str(os.getenv("KALI_ALLOW_DESTRUCTIVE") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if endpoint in DESTRUCTIVE_ENDPOINTS and destructive_allowed:
+            headers["X-Kali-Destructive"] = "1"
+        return headers
         
     def safe_get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -59,7 +82,12 @@ class KaliToolsClient:
 
         try:
             logger.debug(f"GET {url} with params: {params}")
-            response = requests.get(url, params=params, timeout=self.timeout)
+            response = requests.get(
+                url,
+                params=params,
+                timeout=self.timeout,
+                headers=self._request_headers(endpoint),
+            )
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -84,7 +112,12 @@ class KaliToolsClient:
         
         try:
             logger.debug(f"POST {url} with data: {json_data}")
-            response = requests.post(url, json=json_data, timeout=self.timeout)
+            response = requests.post(
+                url,
+                json=json_data,
+                timeout=self.timeout,
+                headers=self._request_headers(endpoint),
+            )
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:

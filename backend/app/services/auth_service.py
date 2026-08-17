@@ -33,6 +33,19 @@ from app.integrations.ldap.client import ldap_authenticate
 logger = logging.getLogger(__name__)
 
 
+def _audit_login(username: str) -> None:
+    from app.services.audit_service import record_audit_event
+
+    record_audit_event(
+        actor=username,
+        actor_type="user",
+        action="auth.login",
+        entity_type="user",
+        entity_id=username,
+        metadata={},
+    )
+
+
 def _invalid_credentials_response(username: str) -> Tuple[Dict[str, Any], int]:
     lockout = register_failed_login_attempt(username)
     if lockout.get("locked"):
@@ -83,6 +96,7 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
             session_obj["logged_in"] = True
             session_obj.pop("reset_required", None)
             initialize_session_tracking()
+            _audit_login(username)
             return {
                 "status": "logged_in",
                 "username": username,
@@ -124,6 +138,7 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
             session_obj["logged_in"] = True
             session_obj.pop("reset_required", None)
             initialize_session_tracking()
+            _audit_login(username)
             return {
                 "status": "logged_in",
                 "username": username,
@@ -140,6 +155,7 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
             session_obj["user_type"] = user_role
             session_obj.pop("reset_required", None)
             initialize_session_tracking()
+            _audit_login(username)
             return {
                 "status": "logged_in",
                 "username": username,

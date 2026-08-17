@@ -58,3 +58,34 @@ def test_authenticate_service_api_key_updates_last_used(monkeypatch):
     assert status == 200
     assert payload["service_account"]["username"] == "svc.reader"
     assert touched and touched[0][0] == 9
+
+
+def test_authenticate_service_api_key_does_not_require_plaintext(monkeypatch):
+    now = datetime(2026, 3, 13, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(service_api_service, "_utc_now", lambda: now)
+    monkeypatch.setattr(
+        service_api_service,
+        "get_service_account_key_by_fingerprint",
+        lambda fingerprint: {
+            "key_id": 9,
+            "api_key": None,
+            "api_key_hash": fingerprint,
+            "expires_at": (now + timedelta(days=30)).isoformat(),
+            "scopes": ["records.read"],
+            "service_account_id": 22,
+            "username": "svc.reader",
+        },
+    )
+    monkeypatch.setattr(
+        service_api_service,
+        "touch_service_api_key_last_used",
+        lambda key_id, used_at: None,
+    )
+
+    payload, status = service_api_service.authenticate_service_api_key(
+        "raptor_sk_valid_key_value_1234567890",
+        "records.read",
+    )
+
+    assert status == 200
+    assert payload["service_account"]["username"] == "svc.reader"
