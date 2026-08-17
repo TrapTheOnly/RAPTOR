@@ -271,9 +271,11 @@ async def _discover_ports(
     await reporter.emit("status", {"scan_status": "running", "phase": "port_discovery"})
 
     try:
-        result = await call_tool(kali_mcp, "execute_command", {
-            "command": f"nmap -p- --open -T4 --min-rate 1000 -oG - {target_ip}",
-            "timeout": 300,
+        result = await call_tool(kali_mcp, "nmap_scan", {
+            "target": target_ip,
+            "scan_type": "-Pn",
+            "ports": "-",
+            "additional_args": "--open -T4 --min-rate 1000 -oG -",
         })
     except Exception as exc:
         logger.warning(f"[record {record_id}] Port discovery failed: {exc} — continuing without ports")

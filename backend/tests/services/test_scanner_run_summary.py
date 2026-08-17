@@ -1,7 +1,9 @@
+import asyncio
 import importlib
 import sys
 import types
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -51,3 +53,35 @@ def test_summarize_pentest_result_uses_record_id_not_pentest_row_id():
 
     assert "record_id=132" in summary
     assert "pentest_id=142" in summary
+
+
+def test_discover_ports_uses_nmap_scan_not_execute_command():
+    run = _load_run_module()
+    called = []
+
+    async def fake_call_tool(mcp, name, args):
+        called.append((name, dict(args)))
+        if name == "get_pentest":
+            return {"pentest": {"open_ports": "", "ip_address": "10.0.0.9"}}
+        if name == "nmap_scan":
+            return {"stdout": "Host: 10.0.0.9 Ports: 22/open/tcp//ssh///"}
+        if name == "update_pentest_ports":
+            return {"ok": True}
+        raise AssertionError(f"unexpected tool {name}")
+
+    class Reporter:
+        async def emit(self, *_args, **_kwargs):
+            return None
+
+    with patch.object(run, "call_tool", fake_call_tool):
+        asyncio.run(
+            run._discover_ports("kali", "raptor", types.SimpleNamespace(record_id=3), Reporter())
+        )
+
+    names = [name for name, _args in called]
+    assert "execute_command" not in names
+    assert "nmap_scan" in names
+    nmap_args = next(args for name, args in called if name == "nmap_scan")
+    assert nmap_args["target"] == "10.0.0.9"
+    assert nmap_args["ports"] == "-"
+    assert any(name == "update_pentest_ports" for name, _args in called)

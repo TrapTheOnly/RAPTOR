@@ -112,37 +112,74 @@ def test_fetch_service_dataset_maps_connect_error(monkeypatch):
         asyncio.run(server_module.fetch_service_dataset("/service-api/v1/records", _settings()))
 
 
+def test_fetch_all_service_pages_walks_until_short_page(monkeypatch):
+    from raptor_mcp.http_client import LIST_PAGE_SIZE, fetch_all_service_pages
+
+    requests = []
+
+    class Client(_FakeAsyncClient):
+        async def get(self, url, headers=None, params=None):
+            requests.append(dict(params or {}))
+            offset = int((params or {}).get("offset") or 0)
+            if offset == 0:
+                page = [{"id": index} for index in range(LIST_PAGE_SIZE)]
+            else:
+                page = [{"id": LIST_PAGE_SIZE}]
+            return _FakeResponse(
+                200,
+                {
+                    "count": len(page),
+                    "limit": LIST_PAGE_SIZE,
+                    "offset": offset,
+                    "records": page,
+                },
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    payload = asyncio.run(
+        fetch_all_service_pages("/service-api/v1/records", "records", _settings())
+    )
+    assert payload["count"] == LIST_PAGE_SIZE + 1
+    assert [row["id"] for row in payload["records"]] == list(range(LIST_PAGE_SIZE + 1))
+    assert requests[0]["limit"] == LIST_PAGE_SIZE
+    assert requests[1]["offset"] == LIST_PAGE_SIZE
+
+
 def test_run_records_tool_sync_uses_records_path(monkeypatch):
     captured: dict[str, object] = {}
 
-    async def fake_fetch(path, settings):
+    async def fake_fetch(path, collection_key, settings):
         captured["path"] = path
+        captured["collection_key"] = collection_key
         captured["settings"] = settings
         return {"records": []}
 
-    monkeypatch.setattr(server_module, "fetch_service_dataset", fake_fetch)
+    monkeypatch.setattr(server_module, "fetch_all_service_pages", fake_fetch)
 
     settings = _settings()
     payload = server_module.run_records_tool_sync(settings)
     assert payload == {"records": []}
     assert captured["path"] == "/service-api/v1/records"
+    assert captured["collection_key"] == "records"
     assert captured["settings"] is settings
 
 
 def test_run_pentests_tool_sync_uses_pentests_path(monkeypatch):
     captured: dict[str, object] = {}
 
-    async def fake_fetch(path, settings):
+    async def fake_fetch(path, collection_key, settings):
         captured["path"] = path
+        captured["collection_key"] = collection_key
         captured["settings"] = settings
         return {"pentests": []}
 
-    monkeypatch.setattr(server_module, "fetch_service_dataset", fake_fetch)
+    monkeypatch.setattr(server_module, "fetch_all_service_pages", fake_fetch)
 
     settings = _settings()
     payload = server_module.run_pentests_tool_sync(settings)
     assert payload == {"pentests": []}
     assert captured["path"] == "/service-api/v1/pentests"
+    assert captured["collection_key"] == "pentests"
     assert captured["settings"] is settings
 
 
