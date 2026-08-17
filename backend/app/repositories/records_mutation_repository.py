@@ -66,7 +66,11 @@ def _create_initial_pentest_row(
     )
 
 
-def store_records_in_db(records: List[Dict[str, Any]], db_path: str = DB_PATH) -> None:
+def store_records_in_db(
+    records: List[Dict[str, Any]],
+    db_path: str = DB_PATH,
+    source_id: Optional[int] = None,
+) -> None:
     conn = get_db_connection(db_path)
     c = conn.cursor()
 
@@ -218,33 +222,73 @@ def store_records_in_db(records: List[Dict[str, Any]], db_path: str = DB_PATH) -
             )
             logger.info(f"Created initial pentest data entry for record_id: {new_record_id}")
 
-    placeholders = ",".join("?" for _ in current_names)
-    if placeholders:
+    if source_id is not None:
         c.execute(
-            f"""
-            UPDATE records
-            SET status = 'missing'
-            WHERE name NOT IN ({placeholders})
-              AND origin = 'automated'
-            """,
-            tuple(current_names),
+            "SELECT DISTINCT fqdn FROM dns_observations WHERE source_id = ?",
+            (source_id,),
         )
-        c.execute(
-            f"""
-            INSERT INTO record_history (record_id, action, timestamp, username,
-                                        old_ip_address, new_ip_address,
-                                        old_source, new_source,
-                                        old_maintainer, new_maintainer)
-            SELECT id, 'deleted', (NOW() + INTERVAL '4 hours'), 'system',
-                    ip_address, NULL,
-                    source, NULL,
-                    maintainer, NULL
-            FROM records
-            WHERE name NOT IN ({placeholders})
-              AND origin = 'automated'
-            """,
-            tuple(current_names),
-        )
+        previously_seen = set()
+        for row in c.fetchall():
+            if isinstance(row, dict):
+                previously_seen.add(row.get("fqdn"))
+            else:
+                previously_seen.add(row[0])
+        names_to_mark_missing = sorted(previously_seen - set(current_names))
+        if names_to_mark_missing:
+            missing_placeholders = ",".join("?" for _ in names_to_mark_missing)
+            c.execute(
+                f"""
+                UPDATE records
+                SET status = 'missing'
+                WHERE name IN ({missing_placeholders})
+                  AND origin = 'automated'
+                """,
+                tuple(names_to_mark_missing),
+            )
+            c.execute(
+                f"""
+                INSERT INTO record_history (record_id, action, timestamp, username,
+                                            old_ip_address, new_ip_address,
+                                            old_source, new_source,
+                                            old_maintainer, new_maintainer)
+                SELECT id, 'deleted', (NOW() + INTERVAL '4 hours'), 'system',
+                        ip_address, NULL,
+                        source, NULL,
+                        maintainer, NULL
+                FROM records
+                WHERE name IN ({missing_placeholders})
+                  AND origin = 'automated'
+                """,
+                tuple(names_to_mark_missing),
+            )
+    else:
+        placeholders = ",".join("?" for _ in current_names)
+        if placeholders:
+            c.execute(
+                f"""
+                UPDATE records
+                SET status = 'missing'
+                WHERE name NOT IN ({placeholders})
+                  AND origin = 'automated'
+                """,
+                tuple(current_names),
+            )
+            c.execute(
+                f"""
+                INSERT INTO record_history (record_id, action, timestamp, username,
+                                            old_ip_address, new_ip_address,
+                                            old_source, new_source,
+                                            old_maintainer, new_maintainer)
+                SELECT id, 'deleted', (NOW() + INTERVAL '4 hours'), 'system',
+                        ip_address, NULL,
+                        source, NULL,
+                        maintainer, NULL
+                FROM records
+                WHERE name NOT IN ({placeholders})
+                  AND origin = 'automated'
+                """,
+                tuple(current_names),
+            )
 
     conn.commit()
     conn.close()
@@ -492,6 +536,7 @@ def delete_record(record_id: int, username: str, db_path: str = DB_PATH) -> bool
         old_maintainer=old_maintainer,
     )
 
+    c.execute("DELETE FROM pentest_findings WHERE record_id = ?", (record_id,))
     c.execute("DELETE FROM pentest_data WHERE record_id = ?", (record_id,))
     c.execute("DELETE FROM records WHERE id = ?", (record_id,))
     conn.commit()

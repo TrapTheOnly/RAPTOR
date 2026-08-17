@@ -71,3 +71,21 @@ def test_update_service_account_scopes_requires_non_empty_list(monkeypatch):
 
     assert status == 400
     assert payload["error"] == "At least one scope is required."
+
+
+def test_view_service_account_key_returns_gone(monkeypatch):
+    monkeypatch.setattr(
+        service_account_service,
+        "get_service_account_with_key",
+        lambda username: {
+            "service_account_id": 8,
+            "username": "svc.reader",
+            "has_api_key": True,
+            "scopes": ["records.read"],
+        },
+    )
+
+    payload, status = service_account_service.view_service_account_key_service("svc.reader")
+
+    assert status == 410
+    assert "Rotate" in payload["error"]

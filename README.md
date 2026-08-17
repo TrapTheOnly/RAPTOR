@@ -35,14 +35,30 @@ docker-compose.dev.yml    # Development stack
 docker-compose.prod.yml   # Production stack
 scripts/
   dev.ps1                 # Build frontend -> backend/static, run backend locally
-  docker_runner.sh        # Dev helper: rebuild stack and seed sample zone files
+  docker_runner.sh        # Guided installer: .env, secrets, Compose up
 ```
 
 ## Quick Start (Docker)
 
-### 1) Create a root `.env`
+The installer writes `.env`, generates secrets, and starts Compose. Run it from the repo root:
 
-Create `RAPTOR_LOCATION\.env` with at least:
+```bash
+./scripts/docker_runner.sh
+```
+
+It asks for deploy mode (dev or prod), core secrets, CORS, FTP, optional LDAP, and whether to start Kali + the AI scanner. Re-runs keep existing `.env` values unless you replace them.
+
+Non-interactive examples:
+
+```bash
+./scripts/docker_runner.sh --dev --yes --build --no-scanner
+./scripts/docker_runner.sh --prod --yes --build   # requires CORS_ORIGINS in .env
+./scripts/docker_runner.sh --help
+```
+
+### 1) `.env` (created by the installer)
+
+The wizard writes a root `.env`. You can also create one yourself with at least:
 
 ```env
 # Core app
@@ -111,7 +127,9 @@ LOGIN_LOCKOUT_BASE_MINUTES=1
 LOGIN_LOCKOUT_MAX_MINUTES=0
 ```
 
-### 2) Start the dev stack
+### 2) Start the stack
+
+Prefer `./scripts/docker_runner.sh`. To start Compose yourself after `.env` exists:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d --build
@@ -186,7 +204,13 @@ asyncio.run(main())
 
 ## Production Compose
 
-Use:
+Prefer:
+
+```bash
+./scripts/docker_runner.sh --prod --build
+```
+
+Or, with `.env` already valid:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
@@ -329,6 +353,7 @@ MCP token/key rotation runbook:
 
 ## Current Focus Areas
 
+- Phase 0 deploy gate: see `docs/phase-0-deploy-gate.md`
 - Documentation and onboarding polish
 - Continued hardening of auth/session policies
 - UX refinements in records and pentest workflows

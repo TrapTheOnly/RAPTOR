@@ -5,9 +5,14 @@ import os
 import re
 import shutil
 import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 from app.config import BACKUP_FOLDER, DATA_PATH, SHARED_PATH
+from app.repositories.dns_sources_repository import (
+    ensure_bind_file_source,
+    record_observations,
+)
 from app.repositories.records_repository import determine_source, store_records_in_db
 
 logger = logging.getLogger(__name__)
@@ -152,7 +157,10 @@ def update_data() -> None:
             all_records.extend(records_this_domain)
 
         if all_records:
-            store_records_in_db(all_records)
+            source_id = ensure_bind_file_source()
+            store_records_in_db(all_records, source_id=source_id)
+            record_observations(source_id, all_records, str(uuid.uuid4()))
+            logger.info("DNS records updated successfully.")
         else:
             logger.info("No valid records found in any zone file.")
 

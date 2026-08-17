@@ -44,6 +44,7 @@ def update_scanner_config_payload(
         "input_cost_per_1m", "output_cost_per_1m",
         "max_concurrent_scans", "enabled",
         "proxy_url", "proxy_username", "proxy_password",
+        "allow_destructive_tools",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
@@ -56,6 +57,8 @@ def update_scanner_config_payload(
 
     if "enabled" in updates:
         updates["enabled"] = 1 if updates["enabled"] else 0
+    if "allow_destructive_tools" in updates:
+        updates["allow_destructive_tools"] = 1 if updates["allow_destructive_tools"] else 0
     if "max_concurrent_scans" in updates:
         try:
             val = int(updates["max_concurrent_scans"])
@@ -129,6 +132,23 @@ def launch_scan_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
         logger.error(f"Failed to dispatch scan for record {record_id}: {exc}")
         return {"error": "Failed to dispatch scan to scanner service."}, 502
 
+    from app.services.audit_service import record_audit_event
+    from flask import has_request_context, session as flask_session
+
+    actor = "scanner"
+    try:
+        if has_request_context():
+            actor = str(flask_session.get("username") or "scanner")
+        record_audit_event(
+            actor=actor,
+            actor_type="user",
+            action="scan.launch",
+            entity_type="record",
+            entity_id=str(record_id),
+            metadata={},
+        )
+    except Exception as exc:
+        logger.warning("Failed to audit scan launch for %s: %s", record_id, exc)
     return {"message": "Scan launched.", "record_id": record_id}, 202
 
 
@@ -145,8 +165,7 @@ def _dispatch_scan(record_id: int, cfg: Dict[str, Any]) -> None:
         "proxy_url": str(cfg.get("proxy_url") or ""),
         "proxy_username": str(cfg.get("proxy_username") or ""),
         "proxy_password": str(cfg.get("proxy_password") or ""),
-        "kali_server_url": os.getenv("KALI_SERVER_URL", "http://kali:5000"),
-        "kali_client_path": os.getenv("KALI_CLIENT_PATH", "/opt/mcp-kali-server/client.py"),
+        "allow_destructive_tools": bool(int(cfg.get("allow_destructive_tools") or 0)),
     }
     with httpx.Client(timeout=10.0) as client:
         resp = client.post(url, json=body, headers=headers)

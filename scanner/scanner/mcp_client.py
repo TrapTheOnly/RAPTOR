@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
@@ -23,10 +24,17 @@ async def raptor_mcp_session(base_url: str, token: str) -> AsyncIterator[ClientS
 
 
 @asynccontextmanager
-async def kali_mcp_session(client_path: str, server_url: str) -> AsyncIterator[ClientSession]:
+async def kali_mcp_session(
+    client_path: str,
+    server_url: str,
+    allow_destructive: bool = False,
+) -> AsyncIterator[ClientSession]:
+    env = os.environ.copy()
+    env["KALI_ALLOW_DESTRUCTIVE"] = "1" if allow_destructive else "0"
     params = StdioServerParameters(
         command="python3",
         args=[client_path, "--server", server_url],
+        env=env,
     )
     async with stdio_client(params) as (r, w):
         async with ClientSession(r, w) as session:

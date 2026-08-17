@@ -30,7 +30,9 @@ def _normalize_service_account_row(row: Optional[Dict[str, Any]]) -> Optional[Di
     payload = dict(row)
     payload["scopes"] = _load_scopes(payload.get("scopes"))
     payload["is_service_account"] = bool(payload.get("is_service_account"))
-    payload["has_api_key"] = bool(payload.get("api_key"))
+    payload["has_api_key"] = bool(
+        payload.get("api_key_fingerprint") or payload.get("api_key_hash") or payload.get("api_key")
+    )
     return payload
 
 
@@ -46,6 +48,8 @@ def list_service_accounts(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
                 u.added_date,
                 u.is_service_account,
                 k.api_key,
+                k.api_key_fingerprint,
+                k.api_key_hash,
                 k.scopes,
                 k.created_at AS key_created_at,
                 k.expires_at,
@@ -95,6 +99,7 @@ def get_service_account_with_key(username: str, db_path: str = DB_PATH) -> Optio
                 k.id AS key_id,
                 k.api_key,
                 k.api_key_fingerprint,
+                k.api_key_hash,
                 k.scopes,
                 k.created_at AS key_created_at,
                 k.expires_at,
@@ -155,16 +160,17 @@ def create_service_account_key(
                 service_account_id,
                 api_key,
                 api_key_fingerprint,
+                api_key_hash,
                 scopes,
                 created_at,
                 expires_at,
                 created_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, NULL, ?, ?, ?, ?, ?, ?)
             """,
             (
                 service_account_id,
-                api_key,
+                api_key_fingerprint,
                 api_key_fingerprint,
                 scopes_json,
                 created_at,
@@ -192,8 +198,9 @@ def rotate_service_account_key(
         c.execute(
             """
             UPDATE service_account_api_keys
-            SET api_key = ?,
+            SET api_key = NULL,
                 api_key_fingerprint = ?,
+                api_key_hash = ?,
                 scopes = ?,
                 rotated_at = ?,
                 expires_at = ?,
@@ -201,7 +208,7 @@ def rotate_service_account_key(
             WHERE service_account_id = ?
             """,
             (
-                api_key,
+                api_key_fingerprint,
                 api_key_fingerprint,
                 scopes_json,
                 rotated_at,
@@ -248,6 +255,7 @@ def get_service_account_key_by_fingerprint(
                 k.id AS key_id,
                 k.api_key,
                 k.api_key_fingerprint,
+                k.api_key_hash,
                 k.scopes,
                 k.expires_at,
                 k.last_used_at,
@@ -399,6 +407,16 @@ def append_pentest_vulnerability(
             "UPDATE pentest_data SET vulnerabilities = ? WHERE record_id = ?",
             (_json.dumps(existing), record_id),
         )
+        from app.repositories.pentest_findings_repository import (
+            insert_finding_with_cursor,
+            refresh_host_rollup,
+        )
+
+        finding = dict(vulnerability)
+        finding.setdefault("status", "draft")
+        finding.setdefault("source", "scanner")
+        insert_finding_with_cursor(c, record_id, finding)
+        refresh_host_rollup(c, record_id)
         conn.commit()
     return True
 
@@ -418,7 +436,11 @@ def fetch_checklist_templates_dataset(db_path: str = DB_PATH) -> List[Dict[str, 
     return [dict(row) for row in rows]
 
 
-def fetch_records_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
+def fetch_records_dataset(
+    db_path: str = DB_PATH,
+    limit: int = 200,
+    offset: int = 0,
+) -> List[Dict[str, Any]]:
     with get_db_connection(db_path) as conn:
         conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
@@ -443,7 +465,9 @@ def fetch_records_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
             FROM records r
             LEFT JOIN applications a ON a.id = r.application_id
             ORDER BY r.id ASC
-            """
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
         )
         rows = c.fetchall()
 
@@ -488,16 +512,18 @@ def fetch_records_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
                 "service_desk_link": item.get("pentest_service_desk_link"),
                 "status": item.get("pentest_status"),
                 "open_ports": item.get("pentest_open_ports"),
-                "notes": item.get("pentest_notes"),
                 "owasp_checklist": item.get("pentest_owasp_checklist"),
                 "checklist_states": item.get("pentest_checklist_states"),
-                "vulnerabilities": item.get("pentest_vulnerabilities"),
             }
         payload.append(record_data)
     return payload
 
 
-def fetch_pentests_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
+def fetch_pentests_dataset(
+    db_path: str = DB_PATH,
+    limit: int = 200,
+    offset: int = 0,
+) -> List[Dict[str, Any]]:
     with get_db_connection(db_path) as conn:
         conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
@@ -522,10 +548,8 @@ def fetch_pentests_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
                 p.status,
                 p.scan_status,
                 p.open_ports,
-                p.notes,
                 p.owasp_checklist,
                 p.checklist_states,
-                p.vulnerabilities,
                 r.name AS record_name,
                 r.description AS record_description,
                 r.application_owner,
@@ -539,7 +563,9 @@ def fetch_pentests_dataset(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
             INNER JOIN records r ON r.id = p.record_id
             LEFT JOIN applications a ON a.id = r.application_id
             ORDER BY p.record_id ASC
-            """
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
         )
         rows = c.fetchall()
     return [dict(row) for row in rows]

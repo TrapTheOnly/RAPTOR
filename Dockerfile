@@ -41,6 +41,9 @@ FROM backend_builder AS final
 COPY --from=frontend_builder /app/build/ /usr/app/src/backend/static/
 RUN useradd -m raptor_data_user
 RUN mkdir -p /appdata && chown -R raptor_data_user:raptor_data_user /appdata
+RUN sed -i 's/\r$//' /usr/app/src/backend/entrypoint.sh \
+    && chmod +x /usr/app/src/backend/entrypoint.sh
 USER raptor_data_user
+ENV PYTHONPATH=/usr/app/src/backend
 EXPOSE 5000
-CMD ["python", "/usr/app/src/backend/main.py"]
+CMD ["/usr/app/src/backend/entrypoint.sh"]

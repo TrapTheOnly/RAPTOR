@@ -7,7 +7,7 @@ def create_app():
     from flask import Flask
     from flask_cors import CORS
 
-    from app.config import BASE_DIR, configure_logging, env_flag
+    from app.config import BASE_DIR, configure_logging, env_flag, is_production
     from app.routes.admin import admin_bp
     from app.routes.auth import auth_bp
     from app.routes.docs import docs_bp
@@ -29,17 +29,34 @@ def create_app():
         static_url_path="",
     )
 
-    app.secret_key = os.getenv("SECRET_KEY")
+    secret_key = str(os.getenv("SECRET_KEY") or "").strip()
+    if is_production() and (not secret_key or secret_key == "your_secret_key"):
+        raise RuntimeError("SECRET_KEY must be set to a non-default value in production")
+    app.secret_key = secret_key or "your_secret_key"
     app.permanent_session_lifetime = timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
     app.config["SESSION_REFRESH_EACH_REQUEST"] = True
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
-    app.config["SESSION_COOKIE_SECURE"] = env_flag(
+    app.config["SESSION_COOKIE_SECURE"] = is_production() or env_flag(
         "SESSION_COOKIE_SECURE",
         env_flag("APP_USE_TLS"),
     )
 
-    CORS(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(",")}})
+    cors_origin_list = [
+        origin.strip()
+        for origin in str(os.getenv("CORS_ORIGINS") or "").split(",")
+        if origin.strip()
+    ]
+    if is_production():
+        if not cors_origin_list or "*" in cors_origin_list:
+            raise RuntimeError("CORS_ORIGINS must be an explicit allowlist in production")
+    elif not cors_origin_list:
+        cors_origin_list = ["*"]
+    CORS(app, resources={r"/*": {"origins": cors_origin_list}})
+
+    @app.get("/healthz")
+    def healthz():
+        return {"status": "ok"}, 200
 
     app.register_blueprint(records_bp)
     app.register_blueprint(admin_bp)

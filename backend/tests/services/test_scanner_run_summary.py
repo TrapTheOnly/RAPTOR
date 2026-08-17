@@ -17,6 +17,18 @@ def _load_run_module():
     anthropic_stub.AnthropicBedrock = object
     anthropic_stub.RateLimitError = type("RateLimitError", (Exception,), {})
     sys.modules.setdefault("anthropic", anthropic_stub)
+    mcp_stub = types.ModuleType("mcp")
+    mcp_stub.ClientSession = object
+    sys.modules["mcp"] = mcp_stub
+    mcp_client_stub = types.ModuleType("mcp.client")
+    sys.modules["mcp.client"] = mcp_client_stub
+    stdio_stub = types.ModuleType("mcp.client.stdio")
+    stdio_stub.StdioServerParameters = object
+    stdio_stub.stdio_client = lambda *args, **kwargs: None
+    sys.modules["mcp.client.stdio"] = stdio_stub
+    http_stub = types.ModuleType("mcp.client.streamable_http")
+    http_stub.streamablehttp_client = lambda *args, **kwargs: None
+    sys.modules["mcp.client.streamable_http"] = http_stub
     return importlib.import_module("scanner.run")
 
 

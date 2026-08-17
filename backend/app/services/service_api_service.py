@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import secrets
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
@@ -60,9 +59,6 @@ def authenticate_service_api_key(api_key: str, required_scope: str) -> Tuple[Dic
 
     if not row:
         return {"error": "Unauthorized access."}, 401
-    stored_key = str(row.get("api_key") or "")
-    if not stored_key or not secrets.compare_digest(stored_key, normalized_key):
-        return {"error": "Unauthorized access."}, 401
 
     expires_at = _parse_iso_datetime(row.get("expires_at"))
     now_utc = _utc_now()
@@ -87,11 +83,26 @@ def authenticate_service_api_key(api_key: str, required_scope: str) -> Tuple[Dic
     }, 200
 
 
-def get_service_records_payload() -> Tuple[Dict[str, Any], int]:
+def _page_args(limit: Any, offset: Any) -> Tuple[int, int]:
     try:
-        rows = fetch_records_dataset()
+        parsed_limit = int(limit) if limit is not None else 200
+    except (TypeError, ValueError):
+        parsed_limit = 200
+    try:
+        parsed_offset = int(offset or 0)
+    except (TypeError, ValueError):
+        parsed_offset = 0
+    return max(1, min(parsed_limit, 500)), max(0, parsed_offset)
+
+
+def get_service_records_payload(limit: Any = None, offset: Any = None) -> Tuple[Dict[str, Any], int]:
+    page_limit, page_offset = _page_args(limit, offset)
+    try:
+        rows = fetch_records_dataset(limit=page_limit, offset=page_offset)
         return {
             "count": len(rows),
+            "limit": page_limit,
+            "offset": page_offset,
             "generated_at": _isoformat(_utc_now()),
             "records": rows,
         }, 200
@@ -100,11 +111,14 @@ def get_service_records_payload() -> Tuple[Dict[str, Any], int]:
         return {"error": "Failed to fetch records dataset."}, 500
 
 
-def get_service_pentests_payload() -> Tuple[Dict[str, Any], int]:
+def get_service_pentests_payload(limit: Any = None, offset: Any = None) -> Tuple[Dict[str, Any], int]:
+    page_limit, page_offset = _page_args(limit, offset)
     try:
-        rows = fetch_pentests_dataset()
+        rows = fetch_pentests_dataset(limit=page_limit, offset=page_offset)
         return {
             "count": len(rows),
+            "limit": page_limit,
+            "offset": page_offset,
             "generated_at": _isoformat(_utc_now()),
             "pentests": rows,
         }, 200
@@ -135,6 +149,20 @@ def get_single_pentest_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
         return {"error": "Failed to fetch pentest."}, 500
     if not row:
         return {"error": "Pentest record not found."}, 404
+    try:
+        from app.repositories.pentest_findings_repository import (
+            list_findings_for_record,
+            migrate_json_blob,
+        )
+
+        findings = list_findings_for_record(record_id)
+        if not findings:
+            migrate_json_blob(record_id, row.get("vulnerabilities") or "")
+            findings = list_findings_for_record(record_id)
+        if findings:
+            row["vulnerabilities"] = findings
+    except Exception as exc:
+        logger.warning("Failed to hydrate findings for pentest %s: %s", record_id, exc)
     return {"pentest": row}, 200
 
 
@@ -184,6 +212,25 @@ def reset_scan_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
         if not found:
             return {"error": "Pentest record not found."}, 404
         delete_scan_events_for_record(record_id)
+        from app.integrations.db.connection import get_db_connection
+        from app.config import DB_PATH
+        from app.services.audit_service import record_audit_event
+
+        with get_db_connection(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM pentest_findings WHERE record_id = ? AND source = 'scanner'",
+                (record_id,),
+            )
+            conn.commit()
+        record_audit_event(
+            actor="scanner",
+            actor_type="service",
+            action="scan.reset",
+            entity_type="record",
+            entity_id=str(record_id),
+            metadata={},
+        )
         return {"message": "Scan reset. Previous results cleared."}, 200
     except Exception as exc:
         logger.error(f"Failed to reset scan for pentest {record_id}: {exc}")

@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shlex
 import subprocess
 import sys
@@ -33,6 +34,38 @@ DEBUG_MODE = os.environ.get("DEBUG_MODE", "0").lower() in ("1", "true", "yes", "
 COMMAND_TIMEOUT = 180  # 5 minutes default timeout
 
 app = Flask(__name__)
+
+KALI_INTERNAL_TOKEN = str(os.environ.get("KALI_INTERNAL_TOKEN") or "").strip()
+DESTRUCTIVE_PATHS = {
+    "/api/command",
+    "/api/tools/sqlmap",
+    "/api/tools/metasploit",
+    "/api/tools/hydra",
+    "/api/tools/john",
+}
+
+
+@app.before_request
+def require_kali_token():
+    if request.path == "/health":
+        return None
+    if not KALI_INTERNAL_TOKEN:
+        return jsonify({"error": "KALI_INTERNAL_TOKEN is not configured"}), 503
+    provided = ""
+    auth_header = request.headers.get("Authorization") or ""
+    if auth_header.startswith("Bearer "):
+        provided = auth_header[7:].strip()
+    if not provided:
+        provided = str(request.headers.get("X-Kali-Token") or "").strip()
+    if (
+        not provided
+        or len(provided) != len(KALI_INTERNAL_TOKEN)
+        or not secrets.compare_digest(provided, KALI_INTERNAL_TOKEN)
+    ):
+        return jsonify({"error": "Unauthorized"}), 401
+    if request.path in DESTRUCTIVE_PATHS and request.headers.get("X-Kali-Destructive") != "1":
+        return jsonify({"error": "Destructive tools are disabled"}), 403
+    return None
 
 class CommandExecutor:
     """Class to handle command execution with better timeout management"""

@@ -35,6 +35,7 @@ const parseVulnerabilities = (rawValue) => {
 };
 
 const getVulnerabilityCount = (record) => {
+  if (typeof record.finding_count === 'number') return record.finding_count;
   const parsed = parseVulnerabilities(record.vulnerabilities);
   if (parsed.length > 0) return parsed.length;
   return record.vulnerable === 1 ? 1 : 0;

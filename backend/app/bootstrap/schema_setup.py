@@ -341,7 +341,7 @@ def create_service_account_api_keys_table(cursor: DatabaseCursor) -> None:
         CREATE TABLE IF NOT EXISTS service_account_api_keys (
             id SERIAL PRIMARY KEY,
             service_account_id INTEGER NOT NULL UNIQUE,
-            api_key TEXT NOT NULL UNIQUE,
+            api_key TEXT,
             api_key_fingerprint TEXT NOT NULL UNIQUE,
             scopes TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL,
@@ -374,6 +374,8 @@ def create_service_account_api_keys_table(cursor: DatabaseCursor) -> None:
         cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN created_by TEXT")
     if "rotated_by" not in key_columns:
         cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN rotated_by TEXT")
+    if "api_key_hash" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN api_key_hash TEXT")
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_service_account_api_keys_fingerprint
