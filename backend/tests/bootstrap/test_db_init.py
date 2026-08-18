@@ -2,7 +2,14 @@ from app.bootstrap import db_init
 
 
 class _DummyCursor:
-    pass
+    def execute(self, query, params=None):
+        return self
+
+    def fetchone(self):
+        return (True,)
+
+    def fetchall(self):
+        return []
 
 
 class _DummyConnection:
@@ -16,6 +23,9 @@ class _DummyConnection:
 
     def commit(self):
         self.commit_count += 1
+
+    def rollback(self):
+        return None
 
     def close(self):
         self.close_count += 1

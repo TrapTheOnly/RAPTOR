@@ -3,11 +3,34 @@ from typing import Set
 from app.integrations.db.connection import DatabaseCursor, get_table_columns
 
 
+def _is_already_exists(exc: BaseException) -> bool:
+    code = str(getattr(exc, "sqlstate", None) or getattr(exc, "pgcode", None) or "")
+    if code in {"23505", "42P07", "42710"}:
+        return True
+    return "already exists" in str(exc).lower()
+
+
+def _execute_ignore_exists(cursor: DatabaseCursor, sql: str) -> None:
+    cursor.execute("SAVEPOINT raptor_schema_obj")
+    try:
+        cursor.execute(sql)
+        cursor.execute("RELEASE SAVEPOINT raptor_schema_obj")
+    except Exception as exc:
+        cursor.execute("ROLLBACK TO SAVEPOINT raptor_schema_obj")
+        if _is_already_exists(exc):
+            return
+        raise
+
+
 def create_records_table(cursor: DatabaseCursor) -> Set[str]:
-    cursor.execute(
+    # SERIAL + IF NOT EXISTS is not safe if records_id_seq already exists
+    # (app/worker init race, or a previous CREATE that failed mid-statement).
+    cursor.execute("CREATE SEQUENCE IF NOT EXISTS records_id_seq")
+    _execute_ignore_exists(
+        cursor,
         """
         CREATE TABLE IF NOT EXISTS records (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY DEFAULT nextval('records_id_seq'),
             name TEXT NOT NULL,
             ip_address TEXT NOT NULL,
             source TEXT NOT NULL,
@@ -22,7 +45,11 @@ def create_records_table(cursor: DatabaseCursor) -> Set[str]:
             description TEXT DEFAULT '',
             application_id INTEGER
         )
-        """
+        """,
+    )
+    _execute_ignore_exists(
+        cursor,
+        "ALTER SEQUENCE records_id_seq OWNED BY records.id",
     )
     record_columns = get_table_columns(cursor, "records")
     if "origin" not in record_columns:

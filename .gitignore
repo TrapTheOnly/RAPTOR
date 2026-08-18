@@ -12,6 +12,9 @@ nmap/
 .codex/
 *.nmap
 .env
+backend/.env
+collector/dist/*
+!collector/dist/.gitkeep
 .DS_Store
 __pycache__
 *Records

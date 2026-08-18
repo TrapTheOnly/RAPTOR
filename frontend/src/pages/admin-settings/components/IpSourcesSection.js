@@ -102,7 +102,7 @@ const IpSourcesSection = ({
               </Typography>
             ) : (
               <>
-                <Box display="flex" gap={1} mb={2}>
+                <Box display="flex" gap={1} mb={2} flexWrap="wrap">
                   <TextField
                     size="small"
                     label="Add IP Address"

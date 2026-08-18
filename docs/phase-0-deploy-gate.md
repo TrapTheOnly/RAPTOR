@@ -36,4 +36,4 @@ Web traffic runs under gunicorn (`-w 2`). DNS sync runs in a second gunicorn pro
 
 Production compose now requires `ENVIRONMENT=production`, an explicit `CORS_ORIGINS` allowlist, and a non-default `SECRET_KEY`. Set `KALI_INTERNAL_TOKEN` before starting Kali or the scanner. DNS sync runs in the `worker` service (`RAPTOR_ROLE=worker`). The MCP port is not published on the host in production.
 
-A collector should POST normalized RR batches to an ingest API with `source_id` + cursor. Do not invent another `*_A_Records` filename contract.
+A collector should POST normalized RR batches to an ingest API with `source_id` + cursor. Do not invent another `*_A_Records` filename contract. Phase 1 implements that API at `POST /collector/v1/ingest`; see `docs/phase-1-collector.md`.

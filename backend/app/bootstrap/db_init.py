@@ -24,34 +24,46 @@ from app.config import DB_PATH
 from app.integrations.db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
+SCHEMA_ADVISORY_LOCK = 87245001
 
 
 def init_db(db_path: str = DB_PATH) -> None:
     logger.info("Initializing database...")
     conn = get_db_connection(db_path)
     c = conn.cursor()
-
-    record_columns = create_records_table(c)
-    create_allowed_users_table(c)
-    create_applications_table(c)
-    repair_legacy_application_mapping(c, record_columns)
-    create_ip_sources_table(c)
-    create_record_history_table(c)
-    create_pentest_table(c)
-    create_pentest_collaborators_table(c)
-    create_service_checklists_table(c)
-    create_report_templates_table(c)
-    create_service_account_api_keys_table(c)
-    create_app_meta_table(c)
-    create_auth_lockout_table(c)
-    create_notifications_table(c)
-    create_email_config_table(c)
-    create_scanner_config_table(c)
-    run_seed_routines(c)
-    run_migrations(c)
-
-    conn.commit()
-    conn.close()
+    c.execute("SELECT pg_advisory_lock(?)", (SCHEMA_ADVISORY_LOCK,))
+    try:
+        record_columns = create_records_table(c)
+        create_allowed_users_table(c)
+        create_applications_table(c)
+        repair_legacy_application_mapping(c, record_columns)
+        create_ip_sources_table(c)
+        create_record_history_table(c)
+        create_pentest_table(c)
+        create_pentest_collaborators_table(c)
+        create_service_checklists_table(c)
+        create_report_templates_table(c)
+        create_service_account_api_keys_table(c)
+        create_app_meta_table(c)
+        create_auth_lockout_table(c)
+        create_notifications_table(c)
+        create_email_config_table(c)
+        create_scanner_config_table(c)
+        run_seed_routines(c)
+        run_migrations(c)
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            logger.warning("Could not roll back schema init transaction", exc_info=True)
+        raise
+    finally:
+        try:
+            c.execute("SELECT pg_advisory_unlock(?)", (SCHEMA_ADVISORY_LOCK,))
+        except Exception:
+            logger.warning("Could not release schema advisory lock", exc_info=True)
+        conn.close()
     logger.info("Database initialized successfully.")
 
 
