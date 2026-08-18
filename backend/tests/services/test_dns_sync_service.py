@@ -22,6 +22,18 @@ def test_parse_bind_zone_file_handles_apex_and_hosts(tmp_path, monkeypatch):
     ]
 
 
+def test_parse_bind_zone_file_does_not_append_origin_to_absolute_names(tmp_path, monkeypatch):
+    zone_file = tmp_path / "example.com_A_Records"
+    zone_file.write_text("www.example.com. IN A 10.0.0.2\n", encoding="utf-8")
+    monkeypatch.setattr(dns_sync_service, "determine_source", lambda ip: "Corp")
+
+    records = dns_sync_service.parse_bind_zone_file(str(zone_file), "example.com")
+
+    assert records == [
+        {"name": "www.example.com", "ip_address": "10.0.0.2", "source": "Corp"},
+    ]
+
+
 def test_handle_zone_file_changes_skips_when_matches_latest_backup(tmp_path, monkeypatch):
     backup_root = tmp_path / "backups"
     data_root = tmp_path / "data"

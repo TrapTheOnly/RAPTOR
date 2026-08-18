@@ -57,6 +57,9 @@ def test_discover_migrations():
     assert len(migrations) >= 1
     names = [name for name, _ in migrations]
     assert "0001_baseline" in names
+    assert "0010_collector_agents" in names
+    assert "0011_collector_agent_ops" in names
+    assert "0013_collector_interval_collect" in names
     assert names == sorted(names)
 
 

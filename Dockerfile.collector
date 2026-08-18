@@ -1,0 +1,17 @@
+FROM golang:1.23-bookworm AS builder
+WORKDIR /src
+ARG HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
+ENV GOPROXY=https://proxy.golang.org,direct
+COPY collector/go.mod collector/go.sum ./
+RUN go mod download
+COPY collector/ ./
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -ldflags "-s -w -X main.Version=1.1.0" \
+    -o /out/raptor-collector ./cmd/raptor-collector
+
+FROM scratch
+COPY --from=builder /out/raptor-collector /raptor-collector
+ENTRYPOINT ["/raptor-collector"]
+CMD ["run"]

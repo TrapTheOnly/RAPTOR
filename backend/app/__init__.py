@@ -10,6 +10,7 @@ def create_app():
     from app.config import BASE_DIR, configure_logging, env_flag, is_production
     from app.routes.admin import admin_bp
     from app.routes.auth import auth_bp
+    from app.routes.collector import collector_bp
     from app.routes.docs import docs_bp
     from app.routes.frontend import register_frontend_routes
     from app.routes.metadata import metadata_bp
@@ -60,6 +61,7 @@ def create_app():
 
     app.register_blueprint(records_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(collector_bp)
     app.register_blueprint(metadata_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(docs_bp)

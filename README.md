@@ -4,7 +4,7 @@ RAPTOR (Reconnaissance, Assessment, Penetration Testing, Operations, and Reporti
 
 ## What the Project Does
 
-- Ingests BIND-style zone files (`*_A_Records`) into a managed asset inventory.
+- Ingests DNS from BIND-style zone files (`*_A_Records` compatibility adapter) and from collector agents that POST normalized RR batches.
 - Tracks record lifecycle and change history.
 - Runs role-based pentest workflows (assignment, status, findings, remediation).
 - Supports checklist-based testing templates and report templates.
@@ -19,6 +19,7 @@ RAPTOR (Reconnaissance, Assessment, Penetration Testing, Operations, and Reporti
 - Auth: Local admin + local users + LDAP/AD users
 - File/report storage: FTP service for uploaded/generated report assets
 - MCP integration service: standalone Python MCP server (`mcp/`) over streamable HTTP
+- DNS collector agent: standalone Python agent (`collector/`) that enrolls and POSTs RR batches
 - Packaging: Multi-stage Docker build with Compose for dev/prod
 
 ## Repository Layout
@@ -29,7 +30,10 @@ backend/
   modules/                # auth, permissions, pentest/report logic, templates
 frontend/
   src/                    # React app (dashboard, records, pentest, admin settings)
+collector/
+  cmd/raptor-collector/   # Packaged Go agent (Linux/Windows binaries served by RAPTOR)
 Dockerfile                # Builds frontend, packages with backend
+Dockerfile.collector      # Collector agent image
 Dockerfile.sftp           # SFTP sidecar image
 docker-compose.dev.yml    # Development stack
 docker-compose.prod.yml   # Production stack
@@ -354,6 +358,7 @@ MCP token/key rotation runbook:
 ## Current Focus Areas
 
 - Phase 0 deploy gate: see `docs/phase-0-deploy-gate.md`
+- Phase 1 collector agent: see `docs/phase-1-collector.md`
 - Documentation and onboarding polish
 - Continued hardening of auth/session policies
 - UX refinements in records and pentest workflows

@@ -224,7 +224,7 @@ def store_records_in_db(
 
     if source_id is not None:
         c.execute(
-            "SELECT DISTINCT fqdn FROM dns_observations WHERE source_id = ?",
+            "SELECT DISTINCT fqdn FROM dns_observations WHERE source_id = ? AND rrtype = 'A'",
             (source_id,),
         )
         previously_seen = set()

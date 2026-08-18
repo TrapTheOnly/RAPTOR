@@ -5,15 +5,12 @@ import os
 import re
 import shutil
 import time
-import uuid
 from typing import Any, Dict, List, Optional
 
 from app.config import BACKUP_FOLDER, DATA_PATH, SHARED_PATH
-from app.repositories.dns_sources_repository import (
-    ensure_bind_file_source,
-    record_observations,
-)
-from app.repositories.records_repository import determine_source, store_records_in_db
+from app.repositories.dns_sources_repository import ensure_bind_file_source
+from app.repositories.records_repository import determine_source
+from app.services.ingest.zone_parse import parse_bind_zone_file as parse_zone_rrs
 
 logger = logging.getLogger(__name__)
 
@@ -24,45 +21,30 @@ def extract_domain_from_filename(filename: str) -> Optional[str]:
 
 
 def parse_bind_zone_file(filepath: str, hostname: str) -> List[Dict[str, str]]:
-    records: List[Dict[str, str]] = []
-    rr_pattern = re.compile(
-        r"^\s*"
-        r"(?P<name>\S*)\s*"
-        r"(?P<ttl>\d+)?\s*"
-        r"(IN\s+)?A\s+"
-        r"(?P<ip>[^\s]+)"
-        r".*$",
-        re.IGNORECASE,
-    )
-
-    with open(filepath, "r") as f:
-        for line in f:
-            line = line.split(";", 1)[0].strip()
-            if not line:
-                continue
-
-            match = rr_pattern.match(line)
-            if not match:
-                continue
-
-            raw_name = match.group("name").strip()
-            ip = match.group("ip").strip()
-
-            if not raw_name or raw_name in ("@", ".", "IN"):
-                raw_name = hostname
-            else:
-                raw_name = f"{raw_name}.{hostname}"
-
-            source = determine_source(ip)
-            records.append(
+    records, hosts = parse_zone_rrs(filepath, hostname)
+    parsed: List[Dict[str, str]] = []
+    if hosts:
+        for host in hosts:
+            parsed.append(
                 {
-                    "name": raw_name,
-                    "ip_address": ip,
-                    "source": source,
+                    "name": host["name"],
+                    "ip_address": host["ip_address"],
+                    "source": determine_source(host["ip_address"]),
                 }
             )
-
-    return records
+        return parsed
+    # Fallback keeps the historical A-only shape if the RR parser found nothing.
+    for record in records:
+        if record.rrtype != "A":
+            continue
+        parsed.append(
+            {
+                "name": record.fqdn,
+                "ip_address": record.rdata,
+                "source": determine_source(record.rdata),
+            }
+        )
+    return parsed
 
 
 def handle_zone_file_changes(new_zone_file_path: str, final_filename: str) -> Optional[str]:
@@ -134,35 +116,18 @@ def handle_zone_file_changes(new_zone_file_path: str, final_filename: str) -> Op
 def update_data() -> None:
     try:
         logger.info(f"Starting data update at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        from app.services.ingest.apply import apply_ingest_batch
+        from app.services.ingest.connectors.bind_file import BindFileConnector
 
-        zone_files = glob.glob(f"{SHARED_PATH}/*_A_Records")
-        if not zone_files:
+        connector = BindFileConnector()
+        all_records = connector.fetch_all()
+        if not all_records:
             logger.warning("No zone files found in shared path.")
             return
 
-        all_records: List[Dict[str, Any]] = []
-        for zone_file in zone_files:
-            domain = extract_domain_from_filename(zone_file)
-            if not domain:
-                logger.warning(f"Skipping invalid file name format: {zone_file}")
-                continue
-
-            logger.info(f"Processing zone file for domain: {domain}")
-            final_zone_file_path = os.path.join(DATA_PATH, os.path.basename(zone_file))
-            final_zone_file = handle_zone_file_changes(zone_file, final_zone_file_path)
-            if not final_zone_file:
-                continue
-
-            records_this_domain = parse_bind_zone_file(final_zone_file, domain)
-            all_records.extend(records_this_domain)
-
-        if all_records:
-            source_id = ensure_bind_file_source()
-            store_records_in_db(all_records, source_id=source_id)
-            record_observations(source_id, all_records, str(uuid.uuid4()))
-            logger.info("DNS records updated successfully.")
-        else:
-            logger.info("No valid records found in any zone file.")
+        source_id = ensure_bind_file_source()
+        result = apply_ingest_batch(source_id, all_records)
+        logger.info("DNS records updated successfully.")
 
         logger.info(f"Data update completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
         try:
@@ -171,7 +136,7 @@ def update_data() -> None:
                 notification_type="zone_sync_success",
                 roles=["admin"],
                 title="Zone sync completed",
-                message=f"Zone sync completed successfully. {len(all_records)} records processed.",
+                message=f"Zone sync completed successfully. {result['projected']} hosts projected from {result['stored']} RRs.",
                 send_email_flag=True,
             )
         except Exception as notify_err:

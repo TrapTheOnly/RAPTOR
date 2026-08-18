@@ -14,13 +14,13 @@ import {
   Article as ArticleIcon,
   BugReport as BugReportIcon,
   Build as BuildIcon,
+  Dns as DnsIcon,
   Email as EmailIcon,
   FactCheck as FactCheckIcon,
   Menu as MenuIcon,
   People as PeopleIcon,
   Security as SecurityIcon,
-  SmartToy as SmartToyIcon,
-  Storage as StorageIcon
+  SmartToy as SmartToyIcon
 } from '@mui/icons-material';
 import {
   COMMON_PASSWORDS,
@@ -43,6 +43,9 @@ import MaintenanceSection from './admin-settings/components/MaintenanceSection';
 import ResetPentestDialog from './admin-settings/components/ResetPentestDialog';
 import SecuritySection from './admin-settings/components/SecuritySection';
 import ChecklistTemplatesSection from './admin-settings/components/ChecklistTemplatesSection';
+import CollectorsSection from './admin-settings/components/CollectorsSection';
+import DomainsManagementSection from './admin-settings/components/DomainsManagementSection';
+import DomainsRefreshCard from './admin-settings/components/DomainsRefreshCard';
 import ReportTemplatesSection from './admin-settings/components/ReportTemplatesSection';
 import VulnCategoriesSection from './admin-settings/components/VulnCategoriesSection';
 import DomainUsersPanel from './admin-settings/components/users/DomainUsersPanel';
@@ -161,11 +164,11 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         visible: canManageSecurity
       },
       {
-        key: 'ip-sources',
-        label: 'IP Sources',
-        description: 'Map IP addresses to source groups used in asset tracking.',
-        icon: StorageIcon,
-        visible: canManageIpSources
+        key: 'domains',
+        label: 'Domains Management',
+        description: 'Collectors, zone refresh, and IP source groups for DNS inventory.',
+        icon: DnsIcon,
+        visible: canManageSecurity || canManageIpSources || canRunMaintenance
       },
       {
         key: 'vuln-categories',
@@ -191,7 +194,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       {
         key: 'maintenance',
         label: 'Maintenance',
-        description: 'Run manual updates and manage pentest resets.',
+        description: 'Manage pentest resets.',
         icon: BuildIcon,
         visible: canRunMaintenance
       },
@@ -381,6 +384,10 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
 
   useEffect(() => {
     if (!visibleSections.length) return;
+    if (selectedSection === 'collectors' || selectedSection === 'ip-sources') {
+      setSelectedSection('domains');
+      return;
+    }
     if (!selectedSection || !visibleSections.some((section) => section.key === selectedSection)) {
       setSelectedSection(visibleSections[0].key);
     }
@@ -626,15 +633,22 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     }
   };
 
-  const handleManualParse = async () => {
+  const handleDomainsRefresh = async () => {
     setLoading(true);
     try {
-      const response = await axios.post('/manual-update');
-      if (response.status === 200) {
-        showMessage('success', 'Records updated successfully.');
+      const response = await axios.post('/admin/domains/refresh');
+      const queued = response.data.agents?.queued ?? 0;
+      const immediate = response.data.agents?.immediate ?? 0;
+      if (response.data.ok) {
+        showMessage(
+          'success',
+          `Drop-folder parsed. Asked ${queued} agent${queued === 1 ? '' : 's'} to collect (${immediate} immediate).`
+        );
+      } else {
+        showMessage('error', response.data.drop_folder?.error || 'Refresh completed with errors.');
       }
     } catch (error) {
-      showMessage('error', 'Failed to parse records. Please try again.');
+      showMessage('error', error.response?.data?.error || 'Failed to refresh domains.');
     } finally {
       setLoading(false);
     }
@@ -1483,22 +1497,31 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
             onChangePassword={handleChangePassword}
           />
         );
-      case 'ip-sources':
+      case 'domains':
         return (
-          <IpSourcesSection
-            loading={loading}
-            sourceTypes={sourceTypes}
-            ipsBySource={ipsBySource}
-            selectedSource={selectedSource}
-            newSourceName={newSourceName}
-            setNewSourceName={setNewSourceName}
-            newIpAddress={newIpAddress}
-            setNewIpAddress={setNewIpAddress}
-            onAddSourceType={handleAddSourceType}
-            onSelectSourceType={handleSelectSourceType}
-            onAddIp={handleAddIp}
-            onDeleteIp={handleDeleteIpClick}
-            onSubmitChanges={handleSubmitChanges}
+          <DomainsManagementSection
+            canManageCollectors={canManageSecurity}
+            canRunMaintenance={canRunMaintenance}
+            canManageIpSources={canManageIpSources}
+            collectors={<CollectorsSection showMessage={showMessage} />}
+            refresh={<DomainsRefreshCard loading={loading} onRunUpdate={handleDomainsRefresh} />}
+            ipSources={
+              <IpSourcesSection
+                loading={loading}
+                sourceTypes={sourceTypes}
+                ipsBySource={ipsBySource}
+                selectedSource={selectedSource}
+                newSourceName={newSourceName}
+                setNewSourceName={setNewSourceName}
+                newIpAddress={newIpAddress}
+                setNewIpAddress={setNewIpAddress}
+                onAddSourceType={handleAddSourceType}
+                onSelectSourceType={handleSelectSourceType}
+                onAddIp={handleAddIp}
+                onDeleteIp={handleDeleteIpClick}
+                onSubmitChanges={handleSubmitChanges}
+              />
+            }
           />
         );
       case 'vuln-categories':
@@ -1551,7 +1574,6 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
             loading={loading}
             resetCsv={resetCsv}
             resetStats={resetStats}
-            onManualParse={handleManualParse}
             onDownloadResetCsv={downloadResetCsv}
             onOpenResetDialog={handleOpenResetDialog}
           />
@@ -1582,7 +1604,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         onSelectReportTemplate={handleSelectReportTemplate}
       />
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0, overflowX: 'hidden' }}>
         <Box display="flex" alignItems="center" gap={2} mb={3}>
           {isMobile && (
             <IconButton onClick={() => setNavOpen(true)}>
