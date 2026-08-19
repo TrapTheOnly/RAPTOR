@@ -26,3 +26,4 @@ runner.py
 tree_db.py
 *.ipynb
 scripts/*.py
+!scripts/seed_demo_world.py
