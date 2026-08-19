@@ -441,9 +441,12 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(record).toContain('fetchPentestRecord');
   expect(record).not.toContain('JSON.stringify(vulnerabilities)');
   expect(record).toContain("searchParams.get('wave')");
+  expect(record).toContain('closedWaveIds');
   const findings = readSource('../../pentest-record/components/FindingsTab.js');
   expect(findings).toContain('No findings on this host');
   expect(findings).toContain('File finding on this host');
+  expect(findings).toContain('findingFrozen');
+  expect(findings).toContain('closedWaveIds');
   const overview = readSource('../../pentest-record/components/OverviewTab.js');
   expect(overview).not.toContain('Test Management');
   expect(overview).not.toContain('service_desk');
@@ -479,6 +482,8 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(findingPage).toContain('data?.categories');
   expect(findingPage).toContain('FactChip');
   expect(findingPage).toContain('showActions={false}');
+  expect(findingPage).toContain('canEdit = Boolean(canModify && waveIsOpen)');
+  expect(findingPage).toContain('This wave has ended');
   expect(findingPage).not.toContain('Found here ·');
   expect(readSource('./CvssCalculator.js')).toContain('CVSS 3.1');
   const hostFindings = readSource('../../pentest-record/components/FindingsTab.js');
@@ -489,6 +494,9 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(wavePage).toContain('Assign to me');
   expect(wavePage).toContain('Mark in scope');
   expect(wavePage).toContain('Notebook');
+  expect(wavePage).toContain('disabled={!canModify || !isOpen}');
+  expect(wavePage).toContain('canModify={canModify && isOpen}');
+  expect(wavePage).toContain('This wave has ended');
   expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('max-width: 100%');
   expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('width: 100%');
   expect(readSource('./HostsTab.js')).toContain('Add hosts');

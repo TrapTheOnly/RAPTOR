@@ -505,6 +505,64 @@ export const PageHeader = ({ crumbs = [], title, subtitle, meta, actions, leadin
   );
 };
 
+export const Segmented = ({ value, onChange, options = [], layoutId }) => {
+  const palette = usePalette();
+  return (
+    <div
+      role="group"
+      style={{
+        display: 'inline-flex',
+        height: 32,
+        border: `1px solid ${palette.line}`,
+        borderRadius: RADIUS.base,
+        overflow: 'hidden',
+        flexShrink: 0
+      }}
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange?.(option.value)}
+            style={{
+              position: 'relative',
+              height: 32,
+              padding: '0 12px',
+              border: 0,
+              background: active ? palette.accentFill : 'transparent',
+              color: active ? palette.accent : palette.textSecondary,
+              fontFamily: FONTS.sans,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {active && layoutId ? (
+              <motion.span
+                layoutId={layoutId}
+                transition={TRANSITION.move}
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  right: 12,
+                  bottom: 0,
+                  height: 1,
+                  background: palette.accent
+                }}
+              />
+            ) : null}
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 export const Toolbar = ({ children, style, nowrap = false }) => (
   <div
     style={{

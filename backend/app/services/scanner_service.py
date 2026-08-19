@@ -126,7 +126,11 @@ def launch_scan_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
         logger.error(f"Failed to count running scans: {exc}")
         return {"error": "Failed to check scan capacity."}, 500
 
-    from app.repositories.phase2b_repository import count_running_scans_for_env, fetch_host_env
+    from app.repositories.phase2b_repository import (
+        count_running_scans_for_env,
+        fetch_host_env,
+        find_open_wave_for_env,
+    )
 
     env = fetch_host_env(record_id) or {}
     env_id = env.get("id")
@@ -146,8 +150,16 @@ def launch_scan_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
             logger.error(f"Failed to count environment scans for {record_id}: {exc}")
             return {"error": "Failed to check environment scan capacity."}, 500
         allow_destructive = allow_destructive and bool(int(env.get("allow_destructive") or 0))
+        app_id = env.get("application_id")
+        if not app_id:
+            return {"error": "Launch scans from an open, started wave."}, 400
+        open_wave = find_open_wave_for_env(int(app_id), int(env_id))
+        if not open_wave:
+            return {"error": "Launch scans from an open, started wave."}, 400
+        if not open_wave.get("started_at"):
+            return {"error": "Start the wave before launching scans."}, 400
     else:
-        allow_destructive = False
+        return {"error": "Launch scans from an open, started wave."}, 400
 
     try:
         _dispatch_scan(record_id, cfg, allow_destructive=allow_destructive)

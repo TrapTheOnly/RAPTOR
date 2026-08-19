@@ -246,7 +246,7 @@ const HostsTab = ({
           hint={
             search
               ? 'Try a shorter fragment of the hostname.'
-              : 'Add hosts from Records, or file them into an environment here.'
+              : 'Add hosts from Assets, or file them into an environment here.'
           }
           actions={
             canManage && onAddHosts ? (
@@ -255,7 +255,7 @@ const HostsTab = ({
               </Button>
             ) : (
               <Button component={RouterLink} to="/records" variant="outlined">
-                Open Records
+                Open Assets
               </Button>
             )
           }
@@ -300,7 +300,7 @@ const HostsTab = ({
         }
       >
         <Text as="p" variant="meta" tone="secondary" style={{ margin: '0 0 12px' }}>
-          Search Records and file hosts into an environment. In-scope is decided later on each wave.
+          Search inventory and file hosts into an environment. In-scope is decided later on each wave.
         </Text>
         <Field
           autoFocus
@@ -321,7 +321,7 @@ const HostsTab = ({
         />
         {addResults.length === 0 ? (
           <Text variant="meta" tone="secondary">
-            {addQuery.trim().length < 2 ? 'Type at least two characters.' : 'No matching records.'}
+            {addQuery.trim().length < 2 ? 'Type at least two characters.' : 'No matching hosts.'}
           </Text>
         ) : (
           <DataList>

@@ -173,5 +173,8 @@ export const reduce = (prefersReduced, value, fallback = 0) =>
 export const LAYOUT_ID = {
   navIndicator: 'raptor-nav-indicator',
   tabIndicator: 'raptor-tab-indicator',
-  envCoverageRail: 'raptor-env-coverage-rail'
+  envCoverageRail: 'raptor-env-coverage-rail',
+  recordsKpi: 'raptor-records-kpi',
+  recordsView: 'raptor-records-view',
+  recordsSort: 'raptor-records-sort'
 };

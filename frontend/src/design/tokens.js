@@ -214,7 +214,10 @@ export const STATUS_VOCABULARY = {
   retest: { label: 'Retest', glyph: 'half', tone: 'medium' },
   fixed: { label: 'Fixed', glyph: 'check', tone: 'positive' },
   accepted: { label: 'Accepted', glyph: 'ring', tone: 'deferred' },
-  not_affected: { label: 'Not affected', glyph: 'slash', tone: 'muted' }
+  not_affected: { label: 'Not affected', glyph: 'slash', tone: 'muted' },
+  unchanged: { label: 'Active', glyph: 'check', tone: 'positive' },
+  updated: { label: 'Updated', glyph: 'half', tone: 'medium' },
+  missing: { label: 'Missing', glyph: 'slash', tone: 'critical' }
 };
 
 /**

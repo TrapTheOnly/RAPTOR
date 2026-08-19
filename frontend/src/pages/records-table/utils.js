@@ -1,4 +1,5 @@
 import Papa from 'papaparse';
+import { isEmphasisedEnv } from '../../design/tokens';
 
 export const extractParameterValues = (records, searchParameters) => {
   const values = {};
@@ -244,6 +245,8 @@ export const createFilterFromSelection = (parameter, value, searchParameters) =>
   label: `${searchParameters.find((entry) => entry.key === parameter)?.label}: ${value}`
 });
 
+export const collectUnseenGroupKeys = (seen, keys) => keys.filter((key) => !seen.has(key));
+
 export const calculateRecordStats = (recordsData) => {
   const uniqueSources = new Set(recordsData.map((record) => record.source)).size;
   return {
@@ -251,7 +254,23 @@ export const calculateRecordStats = (recordsData) => {
     active: recordsData.filter((record) => record.status === 'unchanged').length,
     updated: recordsData.filter((record) => record.status === 'updated').length,
     missing: recordsData.filter((record) => record.status === 'missing').length,
+    conflicts: recordsData.filter((record) => record.sync_conflict).length,
+    prod: recordsData.filter((record) => isEmphasisedEnv(record.environment_slug)).length,
     sources: uniqueSources
+  };
+};
+
+export const summarizeGroup = (records) => {
+  const sources = [...new Set(records.map((record) => record.source).filter(Boolean))];
+  const prod = records.filter((record) => isEmphasisedEnv(record.environment_slug)).length;
+  return {
+    hosts: records.length,
+    prod,
+    other: records.length - prod,
+    missing: records.filter((record) => record.status === 'missing').length,
+    conflicts: records.filter((record) => record.sync_conflict).length,
+    sources,
+    manualCount: records.filter((record) => record.origin === 'manual').length
   };
 };
 
@@ -267,11 +286,26 @@ export const buildAppGroups = (records) => {
     grouped.get(appKey).records.push(record);
   });
 
-  return Array.from(grouped.values()).sort((left, right) => {
-    if (left.key === 'unassigned') return 1;
-    if (right.key === 'unassigned') return -1;
-    return left.name.localeCompare(right.name);
-  });
+  return Array.from(grouped.values())
+    .map((group) => ({ ...group, ...summarizeGroup(group.records) }))
+    .sort((left, right) => {
+      if (left.key === 'unassigned') return 1;
+      if (right.key === 'unassigned') return -1;
+      if (right.missing !== left.missing) return right.missing - left.missing;
+      if (right.conflicts !== left.conflicts) return right.conflicts - left.conflicts;
+      if (right.hosts !== left.hosts) return right.hosts - left.hosts;
+      return left.name.localeCompare(right.name);
+    });
+};
+
+export const firstPorts = (value) => {
+  const ports = String(value || '')
+    .split(',')
+    .map((port) => port.trim())
+    .filter(Boolean);
+  if (ports.length === 0) return { label: '—', title: '' };
+  if (ports.length <= 2) return { label: ports.join(', '), title: ports.join(', ') };
+  return { label: `${ports.slice(0, 2).join(', ')} +${ports.length - 2}`, title: ports.join(', ') };
 };
 
 export const formatDateTime = (datetime) => {
@@ -283,6 +317,25 @@ export const formatDateTime = (datetime) => {
     minute: '2-digit'
   }).format(new Date(datetime));
 };
+
+export const formatDateTimeFull = (datetime) => {
+  if (!datetime) return '—';
+  return new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).format(new Date(datetime));
+};
+
+export const historyFieldDiffs = (item) =>
+  [
+    { key: 'ip', label: 'IP', old: item.old_ip_address, next: item.new_ip_address, mono: true },
+    { key: 'source', label: 'Source', old: item.old_source, next: item.new_source, mono: false },
+    { key: 'maintainer', label: 'Maintainer', old: item.old_maintainer, next: item.new_maintainer, mono: false }
+  ].filter((field) => (field.old || '') !== (field.next || ''));
 
 export const buildRecordsCsv = (records) => Papa.unparse(records);
 

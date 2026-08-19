@@ -15,7 +15,8 @@ export {
   Toolbar,
   Progress,
   SwitchRow,
-  Stepper
+  Stepper,
+  Segmented
 } from './chrome';
 export {
   SeverityRail,

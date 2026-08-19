@@ -3,6 +3,9 @@ import axios from 'axios';
 export const getSessionStatus = () => axios.get('/session-status');
 
 export const getRecords = () => axios.get('/api/records');
+export const getRecordById = (recordId) => axios.get(`/api/records/${recordId}`);
+export const getRecordByDomain = (domain) => axios.get(`/api/records/${encodeURIComponent(domain)}`);
+export const getRecordHistory = (recordId) => axios.get(`/api/records/${recordId}/history`);
 export const createManualRecord = (payload) => axios.post('/api/records', payload);
 
 export const getApps = () => axios.get('/api/apps');
