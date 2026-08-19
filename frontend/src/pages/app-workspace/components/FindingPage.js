@@ -140,6 +140,8 @@ const FindingPage = ({
   const wave = payload?.wave;
   const environment = payload?.environment;
   const foundHere = payload?.found_here;
+  const waveIsOpen = !wave || wave.status === 'open';
+  const canEdit = Boolean(canModify && waveIsOpen);
   const score = useMemo(() => calculateCvssBase(metrics), [metrics]);
 
   const markDirty = (updater) => {
@@ -148,7 +150,7 @@ const FindingPage = ({
   };
 
   const handleSave = async () => {
-    if (!finding) return;
+    if (!finding || !canEdit) return;
     setSaving(true);
     try {
       await patchFinding(finding.id, {
@@ -178,7 +180,7 @@ const FindingPage = ({
   };
 
   const handleImageUpload = async (file) => {
-    if (!file || !foundHere?.id) return;
+    if (!file || !foundHere?.id || !canEdit) return;
     setImageUploading(true);
     try {
       const response = await uploadPentestImage(foundHere.id, file);
@@ -254,7 +256,7 @@ const FindingPage = ({
           </>
         }
         actions={
-          canModify ? (
+          canEdit ? (
             <>
               <Button
                 variant="contained"
@@ -288,6 +290,12 @@ const FindingPage = ({
           ) : null
         }
       />
+
+      {!waveIsOpen ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This wave has ended. Finding details are read-only.
+        </Alert>
+      ) : null}
 
       <div
         style={{
@@ -334,7 +342,7 @@ const FindingPage = ({
             label="Title"
             value={title}
             onChange={(event) => markDirty(() => setTitle(event.target.value))}
-            disabled={!canModify}
+            disabled={!canEdit}
           />
           <Combo
             label="Category"
@@ -345,20 +353,20 @@ const FindingPage = ({
             getOptionLabel={(option) => option?.name || ''}
             isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
             onChange={(value) => markDirty(() => setCategory(value))}
-            disabled={!canModify}
+            disabled={!canEdit}
           />
           <Combo
             label="Auth context"
             options={AUTH_OPTIONS}
             value={authContext}
             onChange={(value) => markDirty(() => setAuthContext(value))}
-            disabled={!canModify}
+            disabled={!canEdit}
           />
           <Field
             label="Ticket URL"
             value={ticketUrl}
             onChange={(event) => markDirty(() => setTicketUrl(event.target.value))}
-            disabled={!canModify}
+            disabled={!canEdit}
             placeholder="https://…"
           />
           <Combo
@@ -370,12 +378,12 @@ const FindingPage = ({
             options={userOptions.map((name) => ({ value: name, label: name }))}
             value={collaborators}
             onChange={(value) => markDirty(() => setCollaborators(value || []))}
-            disabled={!canModify}
+            disabled={!canEdit}
           />
           <CvssCalculator
             metrics={metrics}
             score={score}
-            disabled={!canModify}
+            disabled={!canEdit}
             onChange={(next) => markDirty(() => setMetrics(next))}
           />
         </div>
@@ -392,8 +400,8 @@ const FindingPage = ({
             placeholder="What you found, how you proved it, and the impact. Paste or upload images."
             emptyText="No write-up yet. Edit to add markdown and evidence."
             minRows={16}
-            canEdit={canModify}
-            canUploadImages={Boolean(foundHere?.id)}
+            canEdit={canEdit}
+            canUploadImages={Boolean(foundHere?.id) && canEdit}
             imageUploading={imageUploading}
           />
         </div>
@@ -406,7 +414,7 @@ const FindingPage = ({
         <FindingCard
           finding={{ ...finding, title, collaborators, occurrences: finding.occurrences || [] }}
           appId={appId}
-          canModify={canModify}
+          canModify={canEdit}
           busy={busyFinding === finding.id}
           defaultExpanded
           hideNarrative

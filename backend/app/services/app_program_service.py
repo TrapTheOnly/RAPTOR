@@ -27,6 +27,28 @@ def _deny_env(allowed: Optional[List[int]], env_id: Optional[int]) -> bool:
     return int(env_id) not in {int(item) for item in allowed}
 
 
+def _reject_closed_finding_wave(finding: Optional[Dict[str, Any]]) -> Optional[Tuple[Dict[str, Any], int]]:
+    if not finding:
+        return None
+    wave_id = finding.get("discovered_wave_id")
+    if wave_id in (None, "", 0):
+        return None
+    wave = phase2b_repository.get_wave(int(wave_id))
+    return phase2b_service.reject_if_closed(wave)
+
+
+def _require_open_wave(app_id: int, wave_id: Any) -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Dict[str, Any], int]]]:
+    if wave_id in (None, "", 0):
+        return None, None
+    wave = phase2b_repository.get_wave(int(wave_id))
+    if not wave or int(wave.get("application_id") or 0) != int(app_id):
+        return None, ({"error": "Wave not found."}, 404)
+    blocked = phase2b_service.reject_if_closed(wave)
+    if blocked:
+        return None, blocked
+    return wave, None
+
+
 def _page(limit: Any, offset: Any) -> Tuple[int, int]:
     try:
         parsed_limit = int(limit)
@@ -337,6 +359,9 @@ def create_finding(app_id: int, data: Dict[str, Any], username: str) -> Tuple[Di
             if open_wave:
                 wave_id = open_wave.get("id")
     if wave_id not in (None, "", 0):
+        _wave, blocked = _require_open_wave(app_id, wave_id)
+        if blocked:
+            return blocked
         payload["discovered_wave_id"] = int(wave_id)
         wave_id = int(wave_id)
     else:
@@ -390,6 +415,12 @@ def get_finding(finding_id: str) -> Tuple[Dict[str, Any], int]:
 
 
 def patch_finding(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    current = pentest_findings_repository.get_finding(finding_id)
+    if not current:
+        return {"error": "Finding not found."}, 404
+    blocked = _reject_closed_finding_wave(current)
+    if blocked:
+        return blocked
     finding = pentest_findings_repository.update_finding_fields(finding_id, data or {})
     if not finding:
         return {"error": "Finding not found."}, 404
@@ -397,6 +428,12 @@ def patch_finding(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
 
 
 def add_occurrences(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    current = pentest_findings_repository.get_finding(finding_id)
+    if not current:
+        return {"error": "Finding not found."}, 404
+    blocked = _reject_closed_finding_wave(current)
+    if blocked:
+        return blocked
     record_ids = data.get("record_ids") or []
     if not isinstance(record_ids, list) or not record_ids:
         return {"error": "record_ids is required."}, 400
@@ -414,8 +451,18 @@ def patch_occurrence(finding_id: str, record_id: int, data: Dict[str, Any]) -> T
     status = str((data or {}).get("status") or "").strip()
     if not status:
         return {"error": "status is required."}, 400
+    cleaned = status.lower()
+    if cleaned not in pentest_findings_repository.OCCURRENCE_STATUSES:
+        allowed = ", ".join(sorted(pentest_findings_repository.OCCURRENCE_STATUSES))
+        return {"error": f"status must be one of: {allowed}."}, 400
+    current = pentest_findings_repository.get_finding(finding_id)
+    if not current:
+        return {"error": "Occurrence not found."}, 404
+    blocked = _reject_closed_finding_wave(current)
+    if blocked:
+        return blocked
     try:
-        finding = pentest_findings_repository.set_occurrence_status(finding_id, record_id, status)
+        finding = pentest_findings_repository.set_occurrence_status(finding_id, record_id, cleaned)
     except ValueError:
         allowed = ", ".join(sorted(pentest_findings_repository.OCCURRENCE_STATUSES))
         return {"error": f"status must be one of: {allowed}."}, 400
@@ -455,6 +502,15 @@ def merge_findings(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any
     loser_id = str(data.get("loser_id") or "").strip()
     if not loser_id:
         return {"error": "loser_id is required."}, 400
+    survivor = pentest_findings_repository.get_finding(finding_id)
+    if not survivor:
+        return {"error": "Finding not found."}, 404
+    loser = pentest_findings_repository.get_finding(loser_id)
+    if not loser:
+        return {"error": "Finding not found."}, 404
+    blocked = _reject_closed_finding_wave(survivor) or _reject_closed_finding_wave(loser)
+    if blocked:
+        return blocked
     finding = pentest_findings_repository.merge_findings(finding_id, loser_id)
     if not finding:
         return {"error": "Finding not found."}, 404
@@ -462,6 +518,12 @@ def merge_findings(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any
 
 
 def promote_finding(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    current = pentest_findings_repository.get_finding(finding_id)
+    if not current:
+        return {"error": "Finding not found."}, 404
+    blocked = _reject_closed_finding_wave(current)
+    if blocked:
+        return blocked
     candidates = data.get("candidate_record_ids") or []
     ids = []
     if isinstance(candidates, list):

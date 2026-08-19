@@ -419,9 +419,13 @@ def test_scanner_destructive_requires_env_and_global(monkeypatch):
     captured = {}
     monkeypatch.setattr(
         "app.repositories.phase2b_repository.fetch_host_env",
-        lambda _id: {"id": 7, "allow_destructive": 0, "max_concurrent_scans": 2},
+        lambda _id: {"id": 7, "application_id": 1, "allow_destructive": 0, "max_concurrent_scans": 2},
     )
     monkeypatch.setattr("app.repositories.phase2b_repository.count_running_scans_for_env", lambda _id: 0)
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.find_open_wave_for_env",
+        lambda *_a, **_k: {"id": 4, "status": "open", "started_at": "2026-08-01"},
+    )
     monkeypatch.setattr(
         scanner_service,
         "_dispatch_scan",
@@ -536,6 +540,7 @@ def test_claim_wave_hosts_requires_membership(monkeypatch):
             "members": ["alice", "bob"],
             "host_snapshot": [11, 12],
             "env_ids": [9],
+            "status": "open",
         },
     )
     monkeypatch.setattr(
@@ -585,3 +590,67 @@ def test_delete_wave_404_when_missing(monkeypatch):
     payload, status = svc.delete_wave(1, 99)
     assert status == 404
     assert "error" in payload
+
+
+def test_wave_is_open_treats_closed_and_ended_as_frozen():
+    assert svc.wave_is_open(None) is True
+    assert svc.wave_is_open({"status": "open"}) is True
+    assert svc.wave_is_open({"status": "closed"}) is False
+    assert svc.wave_is_open({"status": "open", "closed_at": "2026-08-01"}) is False
+    payload, status = svc.reject_if_closed({"status": "closed"})
+    assert status == 400
+    assert "ended" in payload["error"].lower()
+    assert svc.reject_if_closed({"status": "open"}) is None
+
+
+def _closed_wave():
+    return {
+        "id": 4,
+        "application_id": 1,
+        "status": "closed",
+        "closed_at": "2026-08-19",
+        "members": ["alice"],
+        "env_ids": [9],
+        "host_snapshot": [11],
+    }
+
+
+def test_closed_wave_rejects_member_and_env_and_scope_and_claim(monkeypatch):
+    monkeypatch.setattr(svc.phase2b_repository, "get_wave", lambda _id: _closed_wave())
+    members, member_status = svc.put_wave_members(1, 4, {"usernames": ["bob"]})
+    assert member_status == 400
+    assert "ended" in members["error"].lower()
+    envs, env_status = svc.put_wave_environments(1, 4, {"env_ids": [9]})
+    assert env_status == 400
+    scope, scope_status = svc.set_wave_host_scope(1, 4, {"record_ids": [11], "in_scope": False})
+    assert scope_status == 400
+    claim, claim_status = svc.claim_wave_hosts(1, 4, {"record_ids": [11]}, "alice")
+    assert claim_status == 400
+    assert claim["error"] == svc.CLOSED_WAVE_ERROR
+
+
+def test_closed_wave_still_allows_delete(monkeypatch):
+    monkeypatch.setattr(svc.phase2b_repository, "get_wave", lambda _id: _closed_wave())
+    monkeypatch.setattr(svc.phase2b_repository, "delete_wave", lambda *_a, **_k: True)
+    payload, status = svc.delete_wave(1, 4)
+    assert status == 200
+
+
+def test_scanner_rejects_without_open_started_wave(monkeypatch):
+    _scanner_ready(monkeypatch)
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.fetch_host_env",
+        lambda _id: {"id": 7, "application_id": 1, "allow_destructive": 1, "max_concurrent_scans": 2},
+    )
+    monkeypatch.setattr("app.repositories.phase2b_repository.count_running_scans_for_env", lambda _id: 0)
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.find_open_wave_for_env",
+        lambda *_a, **_k: {"id": 4, "status": "open", "started_at": None},
+    )
+    payload, status = scanner_service.launch_scan_payload(3)
+    assert status == 400
+    assert "start the wave" in payload["error"].lower()
+    monkeypatch.setattr("app.repositories.phase2b_repository.find_open_wave_for_env", lambda *_a, **_k: None)
+    payload, status = scanner_service.launch_scan_payload(3)
+    assert status == 400
+    assert "open, started wave" in payload["error"].lower()
