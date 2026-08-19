@@ -42,6 +42,10 @@ const IpSourcesSection = ({
   <Card>
     <CardContent>
       <SectionHeader icon={StorageIcon} title="IP Sources" />
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Labels are network ownership (Corp, DMZ, partner), not Prod/Dev. Environments live on
+        applications, not here.
+      </Typography>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>

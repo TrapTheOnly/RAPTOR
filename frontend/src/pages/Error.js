@@ -1,30 +1,45 @@
 import React from 'react';
-import { Box, Typography, Button, ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { Box, Typography, Button } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import { Page } from '../design/primitives';
 
-const Error = ({ errorCode, errorMessage, darkMode }) => {
-  const theme = createTheme({ palette: { mode: darkMode ? 'dark' : 'light', primary: { main: darkMode ? '#90caf9' : '#1976d2' }, secondary: { main: darkMode ? '#f48fb1' : '#d81b60' } } });
-
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor={theme.palette.background.default} p={3}>
-        <ErrorOutlineIcon sx={{ fontSize: 80, color: theme.palette.error.main, mb: 2 }} />
-        <Typography variant="h1" component="h1" gutterBottom color="error">Error {errorCode}</Typography>
-        <Typography variant="h5" component="h2" gutterBottom>{errorMessage}</Typography>
-        {errorCode === 404 && (
-          <Typography variant="body1" paragraph>
-            Oops! It looks like you've wandered into uncharted territory. This page doesn't exist.
-            <br /> <img src="https://http.cat/404" alt="404 Cat" style={{ maxWidth: "100%", height: "auto" }} />
-          </Typography>
-        )}
-        {errorCode === 401 && (<Typography variant="body1" paragraph>Hold on there! You need to be logged in to access this page.</Typography>)}
-        {errorCode === 403 && (<Typography variant="body1" paragraph>You shall not pass! You don't have permission to access this resource.</Typography>)}
-        <Button variant="contained" color="primary" component={RouterLink} to="/" sx={{ mt: 2 }}>Go to Homepage</Button>
-      </Box>
-    </ThemeProvider>
-  );
-};
+const Error = ({ errorCode, errorMessage }) => (
+  <Page>
+    <Box
+      display="flex"
+      flexDirection="column"
+      justifyContent="center"
+      alignItems="center"
+      minHeight="70vh"
+    >
+      <ErrorOutlineIcon color="error" sx={{ fontSize: 48, mb: 2 }} />
+      <Typography variant="h1" component="h1" gutterBottom>
+        Error {errorCode}
+      </Typography>
+      <Typography variant="h5" component="h2" gutterBottom>
+        {errorMessage}
+      </Typography>
+      {errorCode === 404 && (
+        <Typography variant="body1" color="text.secondary" paragraph>
+          This page does not exist.
+        </Typography>
+      )}
+      {errorCode === 401 && (
+        <Typography variant="body1" color="text.secondary" paragraph>
+          You need to be logged in to access this page.
+        </Typography>
+      )}
+      {errorCode === 403 && (
+        <Typography variant="body1" color="text.secondary" paragraph>
+          You do not have permission to access this resource.
+        </Typography>
+      )}
+      <Button variant="contained" component={RouterLink} to="/">
+        Go to homepage
+      </Button>
+    </Box>
+  </Page>
+);
 
 export default Error;

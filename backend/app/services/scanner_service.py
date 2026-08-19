@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import httpx
 
@@ -126,8 +126,31 @@ def launch_scan_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
         logger.error(f"Failed to count running scans: {exc}")
         return {"error": "Failed to check scan capacity."}, 500
 
+    from app.repositories.phase2b_repository import count_running_scans_for_env, fetch_host_env
+
+    env = fetch_host_env(record_id) or {}
+    env_id = env.get("id")
+    allow_destructive = bool(int(cfg.get("allow_destructive_tools") or 0))
+    if env_id:
+        try:
+            env_max = int(env.get("max_concurrent_scans") or 1)
+            env_running = count_running_scans_for_env(int(env_id))
+            if env_running >= max(env_max, 1):
+                return {
+                    "error": (
+                        f"Environment scan ceiling reached ({env_max}). "
+                        "Wait for a running scan in this environment to finish."
+                    )
+                }, 429
+        except Exception as exc:
+            logger.error(f"Failed to count environment scans for {record_id}: {exc}")
+            return {"error": "Failed to check environment scan capacity."}, 500
+        allow_destructive = allow_destructive and bool(int(env.get("allow_destructive") or 0))
+    else:
+        allow_destructive = False
+
     try:
-        _dispatch_scan(record_id, cfg)
+        _dispatch_scan(record_id, cfg, allow_destructive=allow_destructive)
     except Exception as exc:
         logger.error(f"Failed to dispatch scan for record {record_id}: {exc}")
         return {"error": "Failed to dispatch scan to scanner service."}, 502
@@ -152,7 +175,9 @@ def launch_scan_payload(record_id: int) -> Tuple[Dict[str, Any], int]:
     return {"message": "Scan launched.", "record_id": record_id}, 202
 
 
-def _dispatch_scan(record_id: int, cfg: Dict[str, Any]) -> None:
+def _dispatch_scan(record_id: int, cfg: Dict[str, Any], allow_destructive: Optional[bool] = None) -> None:
+    if allow_destructive is None:
+        allow_destructive = bool(int(cfg.get("allow_destructive_tools") or 0))
     url = f"{SCANNER_BASE_URL}/scans"
     headers = {"X-Scanner-Token": SCANNER_INTERNAL_TOKEN}
     body = {
@@ -165,7 +190,7 @@ def _dispatch_scan(record_id: int, cfg: Dict[str, Any]) -> None:
         "proxy_url": str(cfg.get("proxy_url") or ""),
         "proxy_username": str(cfg.get("proxy_username") or ""),
         "proxy_password": str(cfg.get("proxy_password") or ""),
-        "allow_destructive_tools": bool(int(cfg.get("allow_destructive_tools") or 0)),
+        "allow_destructive_tools": bool(allow_destructive),
     }
     with httpx.Client(timeout=10.0) as client:
         resp = client.post(url, json=body, headers=headers)

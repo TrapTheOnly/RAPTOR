@@ -32,6 +32,7 @@ import {
   dismissNotification,
   dismissAllNotifications,
 } from '../services/notifications';
+import { notificationColor } from '../theme/tokens';
 
 const NOTIFICATION_ICONS = {
   collaborator_added: PersonAdd,
@@ -42,14 +43,6 @@ const NOTIFICATION_ICONS = {
   zone_sync_failure: CloudOff,
 };
 
-const NOTIFICATION_COLORS = {
-  collaborator_added: '#4CAF50',
-  collaborator_removed: '#FF9800',
-  finding_added: '#F44336',
-  sync_conflict: '#FF9800',
-  zone_sync_success: '#4CAF50',
-  zone_sync_failure: '#F44336',
-};
 
 function timeAgo(dateString) {
   const now = new Date();
@@ -205,7 +198,7 @@ const NotificationBell = ({ username }) => {
           <List disablePadding sx={{ overflow: 'auto', maxHeight: 380 }}>
             {notifications.map((notification, index) => {
               const IconComp = NOTIFICATION_ICONS[notification.type] || NotificationsOutlined;
-              const iconColor = NOTIFICATION_COLORS[notification.type] || theme.palette.text.secondary;
+              const iconColor = notificationColor(notification.type, theme.palette.mode);
 
               return (
                 <React.Fragment key={notification.id}>

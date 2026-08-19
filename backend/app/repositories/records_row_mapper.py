@@ -27,11 +27,17 @@ RECORD_WITH_PENTEST_AND_APP_SELECT = """
         r.maintainer,
         r.description,
         r.application_id,
+        r.environment_id,
+        r.in_scope,
+        r.env_suggestion,
         p.open_ports,
-        a.name AS application_name
+        a.name AS application_name,
+        e.slug AS environment_slug,
+        e.display_name AS environment_name
     FROM records r
     LEFT JOIN pentest_data p ON r.id = p.record_id
     LEFT JOIN applications a ON r.application_id = a.id
+    LEFT JOIN environments e ON r.environment_id = e.id
 """
 
 

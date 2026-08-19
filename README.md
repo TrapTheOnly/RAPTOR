@@ -359,6 +359,8 @@ MCP token/key rotation runbook:
 
 - Phase 0 deploy gate: see `docs/phase-0-deploy-gate.md`
 - Phase 1 collector agent: see `docs/phase-1-collector.md`
+- Phase 2a app program (apps, environments, multi-host findings): see `docs/phase-2-app-program.md`
+- Phase 2b waves, export presets, env ACL, zones, shared infra, signed PDFs: see `docs/phase-2b-program.md`
 - Documentation and onboarding polish
 - Continued hardening of auth/session policies
 - UX refinements in records and pentest workflows

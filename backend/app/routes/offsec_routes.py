@@ -15,6 +15,7 @@ from app.services.offsec import (
     get_pentest_collaborators,
     get_generated_report,
     get_pentest_data,
+    get_pentest_record,
     get_pentest_image,
     get_pentest_users,
     get_report,
@@ -32,6 +33,7 @@ from app.services.offsec import (
 def register_offsec_routes(app: Flask) -> None:
     app.add_url_rule("/pentest/<int:record_id>", methods=["POST"], view_func=create_or_update_pentest_data)
     app.add_url_rule("/pentest/records", methods=["GET"], view_func=get_pentest_data)
+    app.add_url_rule("/pentest/<int:record_id>", methods=["GET"], view_func=get_pentest_record)
     app.add_url_rule("/pentest/<int:record_id>", methods=["DELETE"], view_func=delete_pentest_data)
     app.add_url_rule("/pentest/<int:record_id>/report", methods=["GET"], view_func=get_report)
     app.add_url_rule("/pentest/<int:record_id>/report", methods=["DELETE"], view_func=delete_report_route)

@@ -294,6 +294,75 @@ def store_records_in_db(
     conn.close()
 
 
+def _assign_unassigned_env(cursor, record_id: int, application_id: Optional[int]) -> None:
+    if not application_id:
+        cursor.execute(
+            "UPDATE records SET environment_id = NULL WHERE id = ?",
+            (record_id,),
+        )
+        return
+    from app.repositories.environments_repository import ensure_unassigned_environment
+
+    env_id = ensure_unassigned_environment(cursor, application_id)
+    if not env_id:
+        return
+    cursor.execute(
+        """
+        UPDATE records
+        SET environment_id = ?, application_id = ?
+        WHERE id = ? AND environment_id IS NULL
+        """,
+        (env_id, application_id, record_id),
+    )
+
+
+def _set_host_environment(
+    cursor,
+    record_id: int,
+    application_id: Optional[int],
+    environment_id: Optional[int],
+) -> None:
+    if not application_id:
+        cursor.execute(
+            "UPDATE records SET environment_id = NULL, application_id = NULL WHERE id = ?",
+            (record_id,),
+        )
+        return
+    if environment_id:
+        cursor.execute(
+            "SELECT id FROM environments WHERE id = ? AND application_id = ?",
+            (environment_id, application_id),
+        )
+        if cursor.fetchone():
+            cursor.execute(
+                """
+                UPDATE records
+                SET environment_id = ?, application_id = ?
+                WHERE id = ?
+                """,
+                (environment_id, application_id, record_id),
+            )
+            return
+    cursor.execute("SELECT environment_id FROM records WHERE id = ?", (record_id,))
+    current = cursor.fetchone()
+    current_env = None
+    if current:
+        current_env = current["environment_id"] if isinstance(current, dict) else current[0]
+    if current_env:
+        cursor.execute(
+            "SELECT id FROM environments WHERE id = ? AND application_id = ?",
+            (current_env, application_id),
+        )
+        if cursor.fetchone():
+            cursor.execute(
+                "UPDATE records SET application_id = ? WHERE id = ?",
+                (application_id, record_id),
+            )
+            return
+    cursor.execute("UPDATE records SET environment_id = NULL WHERE id = ?", (record_id,))
+    _assign_unassigned_env(cursor, record_id, application_id)
+
+
 def create_manual_record(
     *,
     name: str,
@@ -304,6 +373,7 @@ def create_manual_record(
     open_ports: str,
     application_id: Optional[int],
     username: str,
+    environment_id: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> Dict[str, Any]:
     conn = get_db_connection(db_path)
@@ -339,6 +409,7 @@ def create_manual_record(
     if record_id is None:
         conn.close()
         raise RuntimeError("Failed to create manual record.")
+    _set_host_environment(c, record_id, application_id, environment_id)
 
     _insert_record_history(
         c,
@@ -443,6 +514,7 @@ def update_record(
     open_ports: str,
     application_id: Optional[int],
     username: str,
+    environment_id: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> Optional[str]:
     conn = get_db_connection(db_path)
@@ -474,6 +546,7 @@ def update_record(
         """,
         (application_owner, maintainer, description, application_id, record_id),
     )
+    _set_host_environment(c, record_id, application_id, environment_id)
 
     c.execute("SELECT record_id FROM pentest_data WHERE record_id = ?", (record_id,))
     pentest_exists = c.fetchone()

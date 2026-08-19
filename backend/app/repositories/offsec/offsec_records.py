@@ -323,6 +323,7 @@ def get_pentest_data_internal(record_id=None):
                         r.maintainer,
                         r.description,
                         r.application_id,
+                        r.environment_id,
                         a.name AS application_name
                     FROM records r
                     LEFT JOIN applications a ON r.application_id = a.id
@@ -354,6 +355,16 @@ def get_pentest_data_internal(record_id=None):
                     findings = list_findings_for_record(record_id)
                 if findings:
                     payload["vulnerabilities"] = findings
+                env_id = record.get("environment_id")
+                if env_id:
+                    from app.repositories.phase2b_repository import list_env_checklists
+                    from app.services.phase2b_service import merge_checklist_keys
+
+                    extra_keys = list_env_checklists(int(env_id))
+                    if extra_keys:
+                        payload["checklist_states"] = merge_checklist_keys(
+                            payload.get("checklist_states"), extra_keys
+                        )
                 return payload
 
             c.execute(

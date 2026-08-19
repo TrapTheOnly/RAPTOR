@@ -113,6 +113,15 @@ def generate_report(record_id):
             )
             generated_relative_path = save_report(record_id, pdf_content)
 
+            from app.services.app_report_service import record_host_export
+
+            record_host_export(
+                record_id,
+                generated_relative_path,
+                template_row["id"],
+                session.get("username") or "",
+            )
+
             c.execute(
                 """
                 SELECT generated_report_file

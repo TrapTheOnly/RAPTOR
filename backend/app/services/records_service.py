@@ -77,6 +77,13 @@ def create_manual_record(data: Dict[str, Any], username: str) -> Tuple[Dict[str,
             application_id = int(raw_application_id)
         except (TypeError, ValueError):
             return {"error": "Invalid application ID."}, 400
+    raw_environment_id = data.get("environment_id")
+    environment_id = None
+    if raw_environment_id not in (None, "", "null"):
+        try:
+            environment_id = int(raw_environment_id)
+        except (TypeError, ValueError):
+            return {"error": "Invalid environment ID."}, 400
 
     try:
         created = records_repository.create_manual_record(
@@ -88,6 +95,7 @@ def create_manual_record(data: Dict[str, Any], username: str) -> Tuple[Dict[str,
             open_ports=open_ports,
             application_id=application_id,
             username=username,
+            environment_id=environment_id,
         )
     except ValueError:
         return {"error": "Application not found."}, 404
@@ -119,6 +127,13 @@ def update_record(record_id: int, data: Dict[str, Any], username: str) -> Tuple[
                 application_id = int(raw_application_id)
             except (TypeError, ValueError):
                 return {"error": "Invalid application ID."}, 400
+        raw_environment_id = data.get("environment_id")
+        environment_id = None
+        if raw_environment_id not in (None, "", "null"):
+            try:
+                environment_id = int(raw_environment_id)
+            except (TypeError, ValueError):
+                return {"error": "Invalid environment ID."}, 400
 
         result = records_repository.update_record(
             record_id=record_id,
@@ -128,6 +143,7 @@ def update_record(record_id: int, data: Dict[str, Any], username: str) -> Tuple[
             open_ports=open_ports,
             application_id=application_id,
             username=username,
+            environment_id=environment_id,
         )
         if result == "application_not_found":
             return {"error": "Application not found."}, 404
@@ -183,7 +199,20 @@ def update_application(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, Any
         return {"error": "Invalid application name."}, 400
 
     try:
-        exists = applications_repository.update_application(app_id, sanitized)
+        extra = {
+            key: data.get(key)
+            for key in (
+                "owner",
+                "data_class",
+                "roe_link",
+                "cookie_domain",
+                "idp",
+                "token_audience",
+                "app_lead",
+            )
+            if key in (data or {})
+        }
+        exists = applications_repository.update_application(app_id, sanitized, extra_fields=extra)
         if not exists:
             return {"error": "Application not found."}, 404
         return {"message": "Application updated.", "name": sanitized}, 200
@@ -196,9 +225,11 @@ def update_application(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, Any
 
 def delete_application(app_id: int) -> Tuple[Dict[str, Any], int]:
     try:
-        exists = applications_repository.delete_application(app_id)
-        if not exists:
+        result = applications_repository.delete_application(app_id)
+        if result == "not_found":
             return {"error": "Application not found."}, 404
+        if result == "in_use":
+            return {"error": "Application has in-scope hosts, findings, or exports."}, 409
         return {"message": "Application deleted."}, 200
     except Exception as e:
         logger.error(f"Error deleting application: {e}")

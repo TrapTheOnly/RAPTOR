@@ -29,24 +29,22 @@ import {
 } from '@mui/icons-material';
 import { SOURCE_COLORS } from '../constants';
 import { formatDateTime } from '../utils';
+import { recordStatusMeta } from '../../../theme/tokens';
 
 const getStatusChip = (status, theme) => {
-  const configs = {
-    unchanged: { label: 'Active', color: '#4CAF50' },
-    updated: { label: 'Updated', color: '#2196F3' },
-    missing: { label: 'Missing', color: '#FF9800' }
+  const config = recordStatusMeta(status, theme.palette.mode) || {
+    label: 'Unknown',
+    color: theme.palette.text.secondary
   };
-
-  const config = configs[status] || { label: 'Unknown', color: theme.palette.text.secondary };
 
   return (
     <Chip
       size="small"
       label={config.label}
       sx={{
-        backgroundColor: alpha(config.color, 0.1),
+        backgroundColor: alpha(config.color, 0.12),
         color: config.color,
-        fontWeight: 500,
+        fontWeight: 600,
         fontSize: '0.75rem'
       }}
     />
@@ -105,6 +103,7 @@ const RecordCard = ({
   isEditing,
   editForm,
   apps,
+  environments = [],
   canModifyRecords,
   canDeleteRecords,
   canResolveSyncConflicts,
@@ -212,9 +211,13 @@ const RecordCard = ({
                     fullWidth
                     label="Application"
                     value={editForm.application_id}
-                    onChange={(event) =>
-                      onUpdateEditForm({ ...editForm, application_id: event.target.value })
-                    }
+                    onChange={(event) => {
+                      onUpdateEditForm({
+                        ...editForm,
+                        application_id: event.target.value,
+                        environment_id: ''
+                      });
+                    }}
                     sx={{ mb: 2 }}
                     size="small"
                   >
@@ -222,6 +225,25 @@ const RecordCard = ({
                     {apps.map((app) => (
                       <MenuItem key={app.id} value={app.id}>
                         {app.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Environment"
+                    value={editForm.environment_id || ''}
+                    onChange={(event) =>
+                      onUpdateEditForm({ ...editForm, environment_id: event.target.value })
+                    }
+                    sx={{ mb: 2 }}
+                    size="small"
+                    disabled={!editForm.application_id}
+                  >
+                    <MenuItem value="">Unassigned</MenuItem>
+                    {(environments || []).map((env) => (
+                      <MenuItem key={env.id} value={env.id}>
+                        {env.display_name}
                       </MenuItem>
                     ))}
                   </TextField>

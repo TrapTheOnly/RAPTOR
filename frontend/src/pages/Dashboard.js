@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Grid, LinearProgress, Typography } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import DashboardHeader from './dashboard/components/DashboardHeader';
 import KpiGrid from './dashboard/components/KpiGrid';
 import TrendChartCard from './dashboard/components/TrendChartCard';
@@ -7,7 +8,7 @@ import RecentActivityCard from './dashboard/components/RecentActivityCard';
 import TopRiskAssetsCard from './dashboard/components/TopRiskAssetsCard';
 import TesterWorkloadCard from './dashboard/components/TesterWorkloadCard';
 import CoverageBreakdownCard from './dashboard/components/CoverageBreakdownCard';
-import { DASHBOARD_ACCENTS } from './dashboard/constants';
+import { dashboardAccents } from '../theme/tokens';
 import { fetchDashboardSources } from './dashboard/services';
 import { buildDashboardViewModel } from './dashboard/utils';
 
@@ -41,6 +42,7 @@ const EMPTY_VIEW_MODEL = {
 };
 
 const Dashboard = () => {
+  const theme = useTheme();
   const [viewModel, setViewModel] = useState(EMPTY_VIEW_MODEL);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -68,6 +70,8 @@ const Dashboard = () => {
   const { kpis, trends, recentActivity, topRiskAssets, testerWorkload, generatedAt } =
     viewModel;
 
+  const accents = useMemo(() => dashboardAccents(theme.palette.mode), [theme.palette.mode]);
+
   const kpiItems = useMemo(
     () => [
       {
@@ -75,7 +79,7 @@ const Dashboard = () => {
         label: 'Total Assets',
         value: kpis.totalAssets.toLocaleString(),
         subtitle: `${kpis.ipSourceCount} source groups tracked`,
-        color: DASHBOARD_ACCENTS.assets
+        color: accents.assets
       },
       {
         key: 'coverage',
@@ -83,52 +87,52 @@ const Dashboard = () => {
         value: `${kpis.coveragePct}%`,
         subtitle: `${kpis.startedTests}/${kpis.totalAssets} assets started`,
         progress: kpis.coveragePct,
-        color: DASHBOARD_ACCENTS.coverage
+        color: accents.coverage
       },
       {
         key: 'open-risk',
         label: 'Open Risk Assets',
         value: kpis.openRiskAssets,
         subtitle: `${kpis.unresolvedVulnerabilityIndicators} unresolved indicators`,
-        color: DASHBOARD_ACCENTS.risk
+        color: accents.risk
       },
       {
         key: 'throughput',
         label: 'Avg Test Cycle',
         value: `${kpis.averageCycleDays || 0}d`,
         subtitle: `${kpis.completedTests} completed, ${kpis.inProgressTests} in progress`,
-        color: DASHBOARD_ACCENTS.throughput
+        color: accents.throughput
       },
       {
         key: 'started-30d',
         label: 'Started (30d)',
         value: kpis.startedLast30d,
         subtitle: 'Recently initiated tests',
-        color: DASHBOARD_ACCENTS.started
+        color: accents.started
       },
       {
         key: 'completed-30d',
         label: 'Completed (30d)',
         value: kpis.completedLast30d,
         subtitle: `Fix rate ${kpis.fixRatePct}%`,
-        color: DASHBOARD_ACCENTS.completed
+        color: accents.completed
       },
       {
         key: 'new-vulns-30d',
         label: 'New Vuln Findings (30d)',
         value: kpis.newDetectedVulns30d,
         subtitle: `${kpis.vulnerableAssets} vulnerable assets`,
-        color: DASHBOARD_ACCENTS.detected
+        color: accents.detected
       },
       {
         key: 'fixed-assets',
         label: 'Fixed Assets',
         value: kpis.fixedAssets,
         subtitle: 'Assets marked remediated',
-        color: DASHBOARD_ACCENTS.resolved
+        color: accents.resolved
       }
     ],
-    [kpis]
+    [kpis, accents]
   );
 
   if (loading && kpis.totalAssets === 0) {
@@ -165,13 +169,13 @@ const Dashboard = () => {
               {
                 key: 'started',
                 label: 'Started',
-                color: DASHBOARD_ACCENTS.started,
+                color: accents.started,
                 data: trends.testSeries.started
               },
               {
                 key: 'completed',
                 label: 'Completed',
-                color: DASHBOARD_ACCENTS.completed,
+                color: accents.completed,
                 data: trends.testSeries.completed
               }
             ]}
@@ -186,13 +190,13 @@ const Dashboard = () => {
               {
                 key: 'detected',
                 label: 'Detected',
-                color: DASHBOARD_ACCENTS.detected,
+                color: accents.detected,
                 data: trends.vulnerabilitySeries.detected
               },
               {
                 key: 'resolved',
                 label: 'Resolved',
-                color: DASHBOARD_ACCENTS.resolved,
+                color: accents.resolved,
                 data: trends.vulnerabilitySeries.resolved
               }
             ]}

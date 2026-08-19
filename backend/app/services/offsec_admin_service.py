@@ -3,83 +3,53 @@ from typing import Any, Dict, Tuple
 
 from app.config import DB_PATH
 from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
-from app.integrations.storage.offsec_storage import delete_report
 
 logger = logging.getLogger(__name__)
+
+REQUIRED_RESET_PHRASE = "RESET NOTEBOOKS KEEP FINDINGS"
 
 
 def reset_keep_open_vulnerabilities(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     confirm = data.get("confirm") is True
     phrase = data.get("phrase")
-    required_phrase = "RESET ALL BUT OPEN VULNERABILITIES"
-    if not confirm or phrase != required_phrase:
+    if not confirm or phrase != REQUIRED_RESET_PHRASE:
         return {"error": "Confirmation phrase required."}, 400
 
     try:
         with get_db_connection(DB_PATH) as conn:
             conn.row_factory = ROW_AS_DICT
             c = conn.cursor()
-
             c.execute(
                 """
-                SELECT p.*
-                FROM pentest_data p
-                WHERE NOT (p.vulnerable = 1 AND p.vulnerability_fixed = 0)
+                UPDATE pentest_data
+                SET status = 'Not Started',
+                    notes = '',
+                    owasp_checklist = NULL,
+                    checklist_states = NULL,
+                    open_ports = COALESCE(open_ports, ''),
+                    tested_by = NULL,
+                    test_start_date = NULL,
+                    test_end_date = NULL
                 """
             )
-            rows = c.fetchall()
-
-            report_deleted = 0
-            report_delete_errors = 0
-            generated_report_deleted = 0
-            generated_report_delete_errors = 0
-
-            for row in rows:
-                if row["report_file"]:
-                    try:
-                        delete_report(row["report_file"])
-                        report_deleted += 1
-                    except Exception:
-                        report_delete_errors += 1
-                if "generated_report_file" in row.keys() and row["generated_report_file"]:
-                    try:
-                        delete_report(row["generated_report_file"])
-                        generated_report_deleted += 1
-                    except Exception:
-                        generated_report_delete_errors += 1
-
-            c.execute(
-                """
-                DELETE FROM pentest_data
-                WHERE NOT (vulnerable = 1 AND vulnerability_fixed = 0)
-                """
-            )
-            deleted_count = c.rowcount
-
-            c.execute(
-                """
-                SELECT COUNT(*)
-                FROM pentest_data
-                WHERE vulnerable = 1 AND vulnerability_fixed = 0
-                """
-            )
-            remaining_open = c.fetchone()[0]
-
+            reset_count = c.rowcount
+            c.execute("SELECT COUNT(*) AS n FROM pentest_findings WHERE status IN ('open', 'draft')")
+            remaining = c.fetchone()
+            remaining_open = int(remaining["n"] if isinstance(remaining, dict) else remaining[0] or 0)
             conn.commit()
 
         stats = {
-            "total_reset": deleted_count,
+            "total_reset": reset_count,
             "remaining_open": remaining_open,
-            "reports_deleted": report_deleted,
-            "report_delete_errors": report_delete_errors,
-            "generated_reports_deleted": generated_report_deleted,
-            "generated_report_delete_errors": generated_report_delete_errors,
+            "reports_deleted": 0,
+            "report_delete_errors": 0,
+            "generated_reports_deleted": 0,
+            "generated_reports_delete_errors": 0,
         }
-
         return {
-            "message": "Pentest progress reset (open vulnerabilities preserved).",
+            "message": "Notebook fields reset. Findings and frozen reports were kept.",
             "stats": stats,
         }, 200
     except Exception as e:
-        logger.error(f"Error resetting pentest progress: {e}")
+        logger.error(f"Error resetting pentest notebooks: {e}")
         return {"error": "Failed to reset pentest progress."}, 500

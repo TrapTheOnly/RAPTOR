@@ -56,7 +56,7 @@ import UserManagementSection from './admin-settings/components/users/UserManagem
 import EmailSettingsPanel from './admin-settings/components/EmailSettingsPanel';
 import ScannerSettingsPanel from './admin-settings/components/ScannerSettingsPanel';
 
-const REQUIRED_RESET_PHRASE = 'RESET ALL BUT OPEN VULNERABILITIES';
+const REQUIRED_RESET_PHRASE = 'RESET NOTEBOOKS KEEP FINDINGS';
 const EMPTY_CHECKLIST_TEMPLATE_FORM = {
   key: '',
   name: '',
@@ -1173,7 +1173,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         setResetStats(response.data.stats || null);
         showMessage(
           'success',
-          'Pentest progress reset successfully (open vulnerabilities preserved).'
+          'Notebooks reset. Findings and frozen reports were kept.'
         );
         handleCloseResetDialog();
       }
