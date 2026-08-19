@@ -340,6 +340,7 @@ test('records inventory uses Operator Console primitives', () => {
   });
   const page = readSource('../../RecordsTable.js');
   expect(page).toContain("from '../design/primitives'");
+  expect(page).toContain("from '../components/program/PageHeader'");
   expect(page).toContain('<Progress deferred');
   expect(page).toContain('Asset Inventory');
   expect(page).toContain('INVENTORY_TABLE');

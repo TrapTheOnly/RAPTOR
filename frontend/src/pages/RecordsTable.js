@@ -33,11 +33,11 @@ import {
   filterRecords,
   generateSearchSuggestions
 } from './records-table/utils';
+import PageHeader from '../components/program/PageHeader';
 import {
   Button,
   EmptyState,
   Page,
-  PageHeader,
   Panel,
   Progress,
   Surface,
