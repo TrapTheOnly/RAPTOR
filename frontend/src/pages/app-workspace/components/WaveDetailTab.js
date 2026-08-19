@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Checkbox } from '@mui/material';
+import { Alert, Checkbox } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { ArrowBack, DeleteOutline, Flag, Monitor, RestartAlt, SmartToy } from '@mui/icons-material';
 import {
@@ -163,6 +163,12 @@ const WaveDetailTab = ({
         }
       />
 
+      {!isOpen ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This wave has ended. Members, hosts, scans, and findings are read-only.
+        </Alert>
+      ) : null}
+
       <Tabs
         value={section}
         onChange={setSection}
@@ -262,11 +268,11 @@ const WaveDetailTab = ({
               options={userOptions}
               value={currentMembers}
               onChange={(value) => setMemberDraft(value || [])}
-              disabled={!canModify}
+              disabled={!canModify || !isOpen}
               placeholder="Add pentest users"
               hint="Save to apply testers to this wave and its hosts."
             />
-            {canModify && memberDraft ? (
+            {canModify && isOpen && memberDraft ? (
               <div style={{ marginTop: 12 }}>
                 <Button
                   size="small"
@@ -439,7 +445,7 @@ const WaveDetailTab = ({
                 key={finding.id}
                 appId={appId}
                 finding={finding}
-                canModify={canModify}
+                canModify={canModify && isOpen}
                 busy={busyFinding === finding.id}
                 onOccurrenceStatusChange={onOccurrenceStatusChange}
                 onOpenTicket={onOpenTicket}

@@ -15,6 +15,22 @@ PACKAGES = {
     "internal_draft": {"include_drafts": True, "occurrence_statuses": None, "prod_default": False},
 }
 
+CLOSED_WAVE_ERROR = "This wave has ended. Findings and wave details are read-only."
+
+
+def wave_is_open(wave: Optional[Dict[str, Any]]) -> bool:
+    if not wave:
+        return True
+    if wave.get("closed_at"):
+        return False
+    return str(wave.get("status") or "").strip().lower() == "open"
+
+
+def reject_if_closed(wave: Optional[Dict[str, Any]]) -> Optional[Tuple[Dict[str, Any], int]]:
+    if wave_is_open(wave):
+        return None
+    return {"error": CLOSED_WAVE_ERROR}, 400
+
 
 def _is_override(role: str) -> bool:
     return str(role or "").strip().lower() in {"admin", "manager"}
@@ -161,6 +177,9 @@ def put_wave_environments(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tu
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
+    blocked = reject_if_closed(wave)
+    if blocked:
+        return blocked
     env_ids = _parse_env_ids(data or {})
     if not env_ids:
         return {"error": "Pick at least one environment for this wave."}, 400
@@ -178,6 +197,9 @@ def set_wave_host_scope(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tupl
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
+    blocked = reject_if_closed(wave)
+    if blocked:
+        return blocked
     try:
         record_ids = [int(item) for item in (data.get("record_ids") or [])]
     except (TypeError, ValueError):
@@ -205,6 +227,9 @@ def put_wave_members(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tuple[A
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
+    blocked = reject_if_closed(wave)
+    if blocked:
+        return blocked
     names = data.get("usernames") if isinstance(data, dict) else None
     if not isinstance(names, list):
         return {"error": "usernames must be a list."}, 400
@@ -221,6 +246,9 @@ def claim_wave_hosts(app_id: int, wave_id: int, data: Dict[str, Any], username: 
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
+    blocked = reject_if_closed(wave)
+    if blocked:
+        return blocked
     actor = str(username or "").strip()
     members = [str(name).strip() for name in (wave.get("members") or []) if str(name).strip()]
     opener = str(wave.get("opened_by") or "").strip()

@@ -327,3 +327,67 @@ def test_get_finding_404(monkeypatch):
     payload, status = app_program_service.get_finding("missing")
     assert status == 404
     assert "error" in payload
+
+
+def test_closed_wave_rejects_finding_mutations(monkeypatch):
+    finding = {"id": "f1", "discovered_wave_id": 4, "title": "CORS"}
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: finding,
+    )
+    monkeypatch.setattr(
+        app_program_service.phase2b_repository,
+        "get_wave",
+        lambda *_a, **_k: {"id": 4, "application_id": 1, "status": "closed"},
+    )
+    patched, status = app_program_service.patch_finding("f1", {"title": "nope"})
+    assert status == 400
+    assert "ended" in patched["error"].lower()
+    occ, occ_status = app_program_service.patch_occurrence("f1", 11, {"status": "fixed"})
+    assert occ_status == 400
+    extra, extra_status = app_program_service.add_occurrences("f1", {"record_ids": [12]})
+    assert extra_status == 400
+    promoted, promote_status = app_program_service.promote_finding("f1", {})
+    assert promote_status == 400
+    merged, merge_status = app_program_service.merge_findings("f1", {"loser_id": "f2"})
+    assert merge_status == 400
+
+
+def test_create_finding_rejects_closed_wave(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.applications_repository,
+        "fetch_application",
+        lambda *_a, **_k: {"id": 1},
+    )
+    monkeypatch.setattr(
+        app_program_service,
+        "fetch_record_by_id",
+        lambda *_a, **_k: {"id": 11, "application_id": 1, "environment_id": 9},
+    )
+    monkeypatch.setattr(
+        app_program_service.phase2b_repository,
+        "get_wave",
+        lambda *_a, **_k: {"id": 4, "application_id": 1, "status": "closed"},
+    )
+    payload, status = app_program_service.create_finding(
+        1, {"record_id": 11, "wave_id": 4, "title": "CORS"}, "alice"
+    )
+    assert status == 400
+    assert "ended" in payload["error"].lower()
+
+
+def test_patch_finding_allows_unassigned_finding(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {"id": "f1", "discovered_wave_id": None},
+    )
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "update_finding_fields",
+        lambda *_a, **_k: {"id": "f1", "title": "kept"},
+    )
+    payload, status = app_program_service.patch_finding("f1", {"title": "kept"})
+    assert status == 200
+    assert payload["finding"]["title"] == "kept"
