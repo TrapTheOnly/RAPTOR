@@ -80,26 +80,24 @@ const parseNumeric = (value) => {
 
 export const Metric = ({ value, style }) => {
   const parsed = parseNumeric(value);
-  const source = useMotionValue(parsed ? parsed.number : 0);
+  const numericValue = parsed ? parsed.number : null;
+  const source = useMotionValue(0);
   const decimals = parsed && String(parsed.number).includes('.') ? 1 : 0;
   const display = useTransform(source, (latest) => {
     if (!parsed) return String(value ?? '');
     return `${parsed.prefix}${latest.toFixed(decimals)}${parsed.suffix}`;
   });
-  const last = useRef(parsed ? parsed.number : null);
+  const targetRef = useRef(null);
+  const controlsRef = useRef(null);
 
   useEffect(() => {
-    if (!parsed) return undefined;
-    if (last.current === null) {
-      source.set(parsed.number);
-      last.current = parsed.number;
-      return undefined;
-    }
-    if (last.current === parsed.number) return undefined;
-    last.current = parsed.number;
-    const controls = animate(source, parsed.number, TRANSITION.value);
-    return () => controls.stop();
-  }, [parsed, source, value]);
+    if (numericValue === null) return undefined;
+    if (targetRef.current === numericValue) return undefined;
+    targetRef.current = numericValue;
+    controlsRef.current?.stop();
+    controlsRef.current = animate(source, numericValue, TRANSITION.value);
+    return undefined;
+  }, [numericValue, source]);
 
   return (
     <motion.span

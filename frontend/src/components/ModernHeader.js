@@ -39,7 +39,7 @@ const ModernHeader = ({
 
   const navigationItems = [
     { label: 'Dashboard', path: '/dashboard', visible: hasPermission('view_dashboard') },
-    { label: 'Records', path: '/records', visible: hasPermission('view_records') },
+    { label: 'Assets', path: '/records', visible: hasPermission('view_records') },
     { label: 'Security', path: '/pentest', visible: hasPermission('view_security_dashboard') },
     { label: 'Settings', path: '/settings', visible: hasPermission('view_settings') }
   ].filter((item) => item.visible);

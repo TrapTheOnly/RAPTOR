@@ -1,104 +1,34 @@
 import React from 'react';
+import { History } from '@mui/icons-material';
+import { motion } from 'motion/react';
 import {
-  alpha,
-  Avatar,
-  Box,
   Button,
-  Card,
-  CardContent,
-  Chip,
-  Collapse,
-  Divider,
-  Grid,
-  IconButton,
-  MenuItem,
-  Stack,
-  TextField,
-  Typography
-} from '@mui/material';
-import {
-  Cancel,
-  Delete,
-  Edit,
-  ExpandLess,
-  ExpandMore,
-  History,
-  SyncProblem,
-  Save,
-  Security
-} from '@mui/icons-material';
-import { SOURCE_COLORS } from '../constants';
-import { formatDateTime } from '../utils';
-import { recordStatusMeta } from '../../../theme/tokens';
+  Combo,
+  EnvTag,
+  Field,
+  Mono,
+  StatusGlyph,
+  Tag,
+  Text
+} from '../../../design/primitives';
+import { FONTS, RADIUS, ROW, SPACE } from '../../../design/tokens';
+import { DURATION, CSS_EASE, disclosureVariants } from '../../../design/motion';
+import { usePalette } from '../../../design/usePalette';
+import { INVENTORY_CELL, INVENTORY_COL_COUNT_FLAT, INVENTORY_COL_COUNT_GROUPED } from '../constants';
+import { firstPorts, formatDateTime } from '../utils';
 
-const getStatusChip = (status, theme) => {
-  const config = recordStatusMeta(status, theme.palette.mode) || {
-    label: 'Unknown',
-    color: theme.palette.text.secondary
-  };
-
-  return (
-    <Chip
-      size="small"
-      label={config.label}
-      sx={{
-        backgroundColor: alpha(config.color, 0.12),
-        color: config.color,
-        fontWeight: 600,
-        fontSize: '0.75rem'
-      }}
-    />
-  );
-};
-
-const getSourceAvatar = (source) => (
-  <Avatar
-    sx={{
-      width: 24,
-      height: 24,
-      fontSize: '0.75rem',
-      backgroundColor: SOURCE_COLORS[source] || SOURCE_COLORS.Other,
-      mr: 1
-    }}
-  >
-    {source?.charAt(0) || '?'}
-  </Avatar>
-);
-
-const getOriginChip = (origin, theme) => {
-  const isManual = origin === 'manual';
-  return (
-    <Chip
-      size="small"
-      label={isManual ? 'Manual' : 'Automated'}
-      sx={{
-        backgroundColor: isManual
-          ? alpha(theme.palette.info.main, 0.12)
-          : alpha(theme.palette.success.main, 0.12),
-        color: isManual ? theme.palette.info.main : theme.palette.success.main,
-        fontWeight: 600,
-        fontSize: '0.75rem'
-      }}
-    />
-  );
-};
-
-const DetailLabel = ({ children }) => (
-  <Typography
-    variant="caption"
-    color="text.secondary"
-    sx={{
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      fontWeight: 500
-    }}
-  >
-    {children}
-  </Typography>
+const Detail = ({ label, children }) => (
+  <div>
+    <Text as="div" variant="micro" tone="tertiary">
+      {label}
+    </Text>
+    <div style={{ marginTop: 4 }}>{children}</div>
+  </div>
 );
 
 const RecordCard = ({
   record,
+  grouped = false,
   isExpanded,
   isEditing,
   editForm,
@@ -108,7 +38,6 @@ const RecordCard = ({
   canDeleteRecords,
   canResolveSyncConflicts,
   canViewRecordDetails,
-  canViewPentestPage,
   onToggleExpanded,
   onUpdateEditForm,
   onStartEditing,
@@ -116,357 +45,271 @@ const RecordCard = ({
   onCancelEditing,
   onDelete,
   onResolveSyncConflict,
-  onOpenHistory,
-  onOpenPentest,
-  theme
+  onOpenHistory
 }) => {
+  const palette = usePalette();
   const hasSyncConflict = Boolean(record.sync_conflict);
+  const selectedApp =
+    apps.find((app) => Number(app.id) === Number(editForm.application_id)) || null;
+  const selectedEnv =
+    environments.find((env) => Number(env.id) === Number(editForm.environment_id)) || null;
+  const rail =
+    hasSyncConflict || record.status === 'missing' ? palette.severity.critical : 'transparent';
+  const colSpan = grouped ? INVENTORY_COL_COUNT_GROUPED : INVENTORY_COL_COUNT_FLAT;
+  const ports = firstPorts(record.open_ports);
+  const hoverRow = (event, on) => {
+    event.currentTarget.style.background = on ? palette.hover : 'transparent';
+  };
+
+  const cell = {
+    ...INVENTORY_CELL,
+    borderBottom: isExpanded ? 0 : `1px solid ${palette.line}`
+  };
 
   return (
-    <Card
-    sx={{
-      mb: 1,
-      backgroundColor: 'background.paper',
-      border: `1px solid ${theme.palette.divider}`,
-      '&:hover': {
-        borderColor: theme.palette.primary.main,
-        backgroundColor: alpha(theme.palette.primary.main, 0.02)
-      },
-      transition: 'all 0.2s ease-in-out'
-    }}
-  >
-    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-      <Box
-        display="flex"
-        alignItems={{ xs: 'flex-start', md: 'center' }}
-        justifyContent="space-between"
-        onClick={() => onToggleExpanded(record.id)}
-        sx={{ cursor: 'pointer' }}
+    <>
+      <tr
+        onClick={() => {
+          if (isEditing) return;
+          onToggleExpanded(record.id);
+        }}
+        onKeyDown={(event) => {
+          if (isEditing) return;
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onToggleExpanded(record.id);
+          }
+        }}
+        onMouseEnter={(event) => hoverRow(event, true)}
+        onMouseLeave={(event) => hoverRow(event, false)}
+        tabIndex={0}
+        style={{
+          cursor: 'pointer',
+          height: ROW.base,
+          background: 'transparent',
+          transition: `background-color ${DURATION.instant}ms ${CSS_EASE.enter}`
+        }}
       >
-        <Box display="flex" alignItems={{ xs: 'flex-start', md: 'center' }} flex={1} flexWrap="wrap">
-          <IconButton size="small" sx={{ mr: 1 }}>
-            {isExpanded ? <ExpandLess /> : <ExpandMore />}
-          </IconButton>
-
-          <Typography variant="h6" sx={{ mr: 2, fontWeight: 500 }}>
+        <td style={{ ...cell, width: 28, paddingRight: 0 }}>
+          <span
+            aria-hidden
+            style={{
+              display: 'block',
+              width: 2,
+              height: 20,
+              borderRadius: RADIUS.chip,
+              background: rail
+            }}
+          />
+        </td>
+        <td style={cell}>
+          <Mono title={record.name} style={{ fontWeight: 600 }}>
             {record.name}
-          </Typography>
-
-          <Typography variant="body2" color="text.secondary" sx={{ mr: 2, fontFamily: 'monospace' }}>
-            {record.ip_address}
-          </Typography>
-
-          {record.application_name && (
-            <Chip
-              label={record.application_name}
-              size="small"
-              sx={{
-                mr: 2,
-                backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                color: theme.palette.primary.main,
-                fontWeight: 600
-              }}
-            />
-          )}
-
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
-            {getStatusChip(record.status, theme)}
-            {getOriginChip(record.origin, theme)}
-            {hasSyncConflict ? (
-              <Chip
+          </Mono>
+        </td>
+        <td style={cell}>
+          <Mono title={record.ip_address || ''} tone="secondary" style={{ fontSize: 12 }}>
+            {record.ip_address || '—'}
+          </Mono>
+        </td>
+        <td style={cell}>
+          <StatusGlyph status={record.status} />
+        </td>
+        <td style={cell}>
+          <Text variant="micro" tone="secondary">
+            {record.origin === 'manual' ? 'Manual' : 'Auto'}
+          </Text>
+        </td>
+        <td style={cell}>
+          <Mono tone="secondary" style={{ fontSize: 12 }}>
+            {record.source || '—'}
+          </Mono>
+        </td>
+        {grouped ? null : (
+          <td style={cell}>
+            <Text variant="body">{record.application_name || 'Unassigned'}</Text>
+          </td>
+        )}
+        <td style={cell}>
+          <EnvTag slug={record.environment_slug} label={record.environment_name || 'Unassigned'} />
+        </td>
+        <td style={cell}>
+          <Text variant="meta" tone="secondary">
+            {formatDateTime(record.last_modification_date)}
+          </Text>
+        </td>
+        <td style={{ ...cell, textAlign: 'right' }} onClick={(event) => event.stopPropagation()}>
+          <span style={{ display: 'inline-flex', justifyContent: 'flex-end', gap: 6, alignItems: 'center' }}>
+            {hasSyncConflict ? <Tag emphasized>Conflict</Tag> : null}
+            {canModifyRecords ? (
+              <Button
                 size="small"
-                color="error"
-                label="Sync Conflict"
-                sx={{ fontWeight: 600 }}
-              />
+                onClick={() => {
+                  if (!isExpanded) onToggleExpanded(record.id);
+                  onStartEditing(record);
+                }}
+              >
+                Edit
+              </Button>
             ) : null}
-          </Stack>
-        </Box>
-
-        <Box display="flex" alignItems="center">
-          {getSourceAvatar(record.source)}
-          <Typography variant="body2" color="text.secondary" sx={{ mr: 2 }}>
-            {record.source}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Modified {formatDateTime(record.last_modification_date)}
-          </Typography>
-        </Box>
-      </Box>
-
-      <Collapse in={isExpanded}>
-        <Box sx={{ mt: 2 }}>
-          <Divider sx={{ mb: 2 }} />
-
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle2" gutterBottom>
-                Details
-              </Typography>
-
-              {isEditing ? (
-                <Box>
-                  <TextField
-                    select
-                    fullWidth
-                    label="Application"
-                    value={editForm.application_id}
-                    onChange={(event) => {
-                      onUpdateEditForm({
-                        ...editForm,
-                        application_id: event.target.value,
-                        environment_id: ''
-                      });
-                    }}
-                    sx={{ mb: 2 }}
-                    size="small"
-                  >
-                    <MenuItem value="">Unassigned</MenuItem>
-                    {apps.map((app) => (
-                      <MenuItem key={app.id} value={app.id}>
-                        {app.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    select
-                    fullWidth
-                    label="Environment"
-                    value={editForm.environment_id || ''}
-                    onChange={(event) =>
-                      onUpdateEditForm({ ...editForm, environment_id: event.target.value })
-                    }
-                    sx={{ mb: 2 }}
-                    size="small"
-                    disabled={!editForm.application_id}
-                  >
-                    <MenuItem value="">Unassigned</MenuItem>
-                    {(environments || []).map((env) => (
-                      <MenuItem key={env.id} value={env.id}>
-                        {env.display_name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    fullWidth
-                    label="Application Owner"
-                    value={editForm.application_owner}
-                    onChange={(event) =>
-                      onUpdateEditForm({ ...editForm, application_owner: event.target.value })
-                    }
-                    sx={{ mb: 2 }}
-                    size="small"
-                  />
-                  <TextField
-                    fullWidth
-                    label="Maintainer"
-                    value={editForm.maintainer}
-                    onChange={(event) =>
-                      onUpdateEditForm({ ...editForm, maintainer: event.target.value })
-                    }
-                    sx={{ mb: 2 }}
-                    size="small"
-                  />
-                  <TextField
-                    fullWidth
-                    label="Open Ports"
-                    value={editForm.open_ports}
-                    onChange={(event) =>
-                      onUpdateEditForm({ ...editForm, open_ports: event.target.value })
-                    }
-                    placeholder="22, 80, 443, 8080"
-                    size="small"
-                    multiline
-                    rows={2}
-                    helperText="Comma-separated port numbers (e.g., 22, 80, 443)"
-                    InputProps={{
-                      sx: { fontFamily: 'monospace' }
-                    }}
-                  />
-                </Box>
-              ) : (
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gap: 2,
-                    gridTemplateColumns: 'repeat(2, 1fr)',
-                    alignItems: 'start'
-                  }}
-                >
-                  <Box sx={{ minWidth: 100 }}>
-                    <DetailLabel>Application</DetailLabel>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontWeight: 500,
-                        color: record.application_name ? 'text.primary' : 'text.secondary'
-                      }}
-                    >
-                      {record.application_name || 'Unassigned'}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ minWidth: 100 }}>
-                    <DetailLabel>Owner</DetailLabel>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontWeight: 500,
-                        color: record.application_owner ? 'text.primary' : 'text.secondary'
-                      }}
-                    >
-                      {record.application_owner || 'Not assigned'}
-                    </Typography>
-                  </Box>
-
-                  <Box sx={{ minWidth: 100 }}>
-                    <DetailLabel>Maintainer</DetailLabel>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontWeight: 500,
-                        color: record.maintainer ? 'text.primary' : 'text.secondary'
-                      }}
-                    >
-                      {record.maintainer || 'Not assigned'}
-                    </Typography>
-                  </Box>
-
-                  <Box sx={{ minWidth: 100 }}>
-                    <DetailLabel>Open Ports</DetailLabel>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontWeight: 500,
-                        fontFamily: 'monospace',
-                        color: record.open_ports ? 'text.primary' : 'text.secondary'
-                      }}
-                    >
-                      {record.open_ports || 'None'}
-                    </Typography>
-                  </Box>
-                </Box>
-              )}
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle2" gutterBottom>
-                Description
-              </Typography>
-
-              {isEditing ? (
-                <Box>
-                  <TextField
-                    fullWidth
-                    label="Description"
-                    value={editForm.description}
-                    onChange={(event) =>
-                      onUpdateEditForm({ ...editForm, description: event.target.value })
-                    }
-                    size="small"
-                    multiline
-                    rows={3}
-                    sx={{ mb: 2 }}
-                  />
-                </Box>
-              ) : (
-                <Box>
+          </span>
+        </td>
+      </tr>
+      {isExpanded ? (
+        <tr>
+          <td colSpan={colSpan} style={{ padding: 0, borderBottom: `1px solid ${palette.line}`, width: '100%', maxWidth: 0 }}>
+            <motion.div
+              key={`${record.id}-body`}
+              variants={disclosureVariants}
+              initial="initial"
+              animate="animate"
+              style={{ overflow: 'hidden' }}
+            >
+                <div style={{ padding: `${SPACE.x16}px ${SPACE.x16}px ${SPACE.x16}px 40px` }}>
                   {hasSyncConflict ? (
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="body2" color="error.main" sx={{ fontWeight: 600 }}>
-                        This manual domain matches imported DNS data and requires admin resolution.
-                      </Typography>
-                    </Box>
+                    <Text as="p" variant="meta" tone="critical" style={{ margin: '0 0 12px' }}>
+                      This manual domain matches imported DNS data and needs admin resolution.
+                    </Text>
                   ) : null}
-                  <Typography variant="body2" color="text.secondary">
-                    {record.description || 'No description'}
-                  </Typography>
-                </Box>
-              )}
-            </Grid>
-          </Grid>
+                  {isEditing ? (
+                    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(3, minmax(220px, 1fr))' }}>
+                      <Combo
+                        label="Application"
+                        options={apps}
+                        value={selectedApp}
+                        onChange={(app) =>
+                          onUpdateEditForm({
+                            ...editForm,
+                            application_id: app?.id || '',
+                            environment_id: ''
+                          })
+                        }
+                        getOptionLabel={(app) => app?.name || ''}
+                        placeholder="Unassigned"
+                        disableClearable={false}
+                        mode="entity"
+                      />
+                      <Combo
+                        label="Environment"
+                        options={environments}
+                        value={selectedEnv}
+                        onChange={(env) => onUpdateEditForm({ ...editForm, environment_id: env?.id || '' })}
+                        getOptionLabel={(env) => env?.display_name || env?.name || ''}
+                        placeholder="Unassigned"
+                        disableClearable={false}
+                        disabled={!editForm.application_id}
+                        mode="entity"
+                      />
+                      <Field
+                        label="Application owner"
+                        value={editForm.application_owner}
+                        onChange={(event) =>
+                          onUpdateEditForm({ ...editForm, application_owner: event.target.value })
+                        }
+                      />
+                      <Field
+                        label="Maintainer"
+                        value={editForm.maintainer}
+                        onChange={(event) => onUpdateEditForm({ ...editForm, maintainer: event.target.value })}
+                      />
+                      <Field
+                        label="Open ports"
+                        value={editForm.open_ports}
+                        onChange={(event) =>
+                          onUpdateEditForm({ ...editForm, open_ports: event.target.value })
+                        }
+                        placeholder="22, 80, 443, 8080"
+                        hint="Comma-separated port numbers"
+                        InputProps={{ sx: { fontFamily: FONTS.mono } }}
+                      />
+                      <Field
+                        label="Description"
+                        value={editForm.description}
+                        onChange={(event) =>
+                          onUpdateEditForm({ ...editForm, description: event.target.value })
+                        }
+                        multiline
+                        minRows={3}
+                        style={{ gridColumn: '1 / -1' }}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(3, minmax(180px, 1fr))' }}>
+                      <Detail label="Application">
+                        <Text variant="body">{record.application_name || 'Unassigned'}</Text>
+                      </Detail>
+                      <Detail label="Environment">
+                        <EnvTag
+                          slug={record.environment_slug}
+                          label={record.environment_name || 'Unassigned'}
+                        />
+                      </Detail>
+                      <Detail label="Owner">
+                        <Text variant="body">{record.application_owner || 'Not assigned'}</Text>
+                      </Detail>
+                      <Detail label="Maintainer">
+                        <Text variant="body">{record.maintainer || 'Not assigned'}</Text>
+                      </Detail>
+                      <Detail label="Open ports">
+                        <Mono title={ports.title}>{ports.label}</Mono>
+                      </Detail>
+                      <Detail label="Scope">
+                        <Text variant="body">{record.in_scope ? 'In scope' : 'Not in scope'}</Text>
+                      </Detail>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <Detail label="Description">
+                          <Text variant="body" tone={record.description ? 'primary' : 'secondary'}>
+                            {record.description || 'No description'}
+                          </Text>
+                        </Detail>
+                      </div>
+                    </div>
+                  )}
 
-          <Box display="flex" justifyContent="flex-end" gap={1} sx={{ mt: 2 }}>
-            {isEditing ? (
-              <>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="small"
-                  startIcon={<Save />}
-                  onClick={() => onSave(record.id)}
-                >
-                  Save
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<Cancel />}
-                  onClick={onCancelEditing}
-                >
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <>
-                {canModifyRecords && (
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<Edit />}
-                    onClick={() => onStartEditing(record)}
+                  <div
+                    style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 16 }}
+                    onClick={(event) => event.stopPropagation()}
                   >
-                    Edit
-                  </Button>
-                )}
-                {canViewRecordDetails && (
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<History />}
-                    onClick={() => onOpenHistory(record)}
-                  >
-                    History
-                  </Button>
-                )}
-                {canViewPentestPage && (
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<Security />}
-                    onClick={() => onOpenPentest(record)}
-                  >
-                    Pentest
-                  </Button>
-                )}
-                {hasSyncConflict && canResolveSyncConflicts && (
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    color="warning"
-                    startIcon={<SyncProblem />}
-                    onClick={() => onResolveSyncConflict(record.id)}
-                  >
-                    Resolve Conflict
-                  </Button>
-                )}
-                {canDeleteRecords && (
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    color="error"
-                    startIcon={<Delete />}
-                    onClick={() => onDelete(record.id)}
-                  >
-                    Delete
-                  </Button>
-                )}
-              </>
-            )}
-          </Box>
-        </Box>
-      </Collapse>
-    </CardContent>
-  </Card>
+                    {isEditing ? (
+                      <>
+                        <Button size="small" onClick={onCancelEditing}>
+                          Cancel
+                        </Button>
+                        <Button size="small" variant="contained" onClick={() => onSave(record.id)}>
+                          Save
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        {canViewRecordDetails ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<History sx={{ fontSize: 16 }} />}
+                            onClick={() => onOpenHistory(record)}
+                          >
+                            Open asset
+                          </Button>
+                        ) : null}
+                        {hasSyncConflict && canResolveSyncConflicts ? (
+                          <Button size="small" variant="outlined" onClick={() => onResolveSyncConflict(record.id)}>
+                            Resolve conflict
+                          </Button>
+                        ) : null}
+                        {canDeleteRecords ? (
+                          <Button size="small" variant="outlined" onClick={() => onDelete(record.id)}>
+                            Delete
+                          </Button>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 };
 

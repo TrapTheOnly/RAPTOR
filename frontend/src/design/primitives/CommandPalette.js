@@ -9,7 +9,7 @@ import { Mono, Text } from './type';
 
 const NAV_COMMANDS = [
   { id: 'nav-dashboard', group: 'Go to', label: 'Dashboard', hint: '/dashboard', to: '/dashboard' },
-  { id: 'nav-records', group: 'Go to', label: 'Records', hint: '/records', to: '/records' },
+  { id: 'nav-records', group: 'Go to', label: 'Assets', hint: '/records', to: '/records' },
   { id: 'nav-security', group: 'Go to', label: 'Security', hint: '/pentest', to: '/pentest' },
   { id: 'nav-settings', group: 'Go to', label: 'Settings', hint: '/settings', to: '/settings' },
   { id: 'nav-docs', group: 'Go to', label: 'Documentation', hint: '/docs', to: '/docs' }

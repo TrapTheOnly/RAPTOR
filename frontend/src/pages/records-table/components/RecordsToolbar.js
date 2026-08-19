@@ -1,6 +1,7 @@
 import React from 'react';
-import { alpha, Box, Button, FormControlLabel, Stack, Switch } from '@mui/material';
 import { AccountTree, Add } from '@mui/icons-material';
+import { Button, Segmented } from '../../../design/primitives';
+import { LAYOUT_ID } from '../../../design/motion';
 
 const RecordsToolbar = ({
   groupByApp,
@@ -9,53 +10,41 @@ const RecordsToolbar = ({
   canCreateManualRecords,
   onOpenCreateDialog,
   onOpenAppsDialog,
-  theme
+  onExpandAll,
+  onCollapseAll,
+  grouped
 }) => (
-  <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
-    <FormControlLabel
-      control={
-        <Switch
-          checked={groupByApp}
-          onChange={(event) => onToggleGroupByApp(event.target.checked)}
-          color="primary"
-        />
-      }
-      label="Group by application"
+  <div style={{ display: 'flex', gap: 12, flexShrink: 0, alignItems: 'flex-end', whiteSpace: 'nowrap' }}>
+    <Segmented
+      layoutId={LAYOUT_ID.recordsView}
+      value={groupByApp}
+      onChange={onToggleGroupByApp}
+      options={[
+        { value: true, label: 'Apps' },
+        { value: false, label: 'Flat' }
+      ]}
     />
-    <Stack direction="row" spacing={1}>
-      {canCreateManualRecords && (
-        <Button
-          variant="contained"
-          size="small"
-          startIcon={<Add />}
-          onClick={onOpenCreateDialog}
-        >
-          Add Manual Domain
+    {grouped ? (
+      <>
+        <Button size="small" onClick={onExpandAll}>
+          Expand all
         </Button>
-      )}
-      {canManageApps && (
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<AccountTree />}
-          onClick={onOpenAppsDialog}
-          sx={{
-            borderColor: alpha(theme.palette.primary.main, 0.4),
-            color: theme.palette.primary.main,
-            backgroundColor: alpha(theme.palette.primary.main, 0.08),
-            transition: 'all 0.2s ease',
-            '&:hover': {
-              backgroundColor: alpha(theme.palette.primary.main, 0.15),
-              borderColor: theme.palette.primary.main,
-              transform: 'translateY(-1px)'
-            }
-          }}
-        >
-          Manage Apps
+        <Button size="small" onClick={onCollapseAll}>
+          Collapse all
         </Button>
-      )}
-    </Stack>
-  </Box>
+      </>
+    ) : null}
+    {canCreateManualRecords ? (
+      <Button size="small" variant="contained" startIcon={<Add />} onClick={onOpenCreateDialog}>
+        Add Manual Domain
+      </Button>
+    ) : null}
+    {canManageApps ? (
+      <Button size="small" variant="outlined" startIcon={<AccountTree />} onClick={onOpenAppsDialog}>
+        Manage apps
+      </Button>
+    ) : null}
+  </div>
 );
 
 export default RecordsToolbar;

@@ -25,7 +25,7 @@ import {
 import SectionHeader from '../SectionHeader';
 
 const SCOPE_OPTIONS = [
-  { key: 'records.read', label: 'View Records Dataset' },
+  { key: 'records.read', label: 'View Assets Dataset' },
   { key: 'pentests.read', label: 'View Pentests Dataset' }
 ];
 
