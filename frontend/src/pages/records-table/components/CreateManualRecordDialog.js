@@ -15,6 +15,7 @@ const CreateManualRecordDialog = ({
   open,
   form,
   apps,
+  environments = [],
   busy,
   error,
   onClose,
@@ -57,6 +58,21 @@ const CreateManualRecordDialog = ({
           {apps.map((app) => (
             <MenuItem key={app.id} value={app.id}>
               {app.name}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          label="Environment"
+          value={form.environment_id || ''}
+          onChange={(event) => onChange('environment_id', event.target.value)}
+          fullWidth
+          disabled={!form.application_id}
+        >
+          <MenuItem value="">Unassigned</MenuItem>
+          {(environments || []).map((env) => (
+            <MenuItem key={env.id} value={env.id}>
+              {env.display_name}
             </MenuItem>
           ))}
         </TextField>

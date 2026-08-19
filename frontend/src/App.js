@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import {
   ThemeProvider,
-  createTheme,
   CssBaseline,
   Button,
   Dialog,
@@ -11,7 +10,13 @@ import {
   DialogContentText,
   DialogTitle
 } from '@mui/material';
+import { MotionConfig } from 'motion/react';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
 import axios from 'axios';
+import createRaptorTheme from './design/theme';
+import { DEFAULT_TRANSITION } from './design/motion';
+import { routeShellKey } from './design/navigation';
 import ModernHeader from './components/ModernHeader';
 import ModernLogin from './pages/ModernLogin';
 import Dashboard from './pages/Dashboard';
@@ -20,6 +25,7 @@ import AdminSettings from './pages/AdminSettings';
 import PentestDashboard from './pages/PentestDashboard';
 import Record from './pages/Record';
 import PentestRecord from './pages/PentestRecord';
+import AppWorkspace from './pages/AppWorkspace';
 import ScanLive from './pages/ScanLive';
 import DocumentationPortal from './pages/DocumentationPortal';
 import Error from './pages/Error';
@@ -27,6 +33,11 @@ import { hasPermission as hasRolePermission } from './utils/permissions';
 
 const SESSION_HEARTBEAT_MS = 5000;
 const SESSION_WARNING_SECONDS = 60;
+
+const RouteTransition = ({ children }) => {
+  const location = useLocation();
+  return <div key={routeShellKey(location.pathname)}>{children}</div>;
+};
 
 const App = () => {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -36,7 +47,7 @@ const App = () => {
   const [userPermissions, setUserPermissions] = useState([]);
   const [passwordResetRequired, setPasswordResetRequired] = useState(false);
   const [resetUserType, setResetUserType] = useState(null);
-  const storedTheme = localStorage.getItem('theme') || 'light';
+  const storedTheme = localStorage.getItem('theme') || 'dark';
   const [darkMode, setDarkMode] = useState(storedTheme === 'dark');
   const [showSessionWarning, setShowSessionWarning] = useState(false);
   const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState(null);
@@ -68,40 +79,7 @@ const App = () => {
   };
 
   // Global theme for the entire application
-  const globalTheme = createTheme({
-    palette: {
-      mode: darkMode ? 'dark' : 'light',
-      primary: {
-        main: darkMode ? '#ffffff' : '#1976d2',
-      },
-      secondary: {
-        main: darkMode ? '#666666' : '#9c27b0',
-      },
-      background: {
-        default: darkMode ? '#0a0a0a' : '#f5f5f5',
-        paper: darkMode ? '#141414' : '#ffffff',
-      },
-      text: {
-        primary: darkMode ? '#ffffff' : '#333333',
-        secondary: darkMode ? '#999999' : '#666666',
-      },
-      divider: darkMode ? '#333333' : '#e0e0e0',
-    },
-    typography: {
-      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-      h4: {
-        fontWeight: 300,
-        letterSpacing: '-0.025em',
-      },
-      h6: {
-        fontWeight: 500,
-        letterSpacing: '-0.01em',
-      },
-    },
-    shape: {
-      borderRadius: 8,
-    },
-  });
+  const globalTheme = useMemo(() => createRaptorTheme(darkMode), [darkMode]);
 
   useEffect(() => {
     const checkLoginStatus = async () => {
@@ -217,6 +195,7 @@ const App = () => {
   return (
     <ThemeProvider theme={globalTheme}>
       <CssBaseline />
+      <MotionConfig reducedMotion="user" transition={DEFAULT_TRANSITION}>
     <Router>
         {loggedIn && (
           <ModernHeader
@@ -259,6 +238,7 @@ const App = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <RouteTransition>
       <Routes>
         <Route
           path="/"
@@ -318,6 +298,18 @@ const App = () => {
             }
         />
         <Route
+          path="/apps/:appId"
+          element={
+            loggedIn && hasPermission('view_security_dashboard') ?
+              <AppWorkspace userRole={userRole} userPermissions={userPermissions} username={username} /> :
+              <Navigate to={loggedIn ? getDefaultRoute() : '/login'} />
+          }
+        >
+          <Route path="envs/:envId" />
+          <Route path="waves/:waveId" />
+          <Route path="findings/:findingId" />
+        </Route>
+        <Route
           path="/pentest/record/:recordId"
           element={
             loggedIn && hasPermission('view_pentest_page') ?
@@ -350,21 +342,15 @@ const App = () => {
               <Navigate to="/login" replace />
             )
           }
-        />
-        <Route
-          path="/docs/:sectionSlug/:pageSlug"
-          element={
-            loggedIn ? (
-              <DocumentationPortal />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+        >
+          <Route path=":sectionSlug/:pageSlug" />
+        </Route>
         <Route path="/records/*" element={<Navigate to="/" />} />
         <Route path="*" element={<Error errorCode={404} errorMessage="Page Not Found" darkMode={darkMode}/>} />
       </Routes>
+      </RouteTransition>
     </Router>
+      </MotionConfig>
     </ThemeProvider>
   );
 };

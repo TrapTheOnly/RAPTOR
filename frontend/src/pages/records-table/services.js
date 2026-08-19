@@ -7,6 +7,8 @@ export const createManualRecord = (payload) => axios.post('/api/records', payloa
 
 export const getApps = () => axios.get('/api/apps');
 
+export const getEnvironments = (appId) => axios.get(`/api/apps/${appId}/environments`);
+
 export const createApp = (name) => axios.post('/api/apps', { name });
 
 export const renameApp = (appId, name) => axios.put(`/api/apps/${appId}`, { name });

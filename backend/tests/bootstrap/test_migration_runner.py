@@ -60,6 +60,14 @@ def test_discover_migrations():
     assert "0010_collector_agents" in names
     assert "0011_collector_agent_ops" in names
     assert "0013_collector_interval_collect" in names
+    assert "0014_environments" in names
+    assert "0015_finding_occurrences" in names
+    assert "0016_report_exports" in names
+    assert "0017_phase2b" in names
+    assert "0018_wave_finding_workspace" in names
+    assert "0019_wave_live_hosts" in names
+    assert "0020_wave_started_at" in names
+    assert "0021_occurrence_status_changed_at" in names
     assert names == sorted(names)
 
 

@@ -30,7 +30,7 @@ const MaintenanceSection = ({
           </Typography>
         </Box>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Reset pentest progress for all records except open vulnerabilities.
+          Reset notebook fields on pentest hosts. Findings and frozen reports stay.
         </Typography>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
@@ -54,8 +54,8 @@ const MaintenanceSection = ({
 
         {resetStats && (
           <Alert severity="info" sx={{ mt: 2 }}>
-            Reset completed. {resetStats.total_reset} records cleared, {resetStats.remaining_open} open
-            vulnerabilities preserved.
+            Reset completed. {resetStats.total_reset} notebooks cleared, {resetStats.remaining_open} open
+            findings kept.
           </Alert>
         )}
       </CardContent>

@@ -16,6 +16,7 @@ def create_app():
     from app.routes.metadata import metadata_bp
     from app.routes.notifications import notifications_bp
     from app.routes.offsec_routes import register_offsec_routes
+    from app.routes.app_program import app_program_bp
     from app.routes.records import records_bp
     from app.routes.scanner import scanner_bp
     from app.routes.service_api import service_api_bp
@@ -60,6 +61,7 @@ def create_app():
         return {"status": "ok"}, 200
 
     app.register_blueprint(records_bp)
+    app.register_blueprint(app_program_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(collector_bp)
     app.register_blueprint(metadata_bp)

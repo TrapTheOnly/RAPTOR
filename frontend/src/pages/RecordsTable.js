@@ -16,6 +16,7 @@ import {
   deleteAppById,
   deleteRecordById,
   getApps,
+  getEnvironments,
   getRecords,
   resolveSyncConflictById,
   getSessionStatus,
@@ -52,6 +53,7 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [apps, setApps] = useState([]);
+  const [envByApp, setEnvByApp] = useState({});
   const [groupByApp, setGroupByApp] = useState(true);
   const [expandedApps, setExpandedApps] = useState(new Set());
   const [appsDialogOpen, setAppsDialogOpen] = useState(false);
@@ -62,6 +64,7 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
     name: '',
     ip_address: '',
     application_id: '',
+    environment_id: '',
     application_owner: '',
     maintainer: '',
     open_ports: '',
@@ -128,6 +131,19 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
     }
   }, []);
 
+  const loadEnvironments = useCallback(async (applicationId) => {
+    if (!applicationId) return [];
+    if (envByApp[applicationId]) return envByApp[applicationId];
+    try {
+      const response = await getEnvironments(applicationId);
+      const environments = response.data.environments || [];
+      setEnvByApp((prev) => ({ ...prev, [applicationId]: environments }));
+      return environments;
+    } catch (error) {
+      return [];
+    }
+  }, [envByApp]);
+
   useEffect(() => {
     fetchRecords();
     fetchApps();
@@ -167,6 +183,7 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
       name: '',
       ip_address: '',
       application_id: '',
+      environment_id: '',
       application_owner: '',
       maintainer: '',
       open_ports: '',
@@ -338,11 +355,15 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
     setEditingRecord(record.id);
     setEditForm({
       application_id: record.application_id || '',
+      environment_id: record.environment_id || '',
       application_owner: record.application_owner || '',
       maintainer: record.maintainer || '',
       open_ports: record.open_ports || '',
       description: record.description || ''
     });
+    if (record.application_id) {
+      loadEnvironments(record.application_id);
+    }
   };
 
   const cancelEditing = () => {
@@ -399,13 +420,17 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
       isEditing={editingRecord === record.id}
       editForm={editForm}
       apps={apps}
+      environments={envByApp[editForm.application_id] || []}
       canModifyRecords={canModifyRecords}
       canDeleteRecords={canDeleteRecords}
       canResolveSyncConflicts={canResolveSyncConflicts}
       canViewRecordDetails={canViewRecordDetails}
       canViewPentestPage={canViewPentestPage}
       onToggleExpanded={toggleExpanded}
-      onUpdateEditForm={setEditForm}
+      onUpdateEditForm={(next) => {
+        setEditForm(next);
+        if (next.application_id) loadEnvironments(next.application_id);
+      }}
       onStartEditing={startEditing}
       onSave={saveRecord}
       onCancelEditing={cancelEditing}
@@ -536,15 +561,20 @@ const RecordsTable = ({ userRole, userPermissions, darkMode }) => {
         open={createDialogOpen}
         form={createForm}
         apps={apps}
+        environments={envByApp[createForm.application_id] || []}
         busy={createDialogBusy}
         error={createDialogError}
         onClose={resetCreateDialog}
-        onChange={(field, value) =>
+        onChange={(field, value) => {
           setCreateForm((prev) => ({
             ...prev,
-            [field]: value
-          }))
-        }
+            [field]: value,
+            ...(field === 'application_id' ? { environment_id: '' } : {})
+          }));
+          if (field === 'application_id' && value) {
+            loadEnvironments(value);
+          }
+        }}
         onSubmit={handleCreateManualRecord}
       />
     </Box>

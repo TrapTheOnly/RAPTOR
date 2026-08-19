@@ -53,6 +53,7 @@ test('create manual record dialog renders required fields and error', () => {
         name: '',
         ip_address: '',
         application_id: '',
+        environment_id: '',
         application_owner: '',
         maintainer: '',
         open_ports: '',

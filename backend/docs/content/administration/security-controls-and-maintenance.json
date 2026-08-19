@@ -116,8 +116,8 @@
         "id": "pentest-reset-guardrails-and-effects",
         "title": "Pentest reset guardrails and data effects",
         "paragraphs": [
-          "Reset requires two independent confirmations: checkbox approval and exact phrase match `RESET ALL BUT OPEN VULNERABILITIES`. Requests without both are rejected with `400`.",
-          "Rows are preserved only when `vulnerable=1` and `vulnerability_fixed=0`. All other pentest rows are removed, and both manual and generated report files are deleted when present."
+          "Reset requires two independent confirmations: checkbox approval and exact phrase match `RESET NOTEBOOKS KEEP FINDINGS`. Requests without both are rejected with `400`.",
+          "Notebook fields (status, checklists, notes, dates) are cleared. Findings, occurrences, pentest_data rows, and frozen report PDFs are kept."
         ],
         "table": {
           "columns": [
@@ -127,24 +127,24 @@
           ],
           "rows": [
             [
-              "Open unresolved vulnerabilities",
+              "Findings and occurrences",
               "Yes",
-              "Rows with `vulnerable=1` and `vulnerability_fixed=0` remain in `pentest_data`."
+              "Never deleted. Residual findings persist across notebook resets."
             ],
             [
-              "Other pentest rows",
-              "No",
-              "Rows are deleted from `pentest_data`."
+              "Pentest notebooks",
+              "Partial",
+              "`status` returns to Not Started; notes and checklists are cleared. Rows stay."
             ],
             [
-              "Manual report files",
-              "Conditional",
-              "Deleted for rows being reset when `report_file` exists."
+              "Frozen report exports",
+              "Yes",
+              "`report_exports` rows and FTP PDFs are kept."
             ],
             [
-              "Generated report files",
-              "Conditional",
-              "Deleted for rows being reset when `generated_report_file` exists."
+              "Host pentest_data rows",
+              "Yes",
+              "Never deleted. Only notebook fields are updated."
             ]
           ]
         }
