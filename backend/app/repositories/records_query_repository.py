@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from app.config import DB_PATH
 from app.domain.dashboard import build_findings_summary
 from app.integrations.db.connection import ROW_AS_DICT, get_db_connection, get_table_columns
+from app.repositories.dns_sources_repository import latest_a_observations_for_fqdn
 from app.repositories.records_row_mapper import (
     RECORD_WITH_PENTEST_AND_APP_SELECT,
     rows_to_dicts,
@@ -195,7 +196,14 @@ def fetch_record_by_id(record_id: int, db_path: str = DB_PATH) -> Optional[Dict[
     c.execute(RECORD_WITH_PENTEST_AND_APP_SELECT + " WHERE r.id = ?", (record_id,))
     row = c.fetchone()
     conn.close()
-    return dict(row) if row else None
+    if not row:
+        return None
+    payload = dict(row)
+    try:
+        payload["seen_by"] = latest_a_observations_for_fqdn(str(payload.get("name") or ""), db_path=db_path)
+    except Exception:
+        payload["seen_by"] = []
+    return payload
 
 
 def fetch_record_by_domain(domain: str, db_path: str = DB_PATH) -> Optional[Dict[str, Any]]:

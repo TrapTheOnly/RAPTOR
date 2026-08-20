@@ -11,7 +11,7 @@ Run inside the app container (scripts/ are not in the image):
     ./scripts/seed_demo_world.sh
     ./scripts/seed_demo_world.sh --verify
 
-All demo users (and awadmin) use password 123.
+All demo users (and awadmin) use password RaptorDemo123!.
 
 Do not run this against a real production database.
 """
@@ -29,8 +29,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
 
-import bcrypt
-
 from app.config import DB_PATH
 from app.integrations.db.connection import IntegrityError, ROW_AS_DICT, get_db_connection
 from app.repositories import (
@@ -39,17 +37,16 @@ from app.repositories import (
     pentest_findings_repository,
     phase2b_repository,
 )
-from app.repositories.admin_users_repository import update_admin_password
 from app.repositories.records_mutation_repository import create_manual_record
+from app.services.keycloak_identity_service import provision_local_user, set_user_password
 from app.services.phase2b_service import close_wave as close_wave_svc
 from app.services.phase2b_service import create_wave as create_wave_svc
 from app.services.phase2b_service import start_wave as start_wave_svc
-from app.services.user_admin_service import add_user_to_system
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger("seed_demo_world")
 
-PASSWORD = "123"
+PASSWORD = "RaptorDemo123!"
 RNG = random.Random(42)
 UTC = timezone.utc
 NOW = datetime(2026, 8, 19, 15, 0, tzinfo=UTC)
@@ -460,10 +457,6 @@ def ts(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S%z")
 
 
-def hash_password() -> bytes:
-    return bcrypt.hashpw(PASSWORD.encode("utf-8"), bcrypt.gensalt())
-
-
 def execute(sql: str, params: Sequence[Any] = ()) -> None:
     with get_db_connection(DB_PATH) as conn:
         c = conn.cursor()
@@ -528,8 +521,11 @@ def jitter(anchor: datetime, spread_days: int) -> datetime:
 
 def seed_admin() -> None:
     log.info("Setting awadmin password to %s", PASSWORD)
-    result = update_admin_password(PASSWORD)
-    log.info("  awadmin: %s", result)
+    try:
+        set_user_password("awadmin", PASSWORD, temporary=False)
+        log.info("  awadmin: updated")
+    except Exception as exc:
+        log.warning("  awadmin password update failed: %s", exc)
 
 
 def seed_users() -> None:
@@ -539,17 +535,16 @@ def seed_users() -> None:
             log.info("  %s (%s) — exists", user["username"], user["role"])
             continue
         try:
-            add_user_to_system(
+            provision_local_user(
                 username=user["username"],
-                email=user["email"],
                 role=user["role"],
-                auth_type="local",
-                password_hash=hash_password(),
-                must_reset=0,
                 permissions=[],
-                is_service_account=False,
                 full_name=user["full_name"],
             )
+            try:
+                set_user_password(user["username"], PASSWORD, temporary=False)
+            except Exception as exc:
+                log.warning("  %s created but password set failed: %s", user["username"], exc)
             log.info("  %s (%s) — created", user["username"], user["role"])
         except (IntegrityError, ValueError):
             log.info("  %s — already exists", user["username"])
@@ -841,13 +836,14 @@ def seed_finding(
         "categoryId": categories.get(category_name, ""),
         "categoryName": category_name,
         "description": (
-            f"{template['body']}\n\n"
-            f"**Host:** `{primary['name']}`\n"
-            f"**Wave:** {wave.get('name')}\n"
-            f"**Auth context:** {template['auth']}\n\n"
-            "### Impact\n\n"
-            "Confirmed in this environment with a non-destructive proof. Evidence screenshots live on the finding.\n"
+            template["body"]
         ),
+        "impact": "Confirmed in this environment with a non-destructive proof.",
+        "evidence": (
+            f"Reproduced against `{primary['name']}` in {wave.get('name') or 'this wave'} "
+            f"using {template['auth']} authentication."
+        ),
+        "remediation": "Patch this class of issue and retest the in-scope hosts before close-out.",
         "created_by": author,
         "application_id": app_id,
         "status": "open" if status == "draft" else status,

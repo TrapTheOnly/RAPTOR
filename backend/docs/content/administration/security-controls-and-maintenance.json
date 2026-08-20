@@ -42,10 +42,10 @@
               "Rotate privileged credentials under policy checks."
             ],
             [
-              "Manual ingestion update",
-              "`POST /manual-update`",
+              "Domain inventory refresh",
+              "`POST /admin/domains/refresh`",
               "`admin_required`",
-              "Trigger zone parsing and records refresh on demand."
+              "Ask collectors to collect now and enqueue enabled cloud DNS pulls."
             ],
             [
               "Pentest progress reset",
@@ -99,17 +99,17 @@
         }
       },
       {
-        "id": "manual-update-operation",
-        "title": "Manual update operation",
+        "id": "domain-refresh-operation",
+        "title": "Domain inventory refresh",
         "paragraphs": [
-          "Manual update calls `update_data()` and refreshes records from configured zone sources. Use this when automation cadence is insufficient for urgent inventory refresh.",
-          "A successful call returns `Records updated successfully.`. Failure returns an error payload and requires log review before retry."
+          "Domain refresh asks every enrolled collector to collect now and enqueues enabled cloud DNS pulls. Agents parse zone files on the DNS host and POST JSON; RAPTOR does not store or serve zone files.",
+          "Use this when collector intervals or cloud sync cadence are too slow for an urgent inventory refresh."
         ],
         "orderedList": [
-          "Open `Maintenance` and click `Run Update`.",
-          "Wait for completion message and progress bar to clear.",
-          "Reopen Records dashboard and validate recent changes in source and status fields.",
-          "If failure occurs, inspect backend logs and retry only after root cause is addressed."
+          "Open Domains Management and click `Run update`.",
+          "Wait for the completion message.",
+          "Reopen Records and validate recent hosts and status fields.",
+          "If failure occurs, inspect backend and collector logs before retry."
         ]
       },
       {

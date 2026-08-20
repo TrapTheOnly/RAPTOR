@@ -107,8 +107,8 @@
         "id": "delete-and-recovery",
         "title": "Delete operation and safeguards",
         "paragraphs": [
-          "Record deletion is a privileged action and should be used only when the asset is out of scope or entered incorrectly. Deletion changes operational visibility and can alter downstream reporting and security workload scope.",
-          "Always validate the record identity and confirm retirement status with the owning team before deletion."
+          "Record deletion requires `delete_records`. That key is a manager and admin default. The User role cannot delete records, and deletion is not an optional User grant.",
+          "Use deletion only when the asset is out of scope or entered incorrectly. Deletion changes operational visibility and can alter downstream reporting and security workload scope. Users should correct metadata instead of expecting a delete control."
         ],
         "tip": {
           "variant": "tip",

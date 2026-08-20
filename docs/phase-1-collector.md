@@ -33,7 +33,7 @@ chmod +x raptor-collector
 ./raptor-collector setup --url https://<raptor> --token raptor_enroll_… --name "dc01" --mode one-sided
 ```
 
-`--interval` defaults to **300 seconds** (5 minutes), minimum 30. That is the agent ticker, not RAPTOR’s `UPDATE_TIME` (24h drop-folder parse).
+`--interval` defaults to **300 seconds** (5 minutes), minimum 30. That is the agent ticker.
 
 Root setup as root installs `raptor-collector.service` **only when systemd is PID 1**. Docker slim images (Debian/Ubuntu included) are not booted with systemd — `/etc/systemd` can exist anyway, and Debian’s `apt install systemctl` is a fake helper. In that case setup starts `raptor-collector run` in the background and logs to `/var/log/raptor-collector.log`. `--mode two-sided` also starts a health listener (default `:7444`) so RAPTOR can ping `/healthz` and `POST /run`.
 
@@ -57,13 +57,11 @@ An agent is **live** if its last heartbeat is within `interval_seconds + max(60s
 ## Collect now
 
 - Per agent: `POST /admin/collectors/<id>/collect-now`
-- All agents + drop-folder: `POST /admin/domains/refresh`
+- All agents + enabled cloud pulls: `POST /admin/domains/refresh`
 
 RAPTOR sets `collect_requested_at`. The next heartbeat returns `{ "collect_now": true }` and clears the flag. Two-sided agents also get `POST callback_url/run` immediately. One-sided agents collect on their next ticker cycle (up to their interval).
 
 Agents **parse locally** and POST JSON. They do not copy zone files to RAPTOR. BIND: `named.conf` + `include`s + `zone { file }`. PowerDNS: `bind-config` or `pdnsutil list-all-zones`. Windows: `dnscmd /EnumZones` + `/ZonePrint`. Optional AXFR if a zone has no records.
-
-The drop-folder path still globs `SHARED_PATH/*_A_Records`, copies into `DATA_PATH` with backups, and parses. That is RAPTOR-side compatibility, not the agent.
 
 ## Admin operations
 

@@ -88,10 +88,16 @@ def service_notify_scan_complete(record_id):
 @internal_api_required
 def service_append_scan_event(record_id):
     body = request.get_json(silent=True) or {}
+    raw_job_id = body.get("job_id")
+    try:
+        job_id = int(raw_job_id) if raw_job_id not in (None, "", 0, "0") else None
+    except (TypeError, ValueError):
+        job_id = None
     payload, status_code = append_scan_event_payload(
         record_id=record_id,
         event_type=str(body.get("event_type", "")),
         event_payload=body.get("payload", {}),
+        job_id=job_id,
     )
     return jsonify(payload), status_code
 

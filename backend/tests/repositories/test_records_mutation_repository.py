@@ -186,13 +186,14 @@ def test_delete_record_removes_pentest_row_before_record(monkeypatch):
     assert pentest_delete_index < record_delete_index
 
 
-def test_store_records_in_db_missing_is_source_scoped(monkeypatch):
+def test_store_records_in_db_missing_uses_live_set(monkeypatch):
     state = {
         "records": [
             (1, "bind-only.example.com", "10.0.0.1", "Other", "", "automated", 0),
             (2, "cloud-only.example.com", "10.0.0.9", "Other", "", "automated", 0),
+            (3, "gone.example.com", "10.0.0.8", "Other", "", "automated", 0),
         ],
-        "observations": [("bind-only.example.com",), ("keep.example.com",)],
+        "observations": [("bind-only.example.com",), ("keep.example.com",), ("gone.example.com",)],
         "queries": [],
         "conflict_updates": [],
         "missing_updates": [],
@@ -201,9 +202,15 @@ def test_store_records_in_db_missing_is_source_scoped(monkeypatch):
         "pentest_updates": [],
         "pentest_deletes": [],
         "record_deletes": [],
-        "inserted_record_id": 3,
+        "inserted_record_id": 4,
     }
     monkeypatch.setattr(repo, "get_db_connection", lambda db_path: FakeConnection(state))
+    monkeypatch.setattr(
+        repo,
+        "latest_live_a_fqdns",
+        lambda db_path=None: {"bind-only.example.com", "keep.example.com", "cloud-only.example.com"},
+    )
+    monkeypatch.setattr(repo, "latest_a_observations_for_fqdn", lambda *args, **kwargs: [])
 
     repo.store_records_in_db(
         [{"name": "keep.example.com", "ip_address": "10.0.0.2", "source": "Other"}],
@@ -212,6 +219,41 @@ def test_store_records_in_db_missing_is_source_scoped(monkeypatch):
 
     assert state["missing_updates"]
     missing_names = state["missing_updates"][0]
-    assert "bind-only.example.com" in missing_names
+    assert "gone.example.com" in missing_names
+    assert "bind-only.example.com" not in missing_names
     assert "cloud-only.example.com" not in missing_names
     assert "keep.example.com" not in missing_names
+
+
+def test_store_records_in_db_flags_multi_source_a_conflict(monkeypatch):
+    state = {
+        "records": [
+            (1, "www.example.com", "10.0.0.1", "Other", "", "automated", 0),
+        ],
+        "observations": [],
+        "queries": [],
+        "conflict_updates": [],
+        "missing_updates": [],
+        "history_writes": 0,
+        "resolved_updates": [],
+        "pentest_updates": [],
+        "pentest_deletes": [],
+        "record_deletes": [],
+        "inserted_record_id": 2,
+    }
+    monkeypatch.setattr(repo, "get_db_connection", lambda db_path: FakeConnection(state))
+    monkeypatch.setattr(repo, "latest_live_a_fqdns", lambda db_path=None: {"www.example.com"})
+    monkeypatch.setattr(
+        repo,
+        "latest_a_observations_for_fqdn",
+        lambda *args, **kwargs: [{"source_id": 2, "ip_address": "10.0.0.1"}],
+    )
+
+    repo.store_records_in_db(
+        [{"name": "www.example.com", "ip_address": "1.1.1.1", "source": "Other"}],
+        source_id=1,
+    )
+
+    assert state["conflict_updates"]
+    assert state["conflict_updates"][0][0] == repo.MULTI_SOURCE_A_CONFLICT_REASON
+    assert not any(query.startswith("update records set ip_address") for query, _ in state["queries"])

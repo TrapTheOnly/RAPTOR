@@ -25,7 +25,7 @@
         "id": "authorization-model",
         "title": "Authorization model",
         "paragraphs": [
-          "RAPTOR computes effective permissions from three inputs: role defaults, optional permissions stored for the user, and admin full-access behavior. The backend is authoritative and performs permission validation for every protected endpoint.",
+          "RAPTOR computes effective permissions from three inputs: role defaults, optional permissions stored for the user, and admin full-access behavior. The backend is authoritative. Most session APIs use `@permission_required(...)`, but that decorator is not the only gate: scanner SSE, collector agent routes, documentation content, admin-only controls, and service-API keys use other checks.",
           "For non-admin users, optional permissions are sanitized against a role-specific allowlist before storage and when evaluated. Invalid or unknown permission values are ignored."
         ]
       },
@@ -60,7 +60,12 @@
             [
               "`view_security_dashboard`",
               "Pentest dashboard",
-              "Allows access to pentest board and security summary views."
+              "Allows access to the pentest board (`/pentest`) and security summary views. Does not by itself open host notebooks or `/apps/:id`."
+            ],
+            [
+              "`create_manual_records`",
+              "Records create",
+              "Allows creating inventory records that were not ingested from DNS (`POST /api/records`). Default for manager and admin only."
             ],
             [
               "`modify_records`",
@@ -85,7 +90,7 @@
             [
               "`view_pentest_page`",
               "Pentest record view",
-              "Allows opening pentest record pages and related read operations."
+              "Allows opening host notebooks (`/pentest/record/:id`), app workspace (`/apps/:id`), scan-live, and related pentest read APIs. Not a User default or optional grant."
             ],
             [
               "`modify_pentests`",
@@ -110,22 +115,22 @@
             [
               "`manage_report_templates`",
               "Report templates",
-              "Allows full administration of report template lifecycle."
+              "Allows full administration of report template lifecycle, including generating a report from a disabled template."
             ],
             [
               "`reassign_pentests_admin`",
               "Assignment control",
-              "Allows reassigning pentests beyond current tester ownership."
+              "Allows assigning a pentest to someone other than the current user. Self-claim (`tested_by` = current username) does not require this key."
             ],
             [
               "`delete_records`",
               "Records destructive actions",
-              "Allows record deletion operations."
+              "Allows record deletion. Default for manager and admin. The User role cannot delete records."
             ],
             [
               "`modify_others_pentests_admin`",
               "Pentest override",
-              "Allows editing and report operations on other users assigned records."
+              "Grants manager or admin override on pentest records (not limited to own assignment or collaborator list)."
             ]
           ]
         }
@@ -143,7 +148,7 @@
             [
               "`user`",
               "Inventory maintenance",
-              "Records view/edit baseline with record-detail and export support."
+              "Records view/edit/export baseline. No `delete_records`, `create_manual_records`, or `view_pentest_page`."
             ],
             [
               "`pentester`",
@@ -167,8 +172,9 @@
         "id": "optional-permissions",
         "title": "Optional permission extensions",
         "paragraphs": [
-          "Only `user` and `pentester` roles support optional permission extensions. Manager and admin roles do not accept optional extensions.",
-          "Changing role through user administration resets stored optional permissions to an empty set. Optional grants must be explicitly reapplied after role transition when needed."
+          "Only `user` and `pentester` roles support optional permission extensions. Manager and admin roles do not accept optional extensions. Unknown keys and keys outside each role allowlist are ignored.",
+          "Changing role through user administration resets stored optional permissions to an empty set. Optional grants must be explicitly reapplied after role transition when needed.",
+          "For `user`, `view_security_dashboard` opens the pentest board only. It does not grant host notebooks (`view_pentest_page`), scan-live, or `/apps/:id`. Neither role can receive `create_manual_records` or `delete_records` as an optional grant."
         ],
         "table": {
           "columns": [
@@ -199,7 +205,7 @@
         "id": "route-enforcement-patterns",
         "title": "Route and endpoint enforcement patterns",
         "paragraphs": [
-          "Most APIs are protected by `@permission_required(...)`. Sensitive admin flows additionally require `@admin_required`, which enforces role, session validity, and reset-required blocking."
+          "Most session APIs use `@permission_required(...)`. That decorator is not universal. Sensitive admin flows use `@admin_required`. Scanner live streams, collector agents, and documentation pages use other gates described below."
         ],
         "table": {
           "columns": [
@@ -224,14 +230,29 @@
               "Template lifecycle is permission-gated independent of admin role label."
             ],
             [
-              "`POST /manual-update`",
+              "`POST /admin/domains/refresh`",
               "`admin_required`",
-              "Admin-only maintenance control."
+              "Ask collectors to collect now and enqueue enabled cloud DNS pulls."
             ],
             [
               "`POST /pentest/reset-keep-open`",
               "`admin_required`",
               "Admin-only destructive operation with phrase and checkbox safeguards."
+            ],
+            [
+              "`GET /pentest/:id/scan-events/stream`",
+              "Login plus `view_pentest_page` and record access role",
+              "SSE is not `@permission_required` alone. Viewer is not a sufficient scan-stream role; owner, collaborator, or override is required."
+            ],
+            [
+              "`/collector/v1/*`",
+              "Collector agent token",
+              "Agent enroll, heartbeat, and ingest authenticate with collector credentials, not session permission keys."
+            ],
+            [
+              "`GET /docs/manifest` and `GET /docs/content/...`",
+              "Logged-in session plus per-page access matrix",
+              "Documentation is filtered by role and permission rules in the docs manifest. It is not an unfiltered dump of every article."
             ]
           ]
         }
@@ -240,8 +261,9 @@
         "id": "record-level-pentest-constraints",
         "title": "Record-level pentest access constraints",
         "paragraphs": [
-          "Permission alone is not sufficient for pentest record operations. RAPTOR also enforces record-level access with assignment checks.",
-          "Users without `modify_others_pentests_admin` can operate only on records assigned to their username, and unassigned pentest rows are blocked until assignment is set."
+          "Permission keys are not enough. RAPTOR also assigns a record access role: owner (`tested_by`), collaborator, manager or admin override (`modify_others_pentests_admin`), or viewer.",
+          "Writes (lifecycle, notes, images, reports, and Phase 2 finding mutations) require owner, collaborator, or override. GET host notebooks require `view_pentest_page` plus that same assignment set; a viewer is denied. Collaborators are a first-class role and can work findings and reports without being `tested_by`.",
+          "Environment ACL is a second boundary on Phase 2 finding reads/writes, host search, waves, and report generation for requested env ids. An empty ACL is open to anyone who already has the relevant pentest permission. A non-empty ACL limits access to listed usernames plus `app_lead` and admin/manager override."
         ],
         "table": {
           "columns": [
@@ -250,20 +272,36 @@
           ],
           "rows": [
             [
-              "User has `modify_others_pentests_admin`",
-              "Can access and modify any pentest record."
+              "Actor has `modify_others_pentests_admin`",
+              "Override wins: notebook GET and writes are allowed across hosts."
             ],
             [
-              "Record assigned to current user",
-              "Access allowed for permitted actions."
+              "Actor is `tested_by` (owner) or a collaborator",
+              "Notebook GET and writes allowed for permitted actions. Collaborators cannot manage the collaborator list or delete report files unless they also have override."
             ],
             [
-              "Record assigned to different user",
-              "Access denied with assignment-specific message."
+              "`GET /pentest/records` as pentester",
+              "List returns assigned plus collaborator rows, not the full unassigned backlog."
             ],
             [
-              "Record unassigned and user lacks override",
-              "Access denied until record is assigned."
+              "`GET /pentest/records` as manager or admin",
+              "List returns all pentest rows."
+            ],
+            [
+              "GET notebook as viewer (unassigned, not collaborator, no override)",
+              "Denied. `view_security_dashboard` on the board is not sufficient."
+            ],
+            [
+              "Phase 2 finding create/patch/merge/promote/`get_finding`",
+              "Requires host assignment (owner/collaborator/override) or env ACL visibility for that host's environment."
+            ],
+            [
+              "Empty environment ACL",
+              "Open to anyone who already has the relevant pentest permission."
+            ],
+            [
+              "Non-empty environment ACL",
+              "Listed usernames plus `app_lead` and admin/manager override."
             ]
           ]
         }

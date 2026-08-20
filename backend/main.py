@@ -6,8 +6,6 @@ from dotenv import load_dotenv
 from app import create_app
 from app.bootstrap.db_init import init_db
 from app.config import env_flag
-from app.bootstrap.scheduler import periodic_update
-from app.services.dns_sync_service import update_data
 from app.services.admin_auth_service import init_admin_db
 
 load_dotenv()
@@ -21,10 +19,6 @@ if __name__ == "__main__":
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         init_db()
         init_admin_db()
-        update_data()
-
-        zone_update_interval = int(os.getenv("UPDATE_TIME", "86400"))
-        periodic_update(zone_update_interval, update_data)
 
     port = os.getenv("APP_PORT")
     use_tls = env_flag("APP_USE_TLS", False)

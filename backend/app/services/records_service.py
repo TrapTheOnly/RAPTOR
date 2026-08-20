@@ -3,7 +3,6 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 from app.integrations.db.connection import IntegrityError
-from app.services import dns_sync_service
 from app.repositories import applications_repository
 from app.repositories import records_repository
 
@@ -158,10 +157,45 @@ def update_record(record_id: int, data: Dict[str, Any], username: str) -> Tuple[
 
 def get_applications() -> Tuple[Any, int]:
     try:
-        return applications_repository.fetch_applications(), 200
+        apps = applications_repository.fetch_applications()
     except Exception as e:
         logger.error(f"Error fetching applications: {e}")
         return {"error": "Failed to fetch applications."}, 500
+
+    username = ""
+    role = ""
+    try:
+        from flask import has_request_context, session
+
+        if has_request_context():
+            username = session.get("username") or ""
+            role = session.get("user_type") or ""
+    except Exception:
+        username = ""
+        role = ""
+    if not username:
+        return apps, 200
+
+    from app.services.authorization_service import user_has_permission
+    from app.services.phase2b_service import visible_env_ids
+
+    can_see_program = user_has_permission(username, role, "manage_apps") or str(role).lower() in {
+        "admin",
+        "manager",
+    }
+    sensitive = ("roe_link", "cookie_domain", "idp", "token_audience")
+    for app in apps:
+        allowed = visible_env_ids(int(app["id"]), username, role)
+        if allowed is not None and app.get("environments"):
+            allowed_set = {int(item) for item in allowed}
+            app["environments"] = [
+                env for env in app["environments"] if int(env.get("id") or 0) in allowed_set
+            ]
+        lead = str(app.get("app_lead") or "")
+        if not can_see_program and lead != username:
+            for key in sensitive:
+                app.pop(key, None)
+    return apps, 200
 
 
 def create_application(data: Dict[str, Any], username: str) -> Tuple[Dict[str, Any], int]:
@@ -265,26 +299,55 @@ def get_record_by_domain(domain: str) -> Tuple[Dict[str, Any], int]:
     return {"error": "Record not found"}, 404
 
 
-def resolve_sync_conflict(record_id: int, username: str) -> Tuple[Dict[str, Any], int]:
+def resolve_sync_conflict(
+    record_id: int,
+    username: str,
+    data: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], int]:
     row = records_repository.fetch_record_by_id(record_id)
     if not row:
         return {"error": "Record not found"}, 404
-    if row.get("origin") != "manual" or not bool(row.get("sync_conflict")):
+    if not bool(row.get("sync_conflict")):
         return {"error": "Record does not have a resolvable sync conflict."}, 409
 
-    imported = dns_sync_service.find_live_imported_record(row.get("name"))
-    if not imported:
-        return {"error": "Imported domain is not currently available in live zone data."}, 409
+    payload = data if isinstance(data, dict) else {}
+    chosen_ip = str(payload.get("ip_address") or "").strip()
+    source_id_raw = payload.get("source_id")
+    if source_id_raw not in (None, "") and not chosen_ip:
+        try:
+            source_id = int(source_id_raw)
+        except (TypeError, ValueError):
+            return {"error": "source_id must be an integer."}, 400
+        for seen in row.get("seen_by") or []:
+            if int(seen.get("source_id") or 0) == source_id:
+                chosen_ip = str(seen.get("ip_address") or "").strip()
+                break
+        if not chosen_ip:
+            return {"error": "That DNS source has no current A record for this host."}, 409
 
-    result = records_repository.resolve_manual_sync_conflict(
+    if row.get("origin") == "manual" and not chosen_ip:
+        for seen in row.get("seen_by") or []:
+            chosen_ip = str(seen.get("ip_address") or "").strip()
+            if chosen_ip:
+                break
+        if not chosen_ip:
+            return {"error": "Imported domain is not currently available in live DNS data."}, 409
+
+    if not chosen_ip:
+        return {"error": "ip_address or source_id is required to resolve this conflict."}, 400
+
+    result = records_repository.resolve_sync_conflict_with_ip(
         record_id=record_id,
-        imported_ip_address=str(imported.get("ip_address") or ""),
+        ip_address=chosen_ip,
         username=username,
+        require_manual=False,
     )
     if result == "record_not_found":
         return {"error": "Record not found"}, 404
     if result == "no_conflict":
         return {"error": "Record does not have a resolvable sync conflict."}, 409
+    if result == "invalid_ip":
+        return {"error": "A valid IP address is required."}, 400
 
     updated = records_repository.fetch_record_by_id(record_id)
     if not updated:

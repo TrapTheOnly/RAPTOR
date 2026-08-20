@@ -5,7 +5,6 @@
 | `backend/app/__init__.py` | Creates and configures the Flask app instance, then registers all routes and integrations. |
 | `backend/app/bootstrap/__init__.py` | Initializes the `backend/app/bootstrap` package namespace and package-level exports. |
 | `backend/app/bootstrap/db_init.py` | Coordinates schema creation and data seeding during application startup. |
-| `backend/app/bootstrap/scheduler.py` | Runs and manages the periodic background update scheduler lifecycle. |
 | `backend/app/bootstrap/schema_setup.py` | Creates and migrates database tables/columns required by the app schema. |
 | `backend/app/bootstrap/seed_data.py` | Seeds canonical checklist/report template and vulnerability category records. |
 | `backend/app/bootstrap/seed_orchestrator.py` | Orchestrates all database seed routines in one startup call. |
@@ -64,7 +63,7 @@
 | `backend/app/services/admin_auth_service.py` | Implements admin auth workflows (bootstrap, password change/reset). |
 | `backend/app/services/auth_service.py` | Implements login/logout/session flows, lockout handling, and reset flows. |
 | `backend/app/services/authorization_service.py` | Computes effective user permissions and permission checks. |
-| `backend/app/services/dns_sync_service.py` | Parses zone files and synchronizes DNS-derived records into persistence. |
+| `backend/app/services/cloud_dns_service.py` | Pulls cloud DNS sources and applies ingest batches. |
 | `backend/app/services/docs_access_matrix_service.py` | Builds docs access matrix/visibility models across roles and permissions. |
 | `backend/app/services/docs_manifest_service.py` | Resolves user-scoped docs manifests and page content access responses. |
 | `backend/app/services/metadata_service.py` | Implements business rules for IP-source and vuln-category metadata operations. |

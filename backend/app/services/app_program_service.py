@@ -10,7 +10,9 @@ from app.repositories import (
 )
 from app.repositories.environments_repository import suggest_env_slug
 from app.repositories.records_query_repository import fetch_record_by_id
+from app.repositories.offsec.offsec_records import enforce_pentest_record_access
 from app.services import phase2b_service, records_service
+from app.services.authorization_service import user_has_permission
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,46 @@ def _deny_env(allowed: Optional[List[int]], env_id: Optional[int]) -> bool:
     if allowed is None or env_id is None:
         return False
     return int(env_id) not in {int(item) for item in allowed}
+
+
+def _host_access_error(
+    record_id: Any,
+    username: str,
+    role: str,
+    action_verb: str = "modify",
+) -> Optional[Tuple[Dict[str, Any], int]]:
+    if not username:
+        return None
+    allowed, error = enforce_pentest_record_access(
+        record_id,
+        action_verb,
+        username=username,
+        role=role,
+    )
+    if not allowed:
+        return {"error": error}, 403
+    record = fetch_record_by_id(record_id)
+    if not record:
+        return None
+    app_id = record.get("application_id")
+    env_id = record.get("environment_id")
+    if app_id and env_id and _deny_env(_acl_env_ids(int(app_id), username, role), int(env_id)):
+        return {"error": "Environment is not visible to this user."}, 403
+    return None
+
+
+def _finding_host_access_error(
+    finding: Optional[Dict[str, Any]],
+    username: str,
+    role: str,
+    action_verb: str = "access",
+) -> Optional[Tuple[Dict[str, Any], int]]:
+    if not finding:
+        return None
+    record_id = finding.get("record_id")
+    if record_id in (None, "", 0):
+        return None
+    return _host_access_error(record_id, username, role, action_verb)
 
 
 def _reject_closed_finding_wave(finding: Optional[Dict[str, Any]]) -> Optional[Tuple[Dict[str, Any], int]]:
@@ -177,11 +219,20 @@ def assign_hosts(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int
     return {"updated": updated}, 200
 
 
-def assign_host_testers(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def assign_host_testers(
+    app_id: int,
+    data: Dict[str, Any],
+    username: str = "",
+    role: str = "",
+) -> Tuple[Dict[str, Any], int]:
     record_ids = data.get("record_ids") or []
-    username = str((data or {}).get("username") or "").strip()
-    if not username:
+    requested = str((data or {}).get("username") or "").strip()
+    actor = str(username or "").strip()
+    if not requested:
         return {"error": "username is required."}, 400
+    if actor and requested.lower() != actor.lower():
+        if not user_has_permission(actor, role, "reassign_pentests_admin"):
+            return {"error": "Assigning another tester requires reassign_pentests_admin."}, 403
     if not isinstance(record_ids, list) or not record_ids:
         return {"error": "record_ids is required."}, 400
     try:
@@ -204,7 +255,13 @@ def assign_host_testers(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, An
         owned = [int(row["id"] if isinstance(row, dict) else row[0]) for row in c.fetchall() or []]
     if not owned:
         return {"error": "No matching hosts in this application."}, 404
-    updated = phase2b_repository.assign_record_testers(owned, username)
+    allowed_envs = _acl_env_ids(app_id, actor, role)
+    for record_id in owned:
+        host = fetch_record_by_id(record_id) or {}
+        env_id = host.get("environment_id")
+        if env_id and _deny_env(allowed_envs, env_id):
+            return {"error": "Environment is not visible to this user."}, 403
+    updated = phase2b_repository.assign_record_testers(owned, requested)
     synced = set()
     for record_id in owned:
         env = phase2b_repository.fetch_host_env(record_id)
@@ -215,7 +272,7 @@ def assign_host_testers(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, An
         if wave and int(wave["id"]) not in synced:
             phase2b_repository.sync_wave_host_collaborators(int(wave["id"]))
             synced.add(int(wave["id"]))
-    return {"updated": updated, "tested_by": username}, 200
+    return {"updated": updated, "tested_by": requested}, 200
 
 
 def list_hosts(app_id: int, args: Dict[str, Any], username: str = "", role: str = "") -> Tuple[Dict[str, Any], int]:
@@ -334,7 +391,9 @@ def list_findings(app_id: int, args: Dict[str, Any], username: str = "", role: s
     return {"findings": findings, "total": total, "limit": limit, "offset": offset}, 200
 
 
-def create_finding(app_id: int, data: Dict[str, Any], username: str) -> Tuple[Dict[str, Any], int]:
+def create_finding(
+    app_id: int, data: Dict[str, Any], username: str, role: str = ""
+) -> Tuple[Dict[str, Any], int]:
     if not applications_repository.fetch_application(app_id):
         return {"error": "Application not found."}, 404
     try:
@@ -346,6 +405,20 @@ def create_finding(app_id: int, data: Dict[str, Any], username: str) -> Tuple[Di
         return {"error": "Host not found."}, 404
     if int(record.get("application_id") or 0) != int(app_id):
         return {"error": "Host is not in this application."}, 400
+    denied = _host_access_error(record_id, username, role, "create a finding on")
+    if denied:
+        return denied
+    extra_ids = data.get("record_ids") or []
+    parsed_extra = []
+    if isinstance(extra_ids, list) and extra_ids:
+        try:
+            parsed_extra = [int(item) for item in extra_ids if str(item).isdigit() or isinstance(item, int)]
+        except (TypeError, ValueError):
+            return {"error": "record_ids must be integers."}, 400
+        for extra_id in parsed_extra:
+            extra_denied = _host_access_error(extra_id, username, role, "attach a finding to")
+            if extra_denied:
+                return extra_denied
     payload = dict(data)
     payload["created_by"] = username
     payload["application_id"] = app_id
@@ -374,21 +447,26 @@ def create_finding(app_id: int, data: Dict[str, Any], username: str) -> Tuple[Di
         collaborators.update(str(name).strip() for name in data["collaborators"] if str(name).strip())
     pentest_findings_repository.replace_finding_collaborators(finding_id, list(collaborators))
     finding = pentest_findings_repository.get_finding(finding_id)
-    extra_ids = data.get("record_ids") or []
-    if isinstance(extra_ids, list) and extra_ids:
-        pentest_findings_repository.attach_occurrences(
-            finding_id,
-            [int(item) for item in extra_ids if str(item).isdigit() or isinstance(item, int)],
-        )
+    if parsed_extra:
+        pentest_findings_repository.attach_occurrences(finding_id, parsed_extra)
         finding = pentest_findings_repository.get_finding(finding_id)
     return {"finding": finding}, 201
 
 
-def get_finding(finding_id: str) -> Tuple[Dict[str, Any], int]:
+def get_finding(finding_id: str, username: str = "", role: str = "") -> Tuple[Dict[str, Any], int]:
     finding = pentest_findings_repository.get_finding(finding_id)
     if not finding:
         return {"error": "Finding not found."}, 404
+    denied = _finding_host_access_error(finding, username, role, "view")
+    if denied:
+        return denied
     found_here = fetch_record_by_id(finding.get("record_id"))
+    if found_here and found_here.get("application_id") and found_here.get("environment_id"):
+        if _deny_env(
+            _acl_env_ids(int(found_here["application_id"]), username, role),
+            int(found_here["environment_id"]),
+        ):
+            return {"error": "Environment is not visible to this user."}, 403
     environment = None
     wave = None
     app_id = finding.get("application_id")
@@ -414,10 +492,15 @@ def get_finding(finding_id: str) -> Tuple[Dict[str, Any], int]:
     }, 200
 
 
-def patch_finding(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def patch_finding(
+    finding_id: str, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Dict[str, Any], int]:
     current = pentest_findings_repository.get_finding(finding_id)
     if not current:
         return {"error": "Finding not found."}, 404
+    denied = _finding_host_access_error(current, username, role, "modify")
+    if denied:
+        return denied
     blocked = _reject_closed_finding_wave(current)
     if blocked:
         return blocked
@@ -427,10 +510,15 @@ def patch_finding(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
     return {"finding": finding}, 200
 
 
-def add_occurrences(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def add_occurrences(
+    finding_id: str, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Dict[str, Any], int]:
     current = pentest_findings_repository.get_finding(finding_id)
     if not current:
         return {"error": "Finding not found."}, 404
+    denied = _finding_host_access_error(current, username, role, "modify")
+    if denied:
+        return denied
     blocked = _reject_closed_finding_wave(current)
     if blocked:
         return blocked
@@ -441,13 +529,19 @@ def add_occurrences(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, An
         ids = [int(item) for item in record_ids]
     except (TypeError, ValueError):
         return {"error": "record_ids must be integers."}, 400
+    for extra_id in ids:
+        extra_denied = _host_access_error(extra_id, username, role, "attach a finding to")
+        if extra_denied:
+            return extra_denied
     finding = pentest_findings_repository.attach_occurrences(finding_id, ids)
     if not finding:
         return {"error": "Finding not found."}, 404
     return {"finding": finding}, 200
 
 
-def patch_occurrence(finding_id: str, record_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def patch_occurrence(
+    finding_id: str, record_id: int, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Dict[str, Any], int]:
     status = str((data or {}).get("status") or "").strip()
     if not status:
         return {"error": "status is required."}, 400
@@ -458,6 +552,12 @@ def patch_occurrence(finding_id: str, record_id: int, data: Dict[str, Any]) -> T
     current = pentest_findings_repository.get_finding(finding_id)
     if not current:
         return {"error": "Occurrence not found."}, 404
+    denied = _finding_host_access_error(current, username, role, "modify")
+    if denied:
+        return denied
+    occ_denied = _host_access_error(record_id, username, role, "modify")
+    if occ_denied:
+        return occ_denied
     blocked = _reject_closed_finding_wave(current)
     if blocked:
         return blocked
@@ -471,7 +571,9 @@ def patch_occurrence(finding_id: str, record_id: int, data: Dict[str, Any]) -> T
     return {"finding": finding}, 200
 
 
-def bulk_set_occurrence_status(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def bulk_set_occurrence_status(
+    app_id: int, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Dict[str, Any], int]:
     if not applications_repository.fetch_application(app_id):
         return {"error": "Application not found."}, 404
     payload = data or {}
@@ -484,6 +586,18 @@ def bulk_set_occurrence_status(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[
         record_ids = [int(item) for item in (payload.get("record_ids") or [])]
     except (TypeError, ValueError):
         return {"error": "env_ids and record_ids must be integers."}, 400
+    allowed_envs = _acl_env_ids(app_id, username, role)
+    if env_ids:
+        if any(_deny_env(allowed_envs, env_id) for env_id in env_ids):
+            return {"error": "Environment is not visible to this user."}, 403
+    elif allowed_envs is not None:
+        env_ids = list(allowed_envs)
+        if not env_ids:
+            return {"updated": 0, "to_status": to_status.strip().lower()}, 200
+    for record_id in record_ids:
+        denied = _host_access_error(record_id, username, role, "modify")
+        if denied:
+            return denied
     try:
         updated = pentest_findings_repository.bulk_set_occurrence_status(
             app_id,
@@ -498,7 +612,9 @@ def bulk_set_occurrence_status(app_id: int, data: Dict[str, Any]) -> Tuple[Dict[
     return {"updated": updated, "to_status": to_status.strip().lower()}, 200
 
 
-def merge_findings(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def merge_findings(
+    finding_id: str, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Dict[str, Any], int]:
     loser_id = str(data.get("loser_id") or "").strip()
     if not loser_id:
         return {"error": "loser_id is required."}, 400
@@ -508,6 +624,11 @@ def merge_findings(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any
     loser = pentest_findings_repository.get_finding(loser_id)
     if not loser:
         return {"error": "Finding not found."}, 404
+    denied = _finding_host_access_error(survivor, username, role, "merge") or _finding_host_access_error(
+        loser, username, role, "merge"
+    )
+    if denied:
+        return denied
     blocked = _reject_closed_finding_wave(survivor) or _reject_closed_finding_wave(loser)
     if blocked:
         return blocked
@@ -517,10 +638,15 @@ def merge_findings(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any
     return {"finding": finding}, 200
 
 
-def promote_finding(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def promote_finding(
+    finding_id: str, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Dict[str, Any], int]:
     current = pentest_findings_repository.get_finding(finding_id)
     if not current:
         return {"error": "Finding not found."}, 404
+    denied = _finding_host_access_error(current, username, role, "promote")
+    if denied:
+        return denied
     blocked = _reject_closed_finding_wave(current)
     if blocked:
         return blocked
@@ -531,13 +657,31 @@ def promote_finding(finding_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, An
             ids = [int(item) for item in candidates]
         except (TypeError, ValueError):
             return {"error": "candidate_record_ids must be integers."}, 400
+    for extra_id in ids:
+        extra_denied = _host_access_error(extra_id, username, role, "promote a finding onto")
+        if extra_denied:
+            return extra_denied
     finding = pentest_findings_repository.promote_finding(finding_id, ids)
     if not finding:
         return {"error": "Finding not found."}, 404
     return {"finding": finding}, 200
 
 
-def search_hosts(args: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def _host_visible_for_search(host: Dict[str, Any], username: str, role: str, cache: Dict[int, Optional[List[int]]]) -> bool:
+    app_id = host.get("application_id")
+    env_id = host.get("environment_id")
+    if not app_id or not env_id:
+        return True
+    app_key = int(app_id)
+    if app_key not in cache:
+        cache[app_key] = _acl_env_ids(app_key, username, role)
+    allowed = cache[app_key]
+    return not _deny_env(allowed, int(env_id))
+
+
+def search_hosts(
+    args: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Dict[str, Any], int]:
     from app.config import DB_PATH
     from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
 
@@ -550,15 +694,6 @@ def search_hosts(args: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         c = conn.cursor()
         c.execute(
             """
-            SELECT COUNT(*) AS n
-            FROM records r
-            WHERE LOWER(r.name) LIKE ?
-            """,
-            (f"%{query}%",),
-        )
-        total = int((c.fetchone() or {}).get("n") or 0)
-        c.execute(
-            """
             SELECT
                 r.id, r.name, r.ip_address, r.application_id, r.environment_id,
                 a.name AS application_name, e.slug AS environment_slug,
@@ -568,9 +703,12 @@ def search_hosts(args: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             LEFT JOIN environments e ON e.id = r.environment_id
             WHERE LOWER(r.name) LIKE ?
             ORDER BY r.name
-            LIMIT ? OFFSET ?
             """,
-            (f"%{query}%", limit, offset),
+            (f"%{query}%",),
         )
         hosts = [dict(row) for row in c.fetchall() or []]
-    return {"hosts": hosts, "total": total, "limit": limit, "offset": offset}, 200
+    cache: Dict[int, Optional[List[int]]] = {}
+    visible = [host for host in hosts if _host_visible_for_search(host, username, role, cache)]
+    total = len(visible)
+    page = visible[offset : offset + limit]
+    return {"hosts": page, "total": total, "limit": limit, "offset": offset}, 200

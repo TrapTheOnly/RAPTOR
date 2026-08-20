@@ -180,9 +180,9 @@ async def update_checklist_item(record_id: int, template_key: str, item_id: str,
     name="log_scan_event",
     description="Record a structured scan progress event (api_call, tool_call, tool_result, finding, status).",
 )
-async def log_scan_event(record_id: int, event_type: str, payload: dict) -> Any:
+async def log_scan_event(record_id: int, event_type: str, payload: dict, job_id: int = 0) -> Any:
     settings = load_settings()
-    return await do_log_scan_event(record_id, event_type, payload, settings)
+    return await do_log_scan_event(record_id, event_type, payload, settings, job_id=job_id)
 
 
 @mcp.tool(
