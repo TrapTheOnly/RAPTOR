@@ -5,6 +5,7 @@ from flask import Blueprint, Response, jsonify, request, session
 
 from app.http.decorators.admin_required import admin_required
 from app.http.decorators.login_required import login_required_json
+from app.http.decorators.permission_required import permission_required
 from app.http.decorators.service_api_key_required import service_api_key_required
 from app.services.scanner_service import (
     get_scanner_config_payload,
@@ -64,14 +65,14 @@ def reset_scan_ui_route(record_id):
 
 
 @scanner_bp.route("/pentest/<int:record_id>/scan-events/stream", methods=["GET"])
-@login_required_json
+@permission_required("view_pentest_page")
 def scan_events_stream(record_id):
-    from app.repositories.offsec.offsec_records import get_pentest_access_role
+    from app.repositories.offsec.offsec_records import enforce_pentest_record_access
     from app.repositories.scan_events_repository import fetch_scan_events_after
 
-    access_role = get_pentest_access_role(record_id)
-    if not access_role:
-        return jsonify({"error": "Access denied."}), 403
+    allowed, error = enforce_pentest_record_access(record_id, "access")
+    if not allowed:
+        return jsonify({"error": error or "Access denied."}), 403
 
     after_id = int(request.args.get("after", 0))
 

@@ -1,4 +1,4 @@
-"""Token counting and USD cost estimation for Bedrock Claude models."""
+"""Token counting and USD cost estimation for scanner LLM calls."""
 
 
 class TokenTracker:
@@ -35,6 +35,10 @@ class TokenTracker:
 
     @property
     def over_limit(self) -> bool:
+        if self.cost_limit_usd <= 0:
+            return False
+        if self.input_cost_per_1m <= 0 and self.output_cost_per_1m <= 0:
+            return False
         return self.cost_usd >= self.cost_limit_usd
 
 

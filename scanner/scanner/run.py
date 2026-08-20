@@ -1,16 +1,18 @@
 """Core scan execution: connects to Bedrock + RAPTOR MCP + Kali MCP and drives the agentic loop."""
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
 import re
-from typing import Any
+from typing import Any, Optional
 import os
 
 import anthropic
 
 from scanner.cost import TokenTracker
 from scanner.events import ScanEventReporter
+from scanner.llm import build_llm_client
 from scanner.mcp_client import call_tool, kali_mcp_session, raptor_mcp_session
 from scanner.prompt import SYSTEM_PROMPT
 from scanner.settings import ScanSettings
@@ -132,8 +134,42 @@ class ScanMemory:
         return "\n".join(lines)
 
 
-async def run_scan(settings: ScanSettings) -> None:
+def _host_ids(settings: ScanSettings) -> list[int]:
+    ids = [int(item) for item in (settings.record_ids or ()) if int(item) > 0]
+    if settings.record_id and settings.record_id not in ids:
+        ids.insert(0, int(settings.record_id))
+    return ids or [int(settings.record_id)]
+
+
+def _host_lines(settings: ScanSettings) -> str:
+    lines = []
+    by_id = {int(host.get("record_id") or 0): host for host in settings.hosts or ()}
+    for record_id in _host_ids(settings):
+        host = by_id.get(record_id) or {}
+        name = host.get("name") or ""
+        ip_address = host.get("ip_address") or ""
+        lines.append(f"- record_id={record_id} name={name or '(unknown)'} ip={ip_address or '(unknown)'}")
+    return "\n".join(lines)
+
+
+def _raise_if_stopped(cancel_event) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise _ScanStopped()
+
+
+async def _mark_wave_failed(raptor_mcp, reporter: ScanEventReporter, record_ids: list[int], reason: str) -> None:
+    await _set_hosts_status(raptor_mcp, record_ids, "failed")
+    await reporter.emit("status", {
+        "scan_status": "failed",
+        "reason": reason,
+        "wave_complete": True,
+        "record_ids": record_ids,
+    })
+
+
+async def run_scan(settings: ScanSettings, cancel_event: Optional[asyncio.Event] = None) -> None:
     record_id = settings.record_id
+    record_ids = _host_ids(settings)
     tracker = TokenTracker(
         cost_limit_usd=settings.cost_limit_usd,
         input_cost_per_1m=settings.input_cost_per_1m,
@@ -156,32 +192,18 @@ async def run_scan(settings: ScanSettings) -> None:
         os.environ["HTTP_PROXY"] = proxy_url
         # Exclude internal Docker service hostnames from proxying — the proxy
         # can't resolve them and will return ERR_DNS_FAIL.
-        os.environ["NO_PROXY"] = "mcp,app,kali,localhost,127.0.0.1"
+        os.environ["NO_PROXY"] = "mcp,app,kali,local-llm,localhost,127.0.0.1"
         logger.info(f"[record {record_id}] Proxy configured: {settings.proxy_url.strip()}")
     else:
         os.environ.pop("HTTPS_PROXY", None)
         os.environ.pop("HTTP_PROXY", None)
         os.environ.pop("NO_PROXY", None)
 
-    http_client = None
-    if proxy_url:
-        import httpx
-        http_client = httpx.Client(
-            proxy=proxy_url,
-            mounts={"http://mcp": None, "http://app": None, "http://kali": None},
-        )
-
-    # AWS_BEARER_TOKEN_BEDROCK is read automatically by AnthropicBedrock.__init__
-    # as api_key, which causes it to skip boto3/SigV4 entirely and just send
-    # "Authorization: Bearer <token>". The http_client proxy covers that request.
-    client = anthropic.AnthropicBedrock(
-        aws_region=settings.aws_region,
-        **({"http_client": http_client} if http_client else {}),
-    )
+    client = build_llm_client(settings)
 
     findings_count = 0
     async with raptor_mcp_session(settings.mcp_base_url, settings.mcp_server_token) as raptor_mcp:
-        reporter = ScanEventReporter(record_id=record_id, raptor_mcp=raptor_mcp)
+        reporter = ScanEventReporter(record_id=record_id, raptor_mcp=raptor_mcp, job_id=settings.job_id)
         try:
             async with kali_mcp_session(
                 settings.kali_client_path,
@@ -202,34 +224,60 @@ async def run_scan(settings: ScanSettings) -> None:
                     **{t["name"]: kali_mcp for t in kali_tools},
                 }
                 logger.info(
-                    f"[record {record_id}] RAPTOR tools: {[t['name'] for t in raptor_tools]}  "
-                    f"Kali tools: {[t['name'] for t in kali_tools]}"
+                    f"[wave {settings.wave_id or record_id}] RAPTOR tools: {[t['name'] for t in raptor_tools]}  "
+                    f"Kali tools: {[t['name'] for t in kali_tools]}  hosts={record_ids}"
                 )
-                await _set_scan_status(raptor_mcp, record_id, "running")
-                await reporter.emit("status", {"scan_status": "running"})
-                await _discover_ports(kali_mcp, raptor_mcp, settings, reporter)
+                await _set_hosts_status(raptor_mcp, record_ids, "running")
+                await reporter.emit("status", {
+                    "scan_status": "running",
+                    "record_ids": record_ids,
+                    "wave_id": settings.wave_id,
+                    "job_id": settings.job_id,
+                })
+                _raise_if_stopped(cancel_event)
+                if settings.skip_port_discovery:
+                    logger.info(f"[wave {settings.wave_id or record_id}] Skipping port discovery (operator request)")
+                else:
+                    await _discover_ports(kali_mcp, raptor_mcp, settings, reporter, cancel_event)
                 findings_count = await _agent_loop(
                     client, tool_registry, all_tools, settings, tracker, reporter,
-                    raptor_tool_names, kali_tool_names,
+                    raptor_tool_names, kali_tool_names, cancel_event,
                 )
-                await _set_scan_status(raptor_mcp, record_id, "completed")
-                await reporter.emit("status", {"scan_status": "completed",
-                                               "findings_count": findings_count,
-                                               "input_tokens": tracker.input_tokens,
-                                               "output_tokens": tracker.output_tokens,
-                                               "cache_read_input_tokens": tracker.cache_read_input_tokens,
-                                               "cache_creation_input_tokens": tracker.cache_creation_input_tokens,
-                                               "cost_usd": round(tracker.cost_usd, 6)})
+                await _set_hosts_status(raptor_mcp, record_ids, "completed")
+                await reporter.emit("status", {
+                    "scan_status": "completed",
+                    "wave_complete": True,
+                    "record_ids": record_ids,
+                    "findings_count": findings_count,
+                    "input_tokens": tracker.input_tokens,
+                    "output_tokens": tracker.output_tokens,
+                    "cache_read_input_tokens": tracker.cache_read_input_tokens,
+                    "cache_creation_input_tokens": tracker.cache_creation_input_tokens,
+                    "cost_usd": round(tracker.cost_usd, 6),
+                })
+        except _ScanStopped:
+            logger.warning(f"[wave {settings.wave_id or record_id}] Scan stopped by operator")
+            await _mark_wave_failed(raptor_mcp, reporter, record_ids, "stopped")
+            findings_count = 0
+        except asyncio.CancelledError:
+            logger.warning(f"[wave {settings.wave_id or record_id}] Scan cancelled")
+            try:
+                await asyncio.shield(_mark_wave_failed(raptor_mcp, reporter, record_ids, "stopped"))
+            except Exception as exc:
+                logger.error(f"[wave {settings.wave_id or record_id}] Failed to record stop: {exc}")
+            findings_count = 0
         except _CostLimitExceeded:
-            logger.warning(f"[record {record_id}] Cost limit ${settings.cost_limit_usd} reached — marking failed")
-            await _set_scan_status(raptor_mcp, record_id, "failed")
-            await reporter.emit("status", {"scan_status": "failed", "reason": "cost_limit"})
+            logger.warning(f"[wave {settings.wave_id or record_id}] Cost limit ${settings.cost_limit_usd} reached — marking failed")
+            await _mark_wave_failed(raptor_mcp, reporter, record_ids, "cost_limit")
+            findings_count = 0
+        except _MaxTurnsExceeded:
+            logger.warning(f"[wave {settings.wave_id or record_id}] Max turns {settings.max_turns} reached — marking failed")
+            await _mark_wave_failed(raptor_mcp, reporter, record_ids, "max_turns")
             findings_count = 0
         except Exception as exc:
             reason = _summarize_exception(exc)
-            logger.error(f"[record {record_id}] Scan error: {reason}", exc_info=True)
-            await _set_scan_status(raptor_mcp, record_id, "failed")
-            await reporter.emit("status", {"scan_status": "failed", "reason": reason[:200]})
+            logger.error(f"[wave {settings.wave_id or record_id}] Scan error: {reason}", exc_info=True)
+            await _mark_wave_failed(raptor_mcp, reporter, record_ids, reason[:200])
             findings_count = 0
         finally:
             try:
@@ -251,10 +299,21 @@ async def _discover_ports(
     raptor_mcp,
     settings: ScanSettings,
     reporter: ScanEventReporter,
+    cancel_event=None,
 ) -> None:
-    """Run nmap -p- TCP SYN discovery, save results via update_pentest_ports."""
-    record_id = settings.record_id
+    """Run nmap -p- TCP SYN discovery per in-scope host, save results via update_pentest_ports."""
+    for record_id in _host_ids(settings):
+        _raise_if_stopped(cancel_event)
+        await _discover_ports_for_record(kali_mcp, raptor_mcp, settings, reporter, record_id)
 
+
+async def _discover_ports_for_record(
+    kali_mcp,
+    raptor_mcp,
+    settings: ScanSettings,
+    reporter: ScanEventReporter,
+    record_id: int,
+) -> None:
     pentest_payload = await call_tool(raptor_mcp, "get_pentest", {"record_id": record_id})
     pentest = pentest_payload.get("pentest", {}) if isinstance(pentest_payload, dict) else {}
     existing_ports = str(pentest.get("open_ports") or "").strip()
@@ -268,7 +327,7 @@ async def _discover_ports(
         return
 
     logger.info(f"[record {record_id}] Starting port discovery on {target_ip}")
-    await reporter.emit("status", {"scan_status": "running", "phase": "port_discovery"})
+    await reporter.emit("status", {"scan_status": "running", "phase": "port_discovery", "record_id": record_id}, record_id=record_id)
 
     try:
         result = await call_tool(kali_mcp, "nmap_scan", {
@@ -309,8 +368,16 @@ def _parse_nmap_open_ports(nmap_output: str) -> list[int]:
     return ports
 
 
+class _MaxTurnsExceeded(Exception):
+    pass
+
+
+class _ScanStopped(Exception):
+    pass
+
+
 async def _agent_loop(
-    client: anthropic.AnthropicBedrock,
+    client,
     tool_registry: dict,
     tools: list,
     settings: ScanSettings,
@@ -318,21 +385,35 @@ async def _agent_loop(
     reporter: ScanEventReporter,
     raptor_tool_names: set,
     kali_tool_names: set,
+    cancel_event=None,
 ) -> int:
     record_id = settings.record_id
     findings_count = 0
     api_call_count = 0
     scan_memory = ScanMemory()
+    host_block = _host_lines(settings)
+    brief = str(settings.operator_brief or "").strip()
+    brief_block = (
+        "\n\nOperator notes — treat as engagement constraints and extra context. "
+        "Honour out-of-scope items, credentials, and focus areas below:\n"
+        f"{brief}"
+        if brief else ""
+    )
     initial_message = {
         "role": "user",
         "content": [{
             "type": "text",
             "text": (
-                f"Begin security assessment for pentest record ID {record_id}.\n"
+                f"Begin security assessment for wave {settings.wave_id or '(none)'} "
+                f"(job {settings.job_id or '(none)'}).\n"
+                f"In-scope hosts:\n{host_block}\n"
+                f"Primary record_id for notifications: {record_id}.\n"
                 f"Cost limit: ${settings.cost_limit_usd:.2f} USD. "
                 f"Stop and call notify_scan_complete before this limit is reached.\n"
                 f"Follow the workflow in your system instructions exactly. "
-                f"Start with get_pentest({record_id})."
+                f"Call get_pentest for every record_id above. Related hostnames on this wave "
+                f"are in scope (vhosts, cookies, SSRF, shared auth)."
+                f"{brief_block}"
             ),
             "cache_control": dict(_CACHE_CONTROL),
         }],
@@ -345,15 +426,16 @@ async def _agent_loop(
     ]
 
     while True:
+        _raise_if_stopped(cancel_event)
         if tracker.over_limit:
             raise _CostLimitExceeded()
+        if api_call_count >= settings.max_turns:
+            raise _MaxTurnsExceeded()
 
         request_tools = _prepare_tools_for_request(tools)
         request_system = _build_system_blocks()
         request_messages = _prepare_messages_for_request(messages)
-        preflight_tokens = _count_request_tokens(
-            client=client,
-            model=settings.bedrock_model_id,
+        preflight_tokens = client.count_tokens(
             system=request_system,
             tools=request_tools,
             messages=request_messages,
@@ -377,48 +459,42 @@ async def _agent_loop(
                 "compactions": scan_memory.compactions,
             })
             request_messages = _prepare_messages_for_request(messages)
-            preflight_tokens = _count_request_tokens(
-                client=client,
-                model=settings.bedrock_model_id,
+            preflight_tokens = client.count_tokens(
                 system=request_system,
                 tools=request_tools,
                 messages=request_messages,
             )
 
-        create_kwargs: dict = dict(
-            model=settings.bedrock_model_id,
-            max_tokens=16000,
+        turn = client.complete(
             system=request_system,
             tools=request_tools,
             messages=request_messages,
+            max_tokens=16000,
+            thinking_budget_tokens=settings.thinking_budget_tokens,
         )
-        if settings.thinking_budget_tokens > 0:
-            create_kwargs["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": settings.thinking_budget_tokens,
-            }
-        response = client.messages.create(**create_kwargs)
 
         api_call_count += 1
-        cache_read_input_tokens = response.usage.cache_read_input_tokens or 0
-        cache_creation_input_tokens = response.usage.cache_creation_input_tokens or 0
+        cache_read_input_tokens = turn.usage.cache_read_input_tokens or 0
+        cache_creation_input_tokens = turn.usage.cache_creation_input_tokens or 0
         tracker.add(
-            response.usage.input_tokens,
-            response.usage.output_tokens,
+            turn.usage.input_tokens,
+            turn.usage.output_tokens,
             cache_read_input_tokens=cache_read_input_tokens,
             cache_creation_input_tokens=cache_creation_input_tokens,
         )
         logger.info(
-            f"[record {record_id}] tokens +{response.usage.input_tokens}in "
-            f"+{response.usage.output_tokens}out  cache_read={cache_read_input_tokens} "
+            f"[record {record_id}] tokens +{turn.usage.input_tokens}in "
+            f"+{turn.usage.output_tokens}out  cache_read={cache_read_input_tokens} "
             f"cache_write={cache_creation_input_tokens}  cost ${tracker.cost_usd:.4f} "
             f"/ ${settings.cost_limit_usd:.2f}"
         )
         await reporter.emit("api_call", {
             "api_call_count": api_call_count,
+            "provider": client.display_name,
+            "model_id": settings.model_id,
             "request_input_tokens_preflight": preflight_tokens,
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
+            "input_tokens": turn.usage.input_tokens,
+            "output_tokens": turn.usage.output_tokens,
             "cache_read_input_tokens": cache_read_input_tokens,
             "cache_creation_input_tokens": cache_creation_input_tokens,
             "total_input_tokens": tracker.input_tokens,
@@ -427,25 +503,28 @@ async def _agent_loop(
             "total_cache_creation_input_tokens": tracker.cache_creation_input_tokens,
             "cost_usd": round(tracker.cost_usd, 6),
             "cost_limit_usd": settings.cost_limit_usd,
-            "stop_reason": response.stop_reason,
+            "stop_reason": turn.stop_reason,
         })
 
-        messages.append({"role": "assistant", "content": response.content})
+        messages.append({"role": "assistant", "content": turn.content})
 
-        if response.stop_reason == "end_turn":
+        if turn.stop_reason == "end_turn":
             break
 
-        if response.stop_reason != "tool_use":
-            logger.warning(f"[record {record_id}] Unexpected stop_reason: {response.stop_reason}")
+        if turn.stop_reason != "tool_use":
+            logger.warning(f"[record {record_id}] Unexpected stop_reason: {turn.stop_reason}")
             break
 
         tool_results = []
-        for block in response.content:
-            if block.type != "tool_use":
+        for block in turn.content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
                 continue
-            tool_name = block.name
-            tool_input = block.input or {}
+            tool_name = str(block.get("name") or "")
+            tool_input = block.get("input") or {}
+            if tool_name == "log_scan_event" and settings.job_id:
+                tool_input = {**tool_input, "job_id": settings.job_id}
             mcp_source = "raptor" if tool_name in raptor_tool_names else ("kali" if tool_name in kali_tool_names else "unknown")
+            _raise_if_stopped(cancel_event)
             logger.info(f"[record {record_id}] → {tool_name}({_safe_log(tool_input)})")
             await reporter.emit("tool_call", {
                 "tool_name": tool_name,
@@ -463,7 +542,7 @@ async def _agent_loop(
                 })
                 tool_results.append({
                     "type": "tool_result",
-                    "tool_use_id": block.id,
+                    "tool_use_id": block.get("id"),
                     "is_error": True,
                     "content": f"Unknown tool: {tool_name!r}",
                 })
@@ -483,7 +562,7 @@ async def _agent_loop(
                 })
                 tool_results.append({
                     "type": "tool_result",
-                    "tool_use_id": block.id,
+                    "tool_use_id": block.get("id"),
                     "content": result_str,
                 })
             except Exception as exc:
@@ -498,7 +577,7 @@ async def _agent_loop(
                 })
                 tool_results.append({
                     "type": "tool_result",
-                    "tool_use_id": block.id,
+                    "tool_use_id": block.get("id"),
                     "is_error": True,
                     "content": error_summary,
                 })
@@ -554,6 +633,11 @@ async def _set_scan_status(mcp, record_id: int, status: str) -> None:
         logger.error(f"[record {record_id}] Failed to set scan_status={status}: {exc}")
 
 
+async def _set_hosts_status(mcp, record_ids: list[int], status: str) -> None:
+    for record_id in record_ids:
+        await _set_scan_status(mcp, record_id, status)
+
+
 def _safe_log(obj: Any, max_len: int = 120) -> str:
     try:
         s = json.dumps(obj)
@@ -599,26 +683,6 @@ def _prepare_messages_for_request(messages: list[dict]) -> list[dict]:
             "content": prepared_content,
         })
     return prepared
-
-
-def _count_request_tokens(
-    client: anthropic.AnthropicBedrock,
-    model: str,
-    system: list[dict],
-    tools: list[dict],
-    messages: list[dict],
-) -> int | None:
-    try:
-        response = client.messages.count_tokens(
-            model=model,
-            system=system,
-            tools=tools,
-            messages=messages,
-        )
-    except Exception as exc:
-        logger.debug(f"Token preflight failed: {exc}")
-        return None
-    return response.input_tokens
 
 
 def _compact_messages(initial_message: dict, messages: list[dict], scan_memory: ScanMemory, request_tokens: int) -> list[dict]:
@@ -706,10 +770,10 @@ def _summarize_exception(exc: BaseException) -> str:
             if isinstance(body, dict):
                 message = str(body.get("message") or "").strip()
                 if message:
-                    return f"Bedrock rate limit: {message}"
+                    return f"Provider rate limit: {message}"
             message = str(leaf).strip()
             if message:
-                return f"Bedrock rate limit: {message}"
+                return f"Provider rate limit: {message}"
 
     for leaf in _iter_leaf_exceptions(exc):
         message = str(leaf).strip()
