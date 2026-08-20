@@ -19,8 +19,8 @@
         "id": "calculation-windows",
         "title": "Calculation windows and limits",
         "paragraphs": [
-          "Dashboard calculations use fixed windows and display limits to preserve comparability over time. Current defaults are 30 days for recent activity windows and 6 months for trend buckets.",
-          "Recent activity, top-risk assets, and tester workload lists are also capped to maintain readable visual density."
+          "Dashboard calculations use fixed windows so week-to-week comparison stays honest. Findings trends are weekly buckets (4, 12, or 26 weeks). Recent activity uses 30 days. Stale coverage uses 90 days since last completed test.",
+          "Coverage gaps, apps needing attention, tester workload, and recent activity paginate in place so every row stays reachable."
         ],
         "table": {
           "columns": [
@@ -33,20 +33,28 @@
               "`30`"
             ],
             [
-              "Trend month buckets",
-              "`6`"
+              "Stale completed-test days",
+              "`90`"
             ],
             [
-              "Recent activity limit",
-              "`14` events"
+              "Trend week buckets",
+              "`26` stored, sliced to 4 / 12 / 26 on both charts"
             ],
             [
-              "Top risk limit",
-              "`8` assets"
+              "Recent activity",
+              "`10` rows per page, up to `50` events"
             ],
             [
-              "Tester workload limit",
-              "`8` rows"
+              "Coverage gaps",
+              "`3` rows per page; never-tested first, then stale"
+            ],
+            [
+              "Apps needing attention",
+              "`5` rows per page"
+            ],
+            [
+              "Tester workload",
+              "`5` assigned testers per page. Unassigned is a KPI, not a row."
             ]
           ]
         }
@@ -55,7 +63,7 @@
         "id": "kpi-formulas",
         "title": "KPI formulas",
         "paragraphs": [
-          "KPI values are computed from live record and pentest datasets. The formulas below match current frontend calculation logic."
+          "Open-risk KPIs come from `pentest_findings` (drafts excluded). Coverage KPIs come from pentest rows on each host. Closed vs opened uses the last five weekly buckets, which covers a little over 30 days."
         ],
         "table": {
           "columns": [
@@ -65,44 +73,34 @@
           ],
           "rows": [
             [
-              "`startedTests`",
-              "count where status is `In Progress` or `Completed`",
-              "Used in coverage percentage."
+              "`openFindings`",
+              "count of findings whose status is not `draft` and not closed (`fixed`, `accepted`, `not_affected`)",
+              "Primary open-risk count."
             ],
             [
-              "`coveragePct`",
-              "`round(startedTests / totalAssets * 100)`",
-              "Returns `0` when `totalAssets` is `0`."
+              "`criticalHigh`",
+              "open findings with CVSS `>= 7`",
+              "Shown as the Open findings hint."
             ],
             [
-              "`openRiskAssets`",
-              "count where `vulnerable=1` and `vulnerability_fixed!=1`",
-              "Primary open-risk asset metric."
+              "`neverTested`",
+              "pentest status is not `In Progress` or `Completed`",
+              "Includes hosts with no pentest row."
             ],
             [
-              "`fixRatePct`",
-              "`round(fixedAssets / vulnerableAssets * 100)`",
-              "Returns `0` when no vulnerable assets exist."
+              "`stale`",
+              "status is `Completed` and `test_end_date` is older than 90 days (or missing)",
+              "Does not double-count never-tested hosts."
             ],
             [
-              "`startedLast30d`",
-              "count with `test_start_date` within last 30 days",
-              "Time-based initiation signal."
+              "`openedLast30d` / `closedLast30d`",
+              "sum of weekly `opened` / `closed` over the last 5 buckets",
+              "Closed vs opened strip uses these."
             ],
             [
-              "`completedLast30d`",
-              "count completed with `test_end_date` in last 30 days",
-              "Time-based closure signal."
-            ],
-            [
-              "`averageCycleDays`",
-              "mean of `(end_date - start_date)` in days",
-              "Uses non-negative completed durations only."
-            ],
-            [
-              "`unresolvedVulnerabilityIndicators`",
-              "sum of vulnerability counts for non-fixed records",
-              "Can exceed asset count when records contain multiple findings."
+              "`unassigned`",
+              "pentest rows with blank `tested_by`",
+              "Includes Unassigned in workload."
             ]
           ]
         }
@@ -111,8 +109,8 @@
         "id": "trend-series-definitions",
         "title": "Trend series definitions",
         "paragraphs": [
-          "Trend lines are monthly bucketed. Started and completed series track testing throughput. Detected and resolved series track vulnerability movement.",
-          "For vulnerability trend counts, RAPTOR uses parsed `vulnerabilities` arrays when available. If array data is absent and record is marked vulnerable, it contributes one indicator."
+          "The Dashboard chart pair shares one 4w / 12w / 6m control. The upper chart is weekly flow (opened vs closed, with net in the hover). The lower chart is currently active stock (`openStock`) at the end of each week. Hover a week to read counts. Tooltips on the last three points open to the left of the cursor so values stay on-screen.",
+          "Weekly buckets start on Monday UTC. `opened` counts findings created in the week. `closed` counts findings whose status became closed in the week (`updated_at` while status is `fixed`, `accepted`, or `not_affected`). `openStock` is how many were still open at the end of that week."
         ],
         "table": {
           "columns": [
@@ -121,30 +119,26 @@
           ],
           "rows": [
             [
-              "Started",
-              "`test_start_date`"
+              "Opened",
+              "`created_at` of a non-draft finding"
             ],
             [
-              "Completed",
-              "`test_end_date` where status is `Completed`"
+              "Closed",
+              "`updated_at` while status is closed"
             ],
             [
-              "Detected",
-              "`test_end_date` or fallback `test_start_date` for vulnerable records"
-            ],
-            [
-              "Resolved",
-              "`test_end_date` or fallback `test_start_date` where `vulnerability_fixed=1`"
+              "Open stock",
+              "created on or before week end, and not closed on or before week end"
             ]
           ]
         }
       },
       {
         "id": "event-feed-definitions",
-        "title": "Recent changes event definitions",
+        "title": "Recent activity event definitions",
         "paragraphs": [
-          "Recent changes feed consolidates pentest lifecycle events and inventory scope updates. Event timestamps are rendered as relative age when recent, then compact date labels for older entries.",
-          "Event types are normalized into five categories so management review can quickly separate throughput progress from risk emergence and scope drift."
+          "Recent activity consolidates finding filings, pentest lifecycle events, and inventory scope updates. Timestamps render as relative age when recent.",
+          "Click a row to open the application, finding, or host when the viewer has Security or Assets permission."
         ],
         "table": {
           "columns": [
@@ -153,16 +147,16 @@
           ],
           "rows": [
             [
+              "`finding_filed`",
+              "finding in `findingsSummary.recent` created within 30 days."
+            ],
+            [
               "`test_started`",
               "`test_start_date` within last 30 days."
             ],
             [
               "`test_completed`",
               "status completed with `test_end_date` in last 30 days."
-            ],
-            [
-              "`vuln_detected`",
-              "record has vulnerability indicator with qualifying recent date."
             ],
             [
               "`scope_updated`",
@@ -177,10 +171,10 @@
       },
       {
         "id": "risk-and-workload-scoring",
-        "title": "Top-risk and workload scoring",
+        "title": "Attention and workload sorting",
         "paragraphs": [
-          "Top-risk assets use a composite score to prioritize attention. Workload rows are sorted first by open-risk burden, then by in-progress volume, then by total assignments.",
-          "These heuristics are intentionally simple and explainable so managers can validate prioritization without opaque scoring models."
+          "Apps needing attention sort by open finding count, then by untested in-scope hosts. Workload rows are assigned testers only, sorted by open findings, then in-progress volume. Unassigned stays on the KPI strip.",
+          "These heuristics stay simple so managers can validate prioritization without an opaque score."
         ],
         "table": {
           "columns": [
@@ -189,20 +183,16 @@
           ],
           "rows": [
             [
-              "Top-risk score",
-              "`vulnerabilityCount*3 + openRisk*5 + inProgress*2 + completed*1`"
+              "Apps needing attention",
+              "Descending `open_finding_count`, then (`in_scope_count` - `started_count`)."
             ],
             [
               "Workload sort order",
-              "Descending by `openRiskAssets`, then `inProgress`, then `total`."
+              "Descending `openFindings`, then `inProgress`, then `total`. Unassigned is omitted."
             ],
             [
-              "App coverage",
-              "`testedApps / totalApps` using records with assigned app identity."
-            ],
-            [
-              "Unassigned asset count",
-              "Records lacking app assignment are tracked separately from app coverage denominator."
+              "Open by severity",
+              "CVSS bands: critical `>=9`, high `>=7`, medium `>=4`, low `>=0.1`, else unscored. Open findings only."
             ]
           ]
         },

@@ -32,3 +32,4 @@ export {
 } from './data';
 export { Combo } from './combo';
 export { CommandPalette } from './CommandPalette';
+export { LineChart } from './charts';

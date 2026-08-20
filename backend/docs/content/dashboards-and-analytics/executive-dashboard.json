@@ -5,10 +5,10 @@
     "Managers",
     "Admins"
   ],
-  "summary": "Provides managerial posture view, KPI strip semantics, and panel-level interpretation guidance.",
+  "summary": "Provides the manager Dashboard: clickable KPI strip, interactive line charts, coverage gaps, and a curated rearrangeable widget catalog.",
   "coverage": [
     "KPI intent and update cadence",
-    "Coverage, throughput, and open-risk metrics",
+    "Open findings, coverage gaps, and velocity",
     "Recent activity and workload summaries",
     "How managers should interpret trend changes"
   ],
@@ -17,7 +17,7 @@
       "variant": "important",
       "title": "IMPORTANT",
       "paragraphs": [
-        "Dashboard conclusions are only as reliable as underlying record and pentest updates. Missing assignment, stale status, or delayed remediation flags will distort KPI interpretation."
+        "Dashboard conclusions are only as reliable as underlying record and finding updates. Missing assignment, stale tests, or delayed remediation will distort KPI interpretation."
       ]
     },
     "sections": [
@@ -25,16 +25,16 @@
         "id": "dashboard-role",
         "title": "Dashboard role",
         "paragraphs": [
-          "The Security Operations Dashboard is the manager-focused analytical surface in RAPTOR. It aggregates inventory and pentest execution data into KPI cards, trend charts, workload views, and recent activity signals.",
-          "Use this page for coordination, prioritization, and governance review. It is not a replacement for detailed record editing or pentest authoring."
+          "Dashboard is the manager-focused analytical surface in RAPTOR. It answers four questions in order: what is open and how bad it is, what has never been tested or is stale, whether opened findings are being closed, and who is carrying the load.",
+          "Use this page for coordination and prioritization. KPI tiles and widget rows deep-link into Security or Assets. It is not a replacement for detailed record editing or finding authoring."
         ]
       },
       {
         "id": "data-and-refresh-contract",
         "title": "Data and refresh contract",
         "paragraphs": [
-          "Dashboard data is fetched from `GET /dashboard/data` under `view_dashboard` permission. The response includes records, pentest records, and IP source groups in one request to avoid cross-tab permission dependencies.",
-          "Frontend refresh behavior is both automatic and manual. Data refresh runs every 60 seconds and can also be triggered with the explicit refresh action in the header."
+          "Dashboard data is fetched from `GET /dashboard/data` under `view_dashboard` permission. The response includes slim records, pentest rows, applications, and a `findingsSummary` built from `pentest_findings` so managers see live finding counts rather than pentest-record flags.",
+          "Frontend refresh behavior is both automatic and manual. Data refresh runs every 60 seconds without blanking the page, and can also be triggered with Refresh. Arrange persists widget order and half/full span in the browser."
         ],
         "table": {
           "columns": [
@@ -44,15 +44,19 @@
           "rows": [
             [
               "`records`",
-              "Asset count, scope change events, and inventory context."
+              "Scope-change events in recent activity."
             ],
             [
               "`pentestRecords`",
-              "Coverage, risk, remediation, trends, and workload metrics."
+              "Never-tested and stale coverage, tester workload, unassigned."
             ],
             [
-              "`ipSources`",
-              "Source-group cardinality shown in total assets KPI subtitle."
+              "`findingsSummary`",
+              "Open/closed counts, severity mix, weekly opened vs closed, recent findings."
+            ],
+            [
+              "`applications`",
+              "Apps needing attention (open findings and untested in-scope hosts)."
             ]
           ]
         }
@@ -61,8 +65,8 @@
         "id": "kpi-strip-overview",
         "title": "KPI strip overview",
         "paragraphs": [
-          "The dashboard top row contains eight KPI cards. Together they provide a compact posture summary for volume, coverage, risk, velocity, and remediation.",
-          "Cards should be interpreted as a system. Single-card movement without context can lead to incorrect prioritization."
+          "The strip under the title contains five clickable metrics. Together they provide a compact posture summary for open risk, coverage gaps, velocity, and unassigned work.",
+          "Cards should be interpreted as a system. A single movement without the matching widget can lead to incorrect prioritization."
         ],
         "table": {
           "columns": [
@@ -72,44 +76,29 @@
           ],
           "rows": [
             [
-              "Total Assets",
-              "`totalAssets`",
-              "Current inventory size and source-group breadth."
+              "Open findings",
+              "`open` from findingsSummary; hint is critical + high",
+              "How much live risk is still open, and how severe it is."
             ],
             [
-              "Testing Coverage",
-              "`coveragePct%` with started/total subtitle",
-              "How much inventory has entered test lifecycle."
+              "Never tested",
+              "hosts whose pentest status is not In Progress or Completed",
+              "Inventory that has not entered a test."
             ],
             [
-              "Open Risk Assets",
-              "`openRiskAssets`",
-              "Assets with unresolved vulnerability state."
+              "Stale",
+              "Completed tests whose `test_end_date` is older than 90 days",
+              "Hosts that were tested but not recently."
             ],
             [
-              "Avg Test Cycle",
-              "`averageCycleDays` days",
-              "Execution throughput and process latency."
+              "Closed vs opened",
+              "Closed count in the last five weekly buckets; hint is opened in that window",
+              "Whether remediation is keeping up with discovery."
             ],
             [
-              "Started (30d)",
-              "`startedLast30d`",
-              "Recent initiation velocity."
-            ],
-            [
-              "Completed (30d)",
-              "`completedLast30d`",
-              "Recent closure velocity and fix-rate companion signal."
-            ],
-            [
-              "New Vuln Findings (30d)",
-              "`newDetectedVulns30d`",
-              "Incoming finding volume over recent window."
-            ],
-            [
-              "Fixed Assets",
-              "`fixedAssets`",
-              "Assets marked remediated in current dataset."
+              "Unassigned",
+              "Pentest rows with no `tested_by`",
+              "Work with no owner. Managers can reassign from Security."
             ]
           ]
         }
@@ -118,8 +107,7 @@
         "id": "visual-panels",
         "title": "Visual panels and intent",
         "paragraphs": [
-          "Trend charts and supporting cards are arranged to move from broad posture to actionable ownership context. Throughput and vulnerability trends are followed by recent changes, top-risk assets, tester workload, and execution health.",
-          "This layout allows managers to identify whether a movement is volume-related, risk-related, or assignment-related before drilling into Security or Records tabs."
+          "Widgets are a fixed catalog. Arrange mode reorders them and toggles half or full width. Layout is stored per user in the browser. Charts are stroke-only lines with hover counts; they are not filled area charts."
         ],
         "table": {
           "columns": [
@@ -128,28 +116,28 @@
           ],
           "rows": [
             [
-              "Test Throughput Trend",
-              "Are started and completed tests moving in a balanced direction?"
+              "Opened vs closed",
+              "Are we keeping up week by week?"
             ],
             [
-              "Vulnerability Trend",
-              "Is finding discovery outpacing resolution or stabilizing?"
+              "Open by severity",
+              "How bad is the current open set?"
             ],
             [
-              "Recent Changes",
-              "What meaningful events occurred in the last 30 days?"
+              "Coverage gaps",
+              "What is still untested or stale?"
             ],
             [
-              "Top Risk Assets",
-              "Which assets currently require fastest attention?"
+              "Apps needing attention",
+              "Where is open risk concentrated?"
             ],
             [
-              "Tester Workload",
-              "Where is active and open-risk load concentrated by assignee?"
+              "Tester workload",
+              "Who is carrying load, including Unassigned?"
             ],
             [
-              "Execution Health",
-              "How are coverage, fix rate, and in-progress ratio trending together?"
+              "Recent activity",
+              "What moved in the last 30 days?"
             ]
           ]
         }
@@ -158,8 +146,8 @@
         "id": "manager-usage-pattern",
         "title": "Manager usage pattern",
         "paragraphs": [
-          "A practical use pattern is to review coverage and open risk first, then validate whether throughput and workload patterns support current remediation goals.",
-          "When anomalies appear, use deep links and filtered security views to confirm whether the issue is assignment bottleneck, data quality gap, or genuine risk increase."
+          "Review open findings and severity first, then coverage gaps, then whether opened vs closed is balanced. Use tester workload to see Unassigned and concentrated load.",
+          "Click a metric or row to open Security or Assets. Managers reassign work; they do not file findings from this page."
         ],
         "related": [
           {

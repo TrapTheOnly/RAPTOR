@@ -6,6 +6,14 @@ export const fetchDashboardSources = async () => {
   return {
     records: payload.records || [],
     pentestRecords: payload.pentestRecords || [],
-    ipSources: payload.ipSources || []
+    ipSources: payload.ipSources || [],
+    findingsSummary: payload.findingsSummary || {
+      open: 0,
+      closed: 0,
+      bySeverity: { critical: 0, high: 0, medium: 0, low: 0, none: 0 },
+      weekly: [],
+      recent: []
+    },
+    applications: payload.applications || []
   };
 };

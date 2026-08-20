@@ -37,11 +37,11 @@
           "Use a fixed cadence for triage so trend interpretation remains consistent and operational drift is identified early. A weekly cycle generally provides enough signal while staying lightweight."
         ],
         "orderedList": [
-          "Review `Open Risk Assets` and unresolved indicator movement versus previous period.",
-          "Inspect `Top Risk Assets` to validate current high-priority targets.",
-          "Check `Tester Workload` for concentration or assignment bottlenecks.",
-          "Verify throughput trends to ensure completion keeps pace with starts.",
-          "Create filtered Security queues for immediate reassignment or follow-up."
+          "Review Open findings and critical + high on the KPI strip.",
+          "Inspect Apps needing attention and Open by severity to validate current high-priority targets.",
+          "Check Coverage gaps for never-tested and stale hosts.",
+          "Read Opened vs closed to see whether remediation is keeping up.",
+          "Check Tester workload for Unassigned and concentrated load, then open Security for reassignment."
         ]
       },
       {
