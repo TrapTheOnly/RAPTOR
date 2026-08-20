@@ -247,7 +247,7 @@ const App = () => {
         <Route
           path="/dashboard"
           element={loggedIn && hasPermission('view_dashboard') ? 
-            <Dashboard /> : 
+            <Dashboard userRole={userRole} userPermissions={userPermissions} username={username} /> : 
               <Navigate to={loggedIn ? getDefaultRoute() : "/login"} replace />}
         />
         <Route
