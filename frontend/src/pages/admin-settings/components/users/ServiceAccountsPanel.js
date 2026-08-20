@@ -1,27 +1,17 @@
 import React from 'react';
 import {
-  Alert,
-  Box,
   Button,
-  Card,
-  CardContent,
-  Checkbox,
-  Chip,
-  Divider,
-  FormControlLabel,
-  List,
-  ListItemButton,
-  ListItemText,
-  Stack,
-  TextField,
-  Typography
-} from '@mui/material';
-import {
-  Autorenew as RotateIcon,
-  ContentCopy as CopyIcon,
-  Key as KeyIcon,
-  Visibility as ViewIcon
-} from '@mui/icons-material';
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  Mono,
+  Surface,
+  SwitchRow,
+  Tag,
+  Text
+} from '../../../../design/primitives';
+import { SPACE } from '../../../../design/tokens';
 import SectionHeader from '../SectionHeader';
 
 const SCOPE_OPTIONS = [
@@ -56,217 +46,169 @@ const ServiceAccountsPanel = ({
     serviceAccounts.find((account) => account.username === selectedServiceAccountUsername) || null;
 
   return (
-    <Stack spacing={3}>
-      <SectionHeader icon={KeyIcon} title="Service Accounts and API Keys" />
-
-      <Card variant="outlined">
-        <CardContent>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-            Create Service Account + API Key
-          </Typography>
-          <Stack spacing={1.5}>
-            <TextField
-              label="Service account username"
-              value={createUsername}
-              onChange={(event) => setCreateUsername(event.target.value)}
-              placeholder="svc.integrations"
-              size="small"
-              fullWidth
-            />
-            <Box>
-              <Typography variant="caption" color="text.secondary">
-                Privileges
-              </Typography>
-              <Stack>
-                {SCOPE_OPTIONS.map((scope) => (
-                  <FormControlLabel
-                    key={scope.key}
-                    control={
-                      <Checkbox
-                        checked={createScopes.includes(scope.key)}
-                        onChange={() => onToggleCreateScope(scope.key)}
-                      />
-                    }
-                    label={scope.label}
-                  />
-                ))}
-              </Stack>
-            </Box>
-            <TextField
-              type="date"
-              label="Initial key end date (optional)"
-              InputLabelProps={{ shrink: true }}
-              value={createEndDate}
-              onChange={(event) => setCreateEndDate(event.target.value)}
-              size="small"
-              helperText="Default is 90 days if blank."
-            />
+    <div>
+      <SectionHeader title="Service Accounts and API Keys" />
+      <div className="raptor-users-split">
+        <Surface
+          className="raptor-users-pane"
+          style={{ padding: SPACE.x16, gap: SPACE.x16 }}
+        >
+          <Text variant="bodyStrong">Create</Text>
+          <Field
+            label="Username"
+            value={createUsername}
+            onChange={(event) => setCreateUsername(event.target.value)}
+            placeholder="svc.integrations"
+          />
+          <div>
+            <Text as="div" variant="micro" tone="tertiary">
+              Privileges
+            </Text>
+            {SCOPE_OPTIONS.map((scope) => (
+              <SwitchRow
+                key={scope.key}
+                label={scope.label}
+                checked={createScopes.includes(scope.key)}
+                onChange={() => onToggleCreateScope(scope.key)}
+              />
+            ))}
+          </div>
+          <Field
+            type="date"
+            label="Key end date"
+            value={createEndDate}
+            onChange={(event) => setCreateEndDate(event.target.value)}
+            hint="Blank = 90 days."
+          />
+          <div className="raptor-users-pane-foot">
             <Button
               variant="contained"
-              startIcon={<KeyIcon />}
               onClick={onCreateServiceAccountWithKey}
               disabled={loading}
+              style={{ width: '100%' }}
             >
-              Create Service Account
+              Create service account
             </Button>
-          </Stack>
-        </CardContent>
-      </Card>
+          </div>
+        </Surface>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-            Existing Service Accounts
-          </Typography>
+        <Surface className="raptor-users-pane" style={{ padding: SPACE.x16 }}>
+          <Text as="div" variant="bodyStrong" style={{ marginBottom: SPACE.x12 }}>
+            Existing
+          </Text>
           {serviceAccounts.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              No service accounts found.
-            </Typography>
+            <div className="raptor-users-pane-fill" style={{ justifyContent: 'center' }}>
+              <EmptyState title="No service accounts yet" hint="Create one on the left." />
+            </div>
           ) : (
-            <List dense sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
+            <DataList>
               {serviceAccounts.map((account) => (
-                <ListItemButton
+                <DataRow
                   key={account.username}
+                  id={account.username}
                   selected={selectedServiceAccountUsername === account.username}
-                  onClick={() => onSelectServiceAccount(account.username)}
-                >
-                  <ListItemText
-                    primary={account.username}
-                    secondary={
-                      account.has_api_key
-                        ? `Expires: ${account.expires_at || 'Not set'}`
-                        : 'No API key'
-                    }
-                  />
-                  <Chip
-                    size="small"
-                    color={account.has_api_key ? 'success' : 'default'}
-                    label={account.has_api_key ? 'Key active' : 'No key'}
-                  />
-                </ListItemButton>
+                  onToggle={() => onSelectServiceAccount(account.username)}
+                  title={<Text variant="bodyStrong">{account.username}</Text>}
+                  meta={
+                    <Text as="div" variant="meta" tone="secondary" style={{ marginTop: 2 }}>
+                      {account.has_api_key
+                        ? `Expires ${account.expires_at || 'not set'}`
+                        : 'No API key'}
+                    </Text>
+                  }
+                  trailing={<Tag>{account.has_api_key ? 'Key active' : 'No key'}</Tag>}
+                />
               ))}
-            </List>
+            </DataList>
           )}
-        </CardContent>
-      </Card>
 
-      {selectedAccount && (
-        <Card variant="outlined">
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              {selectedAccount.username}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Created: {selectedAccount.added_date || 'Unknown'}
-            </Typography>
+          {selectedAccount ? (
+            <div style={{ marginTop: SPACE.x24 }}>
+              <Text as="h2" variant="h2">
+                {selectedAccount.username}
+              </Text>
+              <Text as="div" variant="meta" tone="secondary" style={{ marginTop: 4 }}>
+                Created {selectedAccount.added_date || 'unknown'}
+              </Text>
 
-            <Divider sx={{ my: 2 }} />
-
-            <Box>
-              <Typography variant="caption" color="text.secondary">
-                Privileges
-              </Typography>
-              <Stack>
+              <div style={{ marginTop: SPACE.x12 }}>
+                <Text as="div" variant="micro" tone="tertiary">
+                  Privileges
+                </Text>
                 {SCOPE_OPTIONS.map((scope) => (
-                  <FormControlLabel
+                  <SwitchRow
                     key={scope.key}
-                    control={
-                      <Checkbox
-                        checked={selectedScopes.includes(scope.key)}
-                        onChange={() => onToggleSelectedScope(scope.key)}
-                        disabled={!selectedAccount.has_api_key}
-                      />
-                    }
                     label={scope.label}
+                    checked={selectedScopes.includes(scope.key)}
+                    onChange={() => onToggleSelectedScope(scope.key)}
+                    disabled={!selectedAccount.has_api_key}
                   />
                 ))}
-              </Stack>
-              <Button
-                variant="outlined"
-                onClick={onSaveSelectedScopes}
-                disabled={loading || !selectedAccount.has_api_key}
-              >
-                Save Privileges
-              </Button>
-            </Box>
-
-            <Divider sx={{ my: 2 }} />
-
-            {!selectedAccount.has_api_key ? (
-              <Stack spacing={1.5}>
-                <Typography variant="body2" color="text.secondary">
-                  This service account has no API key yet.
-                </Typography>
-                <TextField
-                  type="date"
-                  label="Initial key end date (optional)"
-                  InputLabelProps={{ shrink: true }}
-                  value={selectedEndDate}
-                  onChange={(event) => setSelectedEndDate(event.target.value)}
-                  size="small"
-                  helperText="Default is 90 days if blank."
-                />
                 <Button
-                  variant="contained"
-                  startIcon={<KeyIcon />}
-                  onClick={onCreateKeyForSelectedServiceAccount}
-                  disabled={loading}
+                  variant="outlined"
+                  onClick={onSaveSelectedScopes}
+                  disabled={loading || !selectedAccount.has_api_key}
                 >
-                  Create API Key
+                  Save privileges
                 </Button>
-              </Stack>
-            ) : (
-              <Stack spacing={1.5}>
-                <Typography variant="body2" color="text.secondary">
-                  Key created: {selectedAccount.key_created_at || 'Unknown'} | Expires:{' '}
-                  {selectedAccount.expires_at || 'Unknown'}
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<ViewIcon />}
-                    onClick={onViewSelectedKey}
-                    disabled={loading}
-                  >
-                    View API Key
-                  </Button>
-                  <Button
-                    variant="contained"
-                    color="warning"
-                    startIcon={<RotateIcon />}
-                    onClick={onRotateSelectedKey}
-                    disabled={loading}
-                  >
-                    Rotate Key
-                  </Button>
-                </Stack>
-              </Stack>
-            )}
+              </div>
 
-            {visibleApiKey && (
-              <Alert
-                severity="info"
-                sx={{ mt: 2 }}
-                action={
-                  <Button
-                    color="inherit"
-                    size="small"
-                    startIcon={<CopyIcon />}
-                    onClick={onCopyVisibleApiKey}
+              <div style={{ marginTop: SPACE.x16 }}>
+                {!selectedAccount.has_api_key ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.x12 }}>
+                    <Field
+                      type="date"
+                      label="Key end date"
+                      value={selectedEndDate}
+                      onChange={(event) => setSelectedEndDate(event.target.value)}
+                      hint="Blank = 90 days."
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={onCreateKeyForSelectedServiceAccount}
+                      disabled={loading}
+                    >
+                      Create API key
+                    </Button>
+                  </div>
+                ) : (
+                  <div>
+                    <Text as="div" variant="meta" tone="secondary">
+                      Key {selectedAccount.key_created_at || 'unknown'} · Expires{' '}
+                      {selectedAccount.expires_at || 'unknown'}
+                    </Text>
+                    <div style={{ display: 'flex', gap: SPACE.x8, marginTop: SPACE.x12 }}>
+                      <Button variant="outlined" onClick={onViewSelectedKey} disabled={loading}>
+                        View API key
+                      </Button>
+                      <Button variant="contained" onClick={onRotateSelectedKey} disabled={loading}>
+                        Rotate key
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {visibleApiKey ? (
+                  <div
+                    style={{
+                      marginTop: SPACE.x16,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: SPACE.x12
+                    }}
                   >
-                    Copy
-                  </Button>
-                }
-              >
-                <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                  {visibleApiKey}
-                </Typography>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </Stack>
+                    <Mono style={{ wordBreak: 'break-all', flex: 1 }}>{visibleApiKey}</Mono>
+                    <Button size="small" variant="outlined" onClick={onCopyVisibleApiKey}>
+                      Copy
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </Surface>
+      </div>
+    </div>
   );
 };
 

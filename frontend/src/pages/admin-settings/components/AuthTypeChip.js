@@ -1,28 +1,18 @@
 import React from 'react';
-import { Chip } from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
+import { Tag } from '../../../design/primitives';
+
+const LABELS = {
+  local: 'Local',
+  ldap: 'LDAP',
+  service: 'Service',
+  oidc: 'OIDC',
+  saml: 'SAML',
+  federated: 'Directory'
+};
 
 const AuthTypeChip = ({ authType }) => {
-  const theme = useTheme();
-  const normalized = (authType || 'ldap').toLowerCase();
-  const configs = {
-    local: { label: 'Local', color: theme.palette.warning.main },
-    ldap: { label: 'LDAP', color: theme.palette.info.main },
-    service: { label: 'Service', color: theme.palette.success.main }
-  };
-  const config = configs[normalized] || configs.ldap;
-
-  return (
-    <Chip
-      label={config.label}
-      size="small"
-      sx={{
-        backgroundColor: alpha(config.color, 0.1),
-        color: config.color,
-        fontWeight: 600
-      }}
-    />
-  );
+  const normalized = String(authType || 'ldap').toLowerCase();
+  return <Tag>{LABELS[normalized] || 'Directory'}</Tag>;
 };
 
 export default AuthTypeChip;

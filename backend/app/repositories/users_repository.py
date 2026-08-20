@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import DB_PATH
 from app.integrations.db.connection import get_db_connection
+from app.repositories.admin_users_repository import ADMIN_USERNAME
 
 
 def get_allowed_user_for_login(username: str, db_path: str = DB_PATH) -> Optional[Tuple[Any, ...]]:
@@ -9,7 +10,7 @@ def get_allowed_user_for_login(username: str, db_path: str = DB_PATH) -> Optiona
     c = conn.cursor()
     c.execute(
         """
-        SELECT username, role, auth_type, password, must_reset, is_service_account
+        SELECT username, role, auth_type, is_service_account, keycloak_id
         FROM allowed_users
         WHERE username = ?
         """,
@@ -25,11 +26,12 @@ def add_allowed_user(
     email: str,
     role: str,
     auth_type: str,
-    password_hash: Optional[bytes],
-    must_reset: int,
     permissions_json: str,
     is_service_account: int = 0,
     full_name: Optional[str] = None,
+    keycloak_id: Optional[str] = None,
+    password_hash: Optional[bytes] = None,
+    must_reset: int = 0,
     db_path: str = DB_PATH,
 ) -> None:
     conn = get_db_connection(db_path)
@@ -42,42 +44,125 @@ def add_allowed_user(
             added_date,
             role,
             auth_type,
-            password,
-            must_reset,
             permissions,
             is_service_account,
-            full_name
+            full_name,
+            keycloak_id
         )
-        VALUES (?, ?, (NOW() + INTERVAL '4 hours'), ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, (NOW() + INTERVAL '4 hours'), ?, ?, ?, ?, ?, ?)
         """,
-        (username, email, role, auth_type, password_hash, must_reset, permissions_json, is_service_account, full_name),
+        (username, email, role, auth_type, permissions_json, is_service_account, full_name, keycloak_id),
     )
     conn.commit()
     conn.close()
 
 
-def get_user_password(username: str, db_path: str = DB_PATH) -> Optional[Any]:
-    conn = get_db_connection(db_path)
-    c = conn.cursor()
-    c.execute("SELECT password FROM allowed_users WHERE username = ?", (username,))
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return None
-    return row[0]
-
-
-def update_local_user_password(username: str, hashed_password: bytes, db_path: str = DB_PATH) -> int:
+def upsert_identity_cache(
+    username: str,
+    email: str,
+    role: str,
+    auth_type: str,
+    permissions_json: str,
+    is_service_account: int = 0,
+    full_name: Optional[str] = None,
+    keycloak_id: Optional[str] = None,
+    skip_admin: bool = False,
+    db_path: str = DB_PATH,
+) -> None:
+    if skip_admin and username == ADMIN_USERNAME:
+        return
     conn = get_db_connection(db_path)
     c = conn.cursor()
     c.execute(
-        "UPDATE allowed_users SET password = ?, must_reset = 0, auth_type = 'local' WHERE username = ?",
-        (hashed_password, username),
+        """
+        INSERT INTO allowed_users (
+            username,
+            email,
+            added_date,
+            role,
+            auth_type,
+            permissions,
+            is_service_account,
+            full_name,
+            keycloak_id
+        )
+        VALUES (?, ?, (NOW() + INTERVAL '4 hours'), ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (username) DO UPDATE SET
+            email = COALESCE(EXCLUDED.email, allowed_users.email),
+            role = EXCLUDED.role,
+            auth_type = EXCLUDED.auth_type,
+            permissions = EXCLUDED.permissions,
+            is_service_account = EXCLUDED.is_service_account,
+            full_name = COALESCE(EXCLUDED.full_name, allowed_users.full_name),
+            keycloak_id = COALESCE(EXCLUDED.keycloak_id, allowed_users.keycloak_id)
+        """,
+        (username, email, role, auth_type, permissions_json, is_service_account, full_name, keycloak_id),
     )
-    rowcount = c.rowcount
     conn.commit()
     conn.close()
-    return rowcount
+
+
+def list_identity_cache_rows(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
+    conn = get_db_connection(db_path)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT username, email, role, auth_type, permissions, is_service_account, full_name, keycloak_id
+        FROM allowed_users
+        """
+    )
+    rows = []
+    for row in c.fetchall():
+        if isinstance(row, dict):
+            payload = dict(row)
+        else:
+            payload = {
+                "username": row[0],
+                "email": row[1],
+                "role": row[2],
+                "auth_type": row[3],
+                "permissions": row[4],
+                "is_service_account": row[5],
+                "full_name": row[6],
+                "keycloak_id": row[7],
+            }
+        payload["is_service_account"] = bool(payload.get("is_service_account"))
+        rows.append(payload)
+    conn.close()
+    return rows
+
+
+def update_user_keycloak_id(username: str, keycloak_id: str, db_path: str = DB_PATH) -> None:
+    conn = get_db_connection(db_path)
+    c = conn.cursor()
+    c.execute("UPDATE allowed_users SET keycloak_id = ? WHERE username = ?", (keycloak_id, username))
+    conn.commit()
+    conn.close()
+
+
+def delete_identity(username: str, db_path: str = DB_PATH) -> Tuple[Dict[str, Any], int]:
+    conn = get_db_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute("SELECT username FROM allowed_users WHERE username = ?", (username,))
+        if not c.fetchone():
+            return {"error": f"User '{username}' does not exist."}, 404
+        c.execute(
+            """
+            DELETE FROM service_account_api_keys
+            WHERE service_account_id = (
+                SELECT id FROM allowed_users WHERE username = ?
+            )
+            """,
+            (username,),
+        )
+        c.execute("DELETE FROM allowed_users WHERE username = ?", (username,))
+        conn.commit()
+        return {"message": f"User '{username}' deleted successfully."}, 200
+    except Exception:
+        raise
+    finally:
+        conn.close()
 
 
 def update_user_role(username: str, role: str, permissions_json: str, db_path: str = DB_PATH) -> int:
@@ -173,14 +258,16 @@ def get_user_email(username: str, db_path: str = DB_PATH) -> Optional[str]:
 
 __all__ = [
     "add_allowed_user",
+    "delete_identity",
     "get_allowed_user_for_login",
     "get_display_names",
     "get_user_email",
-    "get_user_password",
     "get_user_role",
     "is_service_account_user",
+    "list_identity_cache_rows",
     "remove_user_from_pentest_collaborations",
-    "update_local_user_password",
+    "update_user_keycloak_id",
     "update_user_permissions",
     "update_user_role",
+    "upsert_identity_cache",
 ]

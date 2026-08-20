@@ -24,8 +24,9 @@
         "id": "identity-model-and-storage",
         "title": "Identity model and credential storage",
         "paragraphs": [
-          "RAPTOR distinguishes privileged admin identity from standard operator identities. The admin account is stored in `admin_users`, while LDAP and local non-admin users are stored in `allowed_users`.",
-          "Authentication mode is explicit through `auth_type` for non-admin users. Local accounts carry password hash and reset flags, while LDAP accounts rely on directory authentication and do not store local passwords by default."
+          "RAPTOR keeps the existing login page. The backend validates username and password against Keycloak using a confidential direct-grant client (`raptor-login`). Passwords are not stored in Postgres.",
+          "Keycloak is the identity source of truth: realm role `raptor-access` is the allowlist, composite realm roles map to RAPTOR `user` / `pentester` / `manager` / `admin`, and optional permissions are client roles on `raptor-login`. Postgres `allowed_users` is a write-through cache used for collaborators, audit, and request-path authorization.",
+          "Directory users can exist in Keycloak via LDAP/AD user federation or another Keycloak identity provider, but they cannot sign in until an admin adds them in Settings (which assigns `raptor-access`). The Keycloak admin console is not the supported operator UI. RAPTOR login remains a username/password form (Keycloak direct grant), so password-capable federations such as LDAP/AD work after allowlisting. Broker-only OIDC/SAML users can be allowlisted once they exist in Keycloak; they cannot use the RAPTOR password form unless that identity also has a password Keycloak can validate."
         ],
         "table": {
           "columns": [
@@ -37,21 +38,27 @@
           "rows": [
             [
               "Admin account",
-              "`admin_users`",
-              "Local password validation in admin auth path",
-              "`must_reset=1` on bootstrap forces password reset before normal session use."
+              "Keycloak user `ADMIN_USERNAME` with `raptor-admin` + `raptor-access`",
+              "Direct grant against Keycloak",
+              "`UPDATE_PASSWORD` required action on first bootstrap; RAPTOR reset UI."
             ],
             [
-              "LDAP user",
-              "`allowed_users`",
-              "`auth_type=ldap`",
-              "No first-login local password reset flow unless converted to local auth later."
+              "LDAP / user-storage user",
+              "Keycloak federated user + `allowed_users` cache",
+              "`auth_type=ldap` after Settings add",
+              "No local password. Login uses directory bind through Keycloak."
+            ],
+            [
+              "OIDC / SAML broker user",
+              "Keycloak user linked to an identity provider + `allowed_users` cache",
+              "`auth_type` is `oidc`, `saml`, or `federated`",
+              "Allowlist works after the user exists in Keycloak. RAPTOR password login only works if Keycloak can validate a password for that account."
             ],
             [
               "Local non-admin user",
-              "`allowed_users`",
+              "Keycloak local user + `allowed_users` cache",
               "`auth_type=local`",
-              "Created with temporary password and `must_reset=1`, then forced through user reset flow."
+              "Created with a temporary password and Keycloak `UPDATE_PASSWORD`, then RAPTOR `/user-reset-password`."
             ]
           ]
         }
@@ -60,7 +67,9 @@
         "id": "ldap-onboarding-flow",
         "title": "LDAP onboarding flow",
         "paragraphs": [
-          "LDAP onboarding is handled from `User Management -> Add LDAP Users`. Admins search directory users, stage selected identities, assign role and optional permissions, and submit in batch.",
+          "Directory onboarding is handled from `User Management -> Add LDAP Users`. Admins search Keycloak (LDAP user federation plus any other user-storage providers and already-imported identity-provider users). Results can be supplemented from a direct LDAP search when `LDAP_SERVER` is set. Staging selected identities, assigning role and optional permissions, and submitting in batch assigns `raptor-access` so a password-capable federated user can sign in.",
+          "Add does not create a second local Keycloak password user. Exact username lookup imports the LDAP account into Keycloak when federation is connected. If the identity is not in Keycloak yet, add fails until federation or the identity provider has imported them.",
+          "Set `LDAP_SERVER`, `LDAP_DOMAIN`, `LDAP_USER`, and `LDAP_PASS` on the app environment so bootstrap can register the `raptor-ldap` user-storage provider. Optional knobs: `LDAP_USERS_DN`, `LDAP_VENDOR`, `LDAP_USE_SSL`, `LDAP_START_TLS`, `LDAP_TRUSTSTORE` (default `never` for private CAs). Optional OIDC/SAML broker: `KEYCLOAK_IDP_ALIAS` plus `KEYCLOAK_IDP_PROVIDER` and the matching issuer or SAML URLs. Additional providers can be added in Keycloak; RAPTOR search and allowlisting still apply.",
           "The backend normalizes usernames to lowercase and validates role and permission payloads before insert. Duplicate identity insert attempts fail at the database uniqueness layer."
         ],
         "orderedList": [
@@ -76,7 +85,7 @@
         "title": "Local user onboarding flow",
         "paragraphs": [
           "Local user creation is used when LDAP is not available or when a controlled local account is required. The flow lives in `User Management -> Add Local Users`.",
-          "On create, backend generates a temporary password, hashes it, stores `auth_type=local` and `must_reset=1`, and returns the temporary password once in the response payload."
+          "On create, RAPTOR creates a Keycloak user with a temporary password and `UPDATE_PASSWORD`, stores a cache row in `allowed_users`, and returns the temporary password once in the response payload."
         ],
         "table": {
           "columns": [
@@ -107,7 +116,7 @@
             ],
             [
               "First login requires password reset",
-              "`must_reset=1` with `/user-reset-password` flow",
+              "Keycloak `UPDATE_PASSWORD` mapped to `/user-reset-password`",
               "User cannot proceed to normal routes until reset is complete."
             ]
           ]
@@ -117,7 +126,8 @@
         "id": "role-and-optional-permission-governance",
         "title": "Role and optional permission governance",
         "paragraphs": [
-          "RAPTOR applies role defaults and then merges role-allowed optional permissions. Optional permissions outside the allowed set are stripped by backend sanitization.",
+          "RAPTOR applies role defaults and then merges role-allowed optional permissions. Optional permissions outside the allowed set are stripped by backend sanitization. `create_manual_records`, `view_pentest_page`, and `delete_records` cannot be granted as optional extensions.",
+          "For `user`, `view_security_dashboard` opens the pentest board (`/pentest`) only. It does not grant host notebooks, scan-live, or `/apps/:id`.",
           "When role is updated through `POST /update-user-role`, backend resets stored optional permissions to an empty list. Admins should reapply optional permissions explicitly after role transition."
         ],
         "table": {
@@ -191,7 +201,7 @@
         "id": "authentication-reset-and-session-cases",
         "title": "Authentication reset and session edge cases",
         "paragraphs": [
-          "Password reset is policy-enforced for bootstrap admin and newly created local users. Login also applies lockout and session-expiry protections that can block access even with correct credentials.",
+          "Password reset is policy-enforced for bootstrap admin and newly created local users. Login uses Keycloak brute-force protection and RAPTOR session-expiry protections that can block access even with correct credentials.",
           "Common failure paths should be handled before deeper troubleshooting to reduce time spent on permission or route assumptions."
         ],
         "table": {
@@ -203,13 +213,18 @@
           "rows": [
             [
               "User is routed to reset flow after login",
-              "`must_reset` flag is set",
+              "Keycloak required action `UPDATE_PASSWORD`",
               "Complete `/admin-reset-password` or `/user-reset-password` flow."
             ],
             [
-              "Login returns too many attempts error",
-              "Lockout threshold reached",
-              "`429` with retry-after semantics from login endpoint."
+              "Federated user gets invalid credentials despite a correct directory password",
+              "Keycloak `VERIFY_PROFILE` / incomplete email or name, or missing `raptor-access`",
+              "Bootstrap relaxes required profile attributes. Login retries after clearing profile required actions. Confirm the user was added in Settings."
+            ],
+            [
+              "Login returns invalid credentials after several failures",
+              "Keycloak brute-force detection",
+              "Wait for the Keycloak lockout window; RAPTOR no longer tracks login lockout itself."
             ],
             [
               "Action returns unauthorized after role edit",
