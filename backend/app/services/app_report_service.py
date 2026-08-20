@@ -1,4 +1,3 @@
-import hashlib
 import json
 import logging
 from io import BytesIO
@@ -9,12 +8,18 @@ from flask import jsonify, send_file
 from app.config import DB_PATH
 from app.domain.offsec.shared import safe_json_load
 from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
+from app.integrations.reporting.report_context_builder import (
+    build_sheet_context,
+    export_cap_error,
+    sheet_content_hash,
+)
 from app.integrations.reporting.report_pdf_render import render_pentest_report_pdf
 from app.integrations.storage.offsec_storage import fetch_image, ftp_connect, save_report
 from app.repositories import applications_repository, environments_repository, pentest_findings_repository
 from app.services.offsec.offsec_generated_reports import load_enabled_checklist_templates
 from app.services.offsec.offsec_templates import bind_report_template_logo_for_template
-from app.services.phase2b_service import package_defaults, sign_export
+from app.services.report_brand_kit_service import apply_brand_kit, fetch_brand_kit
+from app.services.phase2b_service import package_defaults, sign_export, visible_env_ids
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +74,13 @@ def _pack_findings(
     host_prefix: str = "",
     host_suffix: str = "",
     occurrence_statuses: Optional[List[str]] = None,
-) -> Tuple[List[Dict[str, Any]], int, List[Dict[str, Any]]]:
-    findings, _total = pentest_findings_repository.fetch_app_findings(
+    wave_id: Optional[int] = None,
+) -> Tuple[List[Dict[str, Any]], int, List[Dict[str, Any]], int]:
+    findings, total = pentest_findings_repository.fetch_app_findings(
         application_id,
         include_drafts=True,
+        env_ids=selected_env_ids or None,
+        wave_id=wave_id,
         limit=200,
         offset=0,
     )
@@ -122,7 +130,7 @@ def _pack_findings(
         item["occurrences"] = packed_occ["primary"]
         item["also_observed"] = packed_occ["observed"]
         packed.append(item)
-    return packed, excluded_drafts, unassigned_hosts
+    return packed, excluded_drafts, unassigned_hosts, int(total or 0)
 
 
 def _split_occurrences(occurrences: List[Dict[str, Any]], selected_env_ids: List[int]) -> Dict[str, List[Dict[str, Any]]]:
@@ -183,6 +191,7 @@ def generate_scoped_report(
     data: Dict[str, Any],
     username: str,
     application_id: Optional[int] = None,
+    role: str = "",
 ) -> Tuple[Dict[str, Any], int]:
     payload = data or {}
     if scope_kind == "application":
@@ -201,6 +210,7 @@ def generate_scoped_report(
     package_key = package_info["package"]
     wave_id = payload.get("wave_id")
     parsed_wave_id = None
+    wave_row = None
     requested_envs = payload.get("selected_env_ids")
     if package_key == "wave_archive":
         if wave_id in (None, "", "null"):
@@ -211,11 +221,11 @@ def generate_scoped_report(
             return {"error": "Invalid wave_id."}, 400
         from app.repositories.phase2b_repository import get_wave
 
-        wave = get_wave(parsed_wave_id)
-        if not wave or int(wave.get("application_id") or 0) != int(application_id):
+        wave_row = get_wave(parsed_wave_id)
+        if not wave_row or int(wave_row.get("application_id") or 0) != int(application_id):
             return {"error": "Wave not found."}, 404
         if not (isinstance(requested_envs, list) and requested_envs):
-            requested_envs = wave.get("env_ids") or []
+            requested_envs = wave_row.get("env_ids") or []
 
     if package_key != "owner_delivery" and isinstance(requested_envs, list):
         if requested_envs:
@@ -232,6 +242,12 @@ def generate_scoped_report(
     if not selected_env_ids:
         return {"error": "No environments selected."}, 400
 
+    allowed = visible_env_ids(application_id, username, role)
+    if allowed is not None:
+        allowed_set = {int(item) for item in allowed}
+        if any(int(env_id) not in allowed_set for env_id in selected_env_ids):
+            return {"error": "One or more environments are not visible to this user."}, 403
+
     if "include_drafts" in payload:
         include_drafts = bool(payload.get("include_drafts"))
     else:
@@ -240,7 +256,7 @@ def generate_scoped_report(
         severity_floor = float(payload.get("severity_floor") or 0)
     except (TypeError, ValueError):
         severity_floor = 0.0
-    findings, excluded_drafts, unassigned_hosts = _pack_findings(
+    findings, excluded_drafts, unassigned_hosts, packed_total = _pack_findings(
         application_id,
         selected_env_ids,
         include_drafts,
@@ -248,7 +264,11 @@ def generate_scoped_report(
         host_prefix=str(payload.get("host_prefix") or ""),
         host_suffix=str(payload.get("host_suffix") or ""),
         occurrence_statuses=package_info.get("occurrence_statuses"),
+        wave_id=parsed_wave_id,
     )
+    cap_error = export_cap_error(packed_total)
+    if cap_error:
+        return cap_error
 
     selected_envs = [env for env in all_envs if int(env["id"]) in set(selected_env_ids)]
     watermark = (
@@ -256,48 +276,6 @@ def generate_scoped_report(
         if selected_envs and all(env.get("is_production") or env.get("slug") == "prod" for env in selected_envs)
         else "NON-PROD"
     )
-    vulns = []
-    for finding in findings:
-        also = finding.get("also_observed") or []
-        also_note = ""
-        if also:
-            names = ", ".join(
-                str(item.get("dns_name") or item.get("record_id")) for item in also
-            )
-            also_note = f"\n\nAlso observed: {names}"
-        hosts = ", ".join(
-            str(item.get("dns_name") or item.get("record_id"))
-            for item in (finding.get("occurrences") or [])
-        )
-        vulns.append(
-            {
-                "id": finding.get("id"),
-                "categoryName": finding.get("categoryName") or finding.get("title") or "Finding",
-                "description": f"{finding.get('title') or ''}\n{finding.get('description') or ''}\nHosts: {hosts}{also_note}".strip(),
-                "baseScore": finding.get("baseScore") or 0,
-                "metrics": finding.get("metrics") or {},
-                "status": finding.get("status"),
-                "ticket_url": finding.get("ticket_url") or "",
-            }
-        )
-
-    record_data = {
-        "name": f"{app.get('name')} ({watermark})",
-        "ip_address": "",
-        "source": watermark,
-        "application_name": app.get("name"),
-        "description": app.get("roe_link") or "",
-        "status": "Completed",
-        "tested_by": username,
-        "vulnerabilities": vulns,
-        "notes": "",
-        "open_ports": "",
-        "vulnerable": 1 if vulns else 0,
-        "vulnerability_fixed": 0,
-        "service_desk_link": "",
-        "checklist_states": {},
-        "collaborators": [],
-    }
 
     preview_payload = {
         "preview": True,
@@ -338,9 +316,24 @@ def generate_scoped_report(
             )
             if logo_error:
                 return {"error": logo_error}, 400
+            template_definition = apply_brand_kit(template_definition, fetch_brand_kit(c))
 
+            content_hash = sheet_content_hash(findings, selected_env_ids)
+            signature = sign_export(content_hash)
+            report_context = build_sheet_context(
+                scope=scope_kind,
+                package=package_key,
+                app=app,
+                selected_envs=selected_envs,
+                packed_findings=findings,
+                username=username,
+                watermark=watermark,
+                wave=wave_row,
+                content_hash=content_hash,
+                signature=signature,
+            )
             pdf_content = render_pentest_report_pdf(
-                record_data,
+                report_context,
                 template_definition,
                 checklist_templates=load_enabled_checklist_templates(),
                 image_fetcher=fetch_image,
@@ -348,10 +341,6 @@ def generate_scoped_report(
             )
             file_path = save_report(f"{scope_kind}-{scope_id}", pdf_content)
             finding_ids = [str(item.get("id")) for item in findings]
-            content_hash = hashlib.sha256(
-                json.dumps({"findings": finding_ids, "envs": selected_env_ids}, sort_keys=True).encode("utf-8")
-            ).hexdigest()
-            signature = sign_export(content_hash)
             c.execute(
                 """
                 INSERT INTO report_exports (
@@ -422,18 +411,26 @@ def download_export(export_id: int):
         return jsonify({"error": "Failed to retrieve export."}), 500
 
 
-def record_host_export(record_id: int, file_path: str, template_id: Any, username: str) -> None:
+def record_host_export(
+    record_id: int,
+    file_path: str,
+    template_id: Any,
+    username: str,
+    content_hash: str = "",
+    signature: str = "",
+) -> None:
     try:
         with get_db_connection(DB_PATH) as conn:
             c = conn.cursor()
             c.execute(
                 """
                 INSERT INTO report_exports (
-                    scope_kind, scope_id, template_id, generated_by, file_path, package
+                    scope_kind, scope_id, template_id, generated_by, file_path,
+                    package, content_hash, signature
                 )
-                VALUES ('host', ?, ?, ?, ?, 'host')
+                VALUES ('host', ?, ?, ?, ?, 'host', ?, ?)
                 """,
-                (record_id, template_id, username, file_path),
+                (record_id, template_id, username, file_path, content_hash, signature),
             )
             conn.commit()
     except Exception as exc:

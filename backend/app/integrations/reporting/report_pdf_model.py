@@ -1,4 +1,3 @@
-import datetime
 import html
 import json
 import re
@@ -107,7 +106,6 @@ def _sanitize_link_target(raw_url):
 
 def replace_inline_markdown(text):
     safe_text = html.escape(str(text or ""))
-    safe_text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe_text)
     safe_text = re.sub(r"`([^`]+)`", r"<font name='Courier'>\1</font>", safe_text)
     safe_text = MARKDOWN_LINK_PATTERN.sub(
         lambda match: (
@@ -115,6 +113,15 @@ def replace_inline_markdown(text):
             if (safe_url := _sanitize_link_target(match.group(2)))
             else match.group(1)
         ),
+        safe_text,
+    )
+    safe_text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe_text)
+    safe_text = re.sub(r"__(.+?)__", r"<b>\1</b>", safe_text)
+    safe_text = re.sub(r"~~(.+?)~~", r"<strike>\1</strike>", safe_text)
+    safe_text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", safe_text)
+    safe_text = re.sub(
+        r"(?<![A-Za-z0-9_])_(?!_)(.+?)(?<!_)_(?![A-Za-z0-9_])",
+        r"<i>\1</i>",
         safe_text,
     )
     return safe_text
@@ -152,13 +159,17 @@ def build_service_name(port):
 
 
 def build_report_model(record_data, checklist_templates, generated_by=None):
-    vulnerabilities = safe_json_load(record_data.get("vulnerabilities"), [])
-    if not isinstance(vulnerabilities, list):
-        vulnerabilities = []
-    vulnerabilities = [item for item in vulnerabilities if isinstance(item, dict)]
+    from app.integrations.reporting.report_context import coerce_report_context, token_flat_context
 
-    open_ports = parse_open_ports(record_data.get("open_ports"))
-    checklist_states = safe_json_load(record_data.get("checklist_states"), {})
+    context_payload = coerce_report_context(record_data or {}, generated_by=generated_by)
+    findings = [item for item in (context_payload.get("findings") or []) if isinstance(item, dict)]
+    open_ports = context_payload.get("open_ports") or []
+    if not isinstance(open_ports, list):
+        open_ports = parse_open_ports(open_ports)
+
+    checklist_states = context_payload.get("checklist_states") or {}
+    if not isinstance(checklist_states, dict):
+        checklist_states = {}
     selected_checklists = checklist_states.get("selected", []) if isinstance(checklist_states, dict) else []
     if not isinstance(selected_checklists, list):
         selected_checklists = []
@@ -247,86 +258,59 @@ def build_report_model(record_data, checklist_templates, generated_by=None):
         checklist_irrelevant += irrelevant
         checklist_unstarted += unstarted
 
-    severity_counts = {
-        "Critical": 0,
-        "High": 0,
-        "Medium": 0,
-        "Low": 0,
-        "Informational": 0,
-    }
-    for vuln in vulnerabilities:
-        severity = severity_from_score(vuln.get("baseScore"))
-        severity_counts[severity] += 1
+    metrics = dict(context_payload.get("metrics") or {})
+    metrics["checklist_total"] = checklist_total
+    metrics["checklist_completed"] = checklist_completed
+    metrics["checklist_irrelevant"] = checklist_irrelevant
+    metrics["checklist_unstarted"] = checklist_unstarted
+    metrics["checklist_percentage"] = (
+        round((checklist_completed / checklist_total) * 100, 1) if checklist_total else 0
+    )
+    metrics["open_ports_count"] = len(open_ports)
+    context_payload["metrics"] = metrics
 
-    vulnerability_count = len(vulnerabilities)
-    vulnerability_fixed = to_int(record_data.get("vulnerability_fixed"), 0) == 1
-    fixed_findings = vulnerability_count if vulnerability_fixed else 0
-    open_findings = max(vulnerability_count - fixed_findings, 0)
-
-    generated_at = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-
-    raw_collaborators = record_data.get("collaborators") or []
-    if isinstance(raw_collaborators, list):
-        collaborator_usernames = [str(c).strip() for c in raw_collaborators if str(c).strip()]
-    else:
-        collaborator_usernames = []
-
-    assignee = record_data.get("tested_by") or "Unassigned"
-    resolved_generated_by = generated_by or assignee
-
+    collaborator_usernames = list(context_payload.get("collaborator_usernames") or [])
     context = {
-        "generated_at": generated_at,
-        "generated_date": generated_at.split(" ")[0],
-        "generated_by": resolved_generated_by,
-        "record": {
-            "name": record_data.get("name", ""),
-            "ip_address": record_data.get("ip_address", ""),
-            "source": record_data.get("source", ""),
-            "application_name": record_data.get("application_name", ""),
-            "description": record_data.get("description", ""),
-        },
-        "pentest": {
-            "status": record_data.get("status", "Not Started"),
-            "tested_by": assignee,
-            "test_start_date": record_data.get("test_start_date", ""),
-            "test_end_date": record_data.get("test_end_date", ""),
-            "service_desk_link": record_data.get("service_desk_link", ""),
-            "notes": record_data.get("notes", ""),
-            "open_ports": ", ".join([str(port) for port in open_ports]),
-            "vulnerable": "Yes" if to_int(record_data.get("vulnerable"), 0) == 1 else "No",
-            "vulnerability_fixed": "Yes" if vulnerability_fixed else "No",
-            "collaborators": ", ".join(collaborator_usernames) if collaborator_usernames else "",
-        },
-        "metrics": {
-            "vulnerability_count": vulnerability_count,
-            "critical_count": severity_counts["Critical"],
-            "high_count": severity_counts["High"],
-            "medium_count": severity_counts["Medium"],
-            "low_count": severity_counts["Low"],
-            "informational_count": severity_counts["Informational"],
-            "critical_high_count": severity_counts["Critical"] + severity_counts["High"],
-            "open_findings": open_findings,
-            "fixed_findings": fixed_findings,
-            "open_ports_count": len(open_ports),
-            "checklist_total": checklist_total,
-            "checklist_completed": checklist_completed,
-            "checklist_irrelevant": checklist_irrelevant,
-            "checklist_unstarted": checklist_unstarted,
-            "checklist_percentage": round((checklist_completed / checklist_total) * 100, 1)
-            if checklist_total
-            else 0,
-        },
+        "generated_at": context_payload.get("generated_at", ""),
+        "generated_date": context_payload.get("generated_date", ""),
+        "generated_by": context_payload.get("generated_by", ""),
+        "scope": context_payload.get("scope", ""),
+        "package": context_payload.get("package", ""),
+        "application": context_payload.get("application") or {},
+        "record": context_payload.get("record") or {},
+        "pentest": context_payload.get("pentest") or {},
+        "wave": context_payload.get("wave") or {},
+        "metrics": metrics,
+        "export": context_payload.get("export") or {},
+        "placeholders": context_payload.get("placeholders") or {},
     }
+    flat_context = token_flat_context(context)
 
-    flat_context = {}
-    flatten("", context, flat_context)
+    severity_counts = context_payload.get("severity_counts") or {
+        "Critical": metrics.get("critical_count", 0),
+        "High": metrics.get("high_count", 0),
+        "Medium": metrics.get("medium_count", 0),
+        "Low": metrics.get("low_count", 0),
+        "Informational": metrics.get("informational_count", 0),
+    }
+    occurrence_counts = context_payload.get("occurrence_counts") or {
+        "open": metrics.get("occurrence_open", 0),
+        "draft": metrics.get("occurrence_draft", 0),
+        "retest": metrics.get("occurrence_retest", 0),
+        "fixed": metrics.get("occurrence_fixed", 0),
+        "accepted": metrics.get("occurrence_accepted", 0),
+        "not_affected": metrics.get("occurrence_not_affected", 0),
+    }
 
     return {
         "context": context,
+        "report_context": context_payload,
         "flat_context": flat_context,
         "open_ports": open_ports,
-        "vulnerabilities": vulnerabilities,
+        "vulnerabilities": findings,
+        "findings": findings,
         "severity_counts": severity_counts,
+        "occurrence_counts": occurrence_counts,
         "checklist_progress_rows": checklist_progress_rows,
         "collaborator_usernames": collaborator_usernames,
     }

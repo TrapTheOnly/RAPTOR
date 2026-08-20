@@ -48,7 +48,7 @@ def test_owner_delivery_omits_qa_only_and_drafts(monkeypatch):
         return {"primary": primary, "observed": observed}
 
     monkeypatch.setattr(svc, "_split_occurrences", _split)
-    packed, excluded_drafts, _unassigned = svc._pack_findings(1, [10], include_drafts=False)
+    packed, excluded_drafts, _unassigned, _total = svc._pack_findings(1, [10], include_drafts=False)
     ids = [item["id"] for item in packed]
     assert ids == ["prod-finding"]
     assert packed[0]["also_observed"][0]["dns_name"] == "qa.google.com"
@@ -102,7 +102,8 @@ def test_generate_scoped_report_writes_report_exports(monkeypatch):
         "_default_env_ids",
         lambda _app_id, _requested: ([9], [{"id": 9, "slug": "prod", "is_production": True}]),
     )
-    monkeypatch.setattr(svc, "_pack_findings", lambda *args, **kwargs: ([{"id": "f1", "title": "CORS", "occurrences": [], "also_observed": []}], 0, []))
+    monkeypatch.setattr(svc, "visible_env_ids", lambda *_a, **_k: None)
+    monkeypatch.setattr(svc, "_pack_findings", lambda *args, **kwargs: ([{"id": "f1", "title": "CORS", "occurrences": [], "also_observed": []}], 0, [], 1))
     monkeypatch.setattr(svc, "safe_json_load", lambda *_args, **_kwargs: {"blocks": []})
     monkeypatch.setattr(svc, "bind_report_template_logo_for_template", lambda *_args, **_kwargs: ({}, None))
     monkeypatch.setattr(svc, "render_pentest_report_pdf", lambda *_args, **_kwargs: b"%PDF")
