@@ -19,6 +19,11 @@ jest.mock(
   { virtual: true }
 );
 
+jest.mock('../services', () => ({
+  getEnvAcl: () => Promise.resolve({ data: { usernames: [] } }),
+  putEnvAcl: () => Promise.resolve({ data: { usernames: [] } })
+}));
+
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const theme = createTheme();
 
@@ -101,8 +106,9 @@ test('export sheet offers the four named packages on one sheet', () => {
   expect(tokens).toContain('internal_draft');
   expect(source).toContain('EXPORT_PACKAGES');
   expect(source).toContain('Live preview');
-  expect(source).toContain('lockedWave');
-  expect(source).toContain('End and export');
+  expect(source).toContain('scopedWave');
+  expect(source).not.toContain('End and export');
+  expect(source).toContain('does not end the wave');
   expect(source).toContain('Host domain');
   expect(source).toContain('Report template');
   expect(source).toContain('template_id');
@@ -136,33 +142,34 @@ test('export sheet requires an explicit scope confirmation before generating', (
   view.unmount();
 });
 
-test('ending a wave locks the archive to that wave and its environments', () => {
+test('wave-scoped export preselects the wave without ending it', () => {
   const view = mount(
     <ExportSheetDialog
       open
       onClose={() => {}}
       environments={ENVIRONMENTS}
       defaultEnvIds={[1, 2]}
-      lockedWave={{ id: 7, name: '2026 H1', env_ids: [1] }}
+      waves={[{ id: 7, name: '2026 H1', env_ids: [1], status: 'open' }]}
+      scopedWave={{ id: 7, name: '2026 H1', env_ids: [1], status: 'open' }}
       canExport
       generating={false}
       onGenerate={() => {}}
     />
   );
 
-  expect(document.body.textContent).toContain('End “2026 H1”');
-  expect(document.body.textContent).toContain('End and export');
+  expect(document.body.textContent).toContain('Export sheet');
+  expect(document.body.textContent).toContain('does not end the wave');
+  expect(document.body.textContent).not.toContain('End and export');
+  expect(document.body.textContent).not.toContain('End “2026 H1”');
   expect(document.body.textContent).toContain('I confirm this export scope');
   expect(document.body.textContent).toContain('Host domain');
-  expect(document.body.textContent).toContain('Every environment on this wave is included');
   expect(document.body.textContent).toContain('Production');
-  expect(document.body.textContent).not.toContain('QA');
-  expect(document.body.textContent).not.toContain('Choose a wave');
-  const endButton = [...document.querySelectorAll('button')].find((button) =>
-    button.textContent.includes('End and export')
+  expect(document.body.textContent).toContain('QA');
+  const generateButton = [...document.querySelectorAll('button')].find((button) =>
+    button.textContent.toLowerCase().includes('generate')
   );
-  expect(endButton).toBeTruthy();
-  expect(endButton.disabled).toBe(true);
+  expect(generateButton).toBeTruthy();
+  expect(generateButton.disabled).toBe(true);
   view.unmount();
 });
 
@@ -375,6 +382,9 @@ test('new finding host picker searches the app, not the hosts-tab page', () => {
   const source = readSource('./NewFindingDialog.js');
   expect(source).toContain('HostPicker');
   expect(source).toContain('lockedHost');
+  expect(source).toContain('label="Impact"');
+  expect(source).toContain('label="Evidence"');
+  expect(source).toContain('label="Remediation"');
   expect(source).not.toContain('blastOptions');
   const picker = readSource('./HostPicker.js');
   expect(picker).toContain('listAppHosts');
@@ -382,6 +392,7 @@ test('new finding host picker searches the app, not the hosts-tab page', () => {
   const workspace = readSource('../../AppWorkspace.js');
   expect(workspace).toContain('form.record_ids || []');
   expect(workspace).toContain('String(form.record_id)');
+  expect(workspace).toContain('impact: form.impact');
   expect(workspace).toContain('AttachHostsDialog');
   expect(workspace).not.toContain('if (!targetEnv) return');
 });
@@ -394,22 +405,29 @@ test('finding ticket icon only follows http(s) URLs', () => {
   expect(source).not.toContain('finding.description');
 });
 
-test('hosts tab is inventory; wave hosts launch scans from the row', () => {
+test('hosts tab is inventory; wave header launches scans', () => {
   const hosts = readSource('./HostsTab.js');
   expect(hosts).not.toContain('Launch scan');
   expect(hosts).not.toContain('onLaunchScan');
   const wavePage = readSource('./WaveDetailTab.js');
   expect(wavePage).toContain('Launch scan');
   expect(wavePage).toContain('onLaunchScan');
+  expect(wavePage).toContain('/scan-live');
+  expect(wavePage).not.toContain('onLaunchScan(host)');
   expect(wavePage).toContain('`Hosts (${hosts.length})`');
   expect(wavePage).toContain('`Findings (${findings.length})`');
-  expect(wavePage).toContain('End and export');
+  expect(wavePage).toContain('End wave');
+  expect(wavePage).toContain('onExportWave');
   expect(wavePage).toContain('Start wave');
+  expect(wavePage).not.toContain('End and export');
   expect(wavePage).not.toContain('Archive pack');
   expect(wavePage).not.toContain('Close wave');
   expect(wavePage).toContain('New finding');
   const header = readSource('../../pentest-record/components/PentestRecordHeader.js');
   expect(header).not.toContain('Launch AI Scan');
+  expect(header).not.toContain('launchAiScan');
+  expect(header).toContain('AI scan');
+  expect(header).toContain('/scan-live');
   expect(header).toContain('App overview');
 });
 
@@ -457,7 +475,9 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(waves).toContain('one or more environments');
   expect(waves).toContain('env_ids');
   expect(waves).toContain('live hosts');
-  expect(waves).toContain('End and export');
+  expect(waves).toContain('End wave');
+  expect(waves).toContain('onExport');
+  expect(waves).not.toContain('End and export');
   expect(waves).not.toContain('Archive pack');
   expect(waves).not.toContain('Close wave');
   const checklist = readSource('../../pentest-record/components/ChecklistTab.js');
@@ -472,8 +492,10 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(workspace).toContain("label: 'Findings'");
   expect(workspace).not.toContain('Findings${');
   expect(workspace).not.toContain('New finding');
-  expect(workspace).toContain('openEndWave');
-  expect(workspace).toContain('lockedWave={endingWave}');
+  expect(workspace).toContain('openExportWave');
+  expect(workspace).toContain('scopedWave={scopedWave}');
+  expect(workspace).not.toContain('openEndWave');
+  expect(workspace).not.toContain('lockedWave');
   const findingPage = readSource('./FindingPage.js');
   expect(findingPage).toContain('CvssCalculator');
   expect(findingPage).toContain('MarkdownEditorCard');
@@ -484,6 +506,9 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(findingPage).toContain('showActions={false}');
   expect(findingPage).toContain('canEdit = Boolean(canModify && waveIsOpen)');
   expect(findingPage).toContain('This wave has ended');
+  expect(findingPage).toContain('title="Impact"');
+  expect(findingPage).toContain('title="Evidence"');
+  expect(findingPage).toContain('title="Remediation"');
   expect(findingPage).not.toContain('Found here ·');
   expect(readSource('./CvssCalculator.js')).toContain('CVSS 3.1');
   const hostFindings = readSource('../../pentest-record/components/FindingsTab.js');
@@ -494,17 +519,22 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(wavePage).toContain('Assign to me');
   expect(wavePage).toContain('Mark in scope');
   expect(wavePage).toContain('Notebook');
+  expect(wavePage).toContain('hostNotebookPath(host.id, wave.id)');
+  expect(readSource('./ProgramTab.js')).not.toContain('/pentest/record/');
+  expect(readSource('./FindingCard.js')).toContain('hostNotebookPath');
+  expect(readSource('../../PentestRecord.js')).toContain('if (!engagementWaveId)');
   expect(wavePage).toContain('disabled={!canModify || !isOpen}');
   expect(wavePage).toContain('canModify={canModify && isOpen}');
   expect(wavePage).toContain('This wave has ended');
   expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('max-width: 100%');
+  expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('.raptor-md-preview blockquote');
   expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('width: 100%');
   expect(readSource('./HostsTab.js')).toContain('Add hosts');
   expect(readSource('./HostsTab.js')).not.toContain('Assign tester');
   expect(readSource('./HostsTab.js')).not.toContain('allInScope');
   expect(readSource('./EnvironmentSettingsTab.js')).not.toContain('waveMode');
   expect(readSource('./EnvironmentSettingsTab.js')).not.toContain('in_scope_urls');
-  expect(readSource('./MergeFindingsDialog.js')).toContain('Empty fields fill from');
+  expect(readSource('./MergeFindingsDialog.js')).toContain('impact, evidence, and remediation fill from');
   const appOverview = readSource('./OverviewTab.js');
   expect(appOverview).not.toContain('still unassigned');
   expect(appOverview).not.toContain('File them into an environment');
@@ -530,10 +560,14 @@ test('environment settings keep standing RoE and the scan ceiling', () => {
     'include_in_exec_report',
     'allow_destructive',
     'max_concurrent_scans',
-    'roe_text'
+    'roe_text',
+    'getEnvAcl',
+    'putEnvAcl'
   ].forEach((field) => {
     expect(source).toContain(field);
   });
+  expect(source).toContain('Open to anyone with pentest view');
+  expect(source).toContain('canManage');
   expect(source).not.toContain('in_scope_urls');
   expect(source).not.toContain('out_of_scope_urls');
   expect(source).not.toContain('Contractor access');
@@ -620,6 +654,14 @@ test('app workspace is one shell: /apps/:appId with nested envs/:envId', () => {
   expect(appSource).not.toContain('AnimatePresence');
   expect(appSource).toContain('path="/pentest"');
   expect(appSource).toContain('path="/pentest/record/:recordId"');
+  const appsBlock = appSource.split('path="/apps/:appId"')[1].slice(0, 500);
+  expect(appsBlock).toContain("hasPermission('view_pentest_page')");
+  expect(appsBlock).not.toContain("hasPermission('view_security_dashboard')");
+  const recordsBlock = appSource.split('path="/records"')[1].split('<Route')[0];
+  expect(recordsBlock).toContain('getDefaultRoute()');
+  const pentestBlock = appSource.split('path="/pentest"')[1].split('<Route')[0];
+  expect(pentestBlock).toContain("hasPermission('view_security_dashboard')");
+  expect(pentestBlock).toContain('getDefaultRoute()');
 });
 
 test('waves tab shows a count and env drill-down only lists waves that cover that env', () => {
@@ -709,4 +751,65 @@ test('active and fixed over time freezes last week when that week is fully remed
   expect(current.fixed).toBe(11);
   const beforeDetection = stats.overTime[stats.overTime.length - 4];
   expect(beforeDetection.active + beforeDetection.fixed).toBe(0);
+});
+
+const SECRET_ENV = {
+  id: 1,
+  slug: 'prod',
+  display_name: 'Production',
+  roe_text: 'SECRET_ROE_TEXT',
+  creds_vault_pointer: 'vault://secret-pointer',
+  contacts: 'security@example.com'
+};
+
+test('environment settings hide RoE and vault pointer from viewers', async () => {
+  const EnvironmentSettingsTab = require('./EnvironmentSettingsTab').default;
+  const view = mount(
+    <EnvironmentSettingsTab
+      appId={1}
+      env={SECRET_ENV}
+      canManage={false}
+      pentestUsers={['ada']}
+      onSaveEnvironment={() => {}}
+    />
+  );
+
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  expect(document.body.textContent).toContain('prod');
+  expect(document.body.textContent).toContain('Open to anyone with pentest view');
+  expect(document.body.textContent).not.toContain('SECRET_ROE_TEXT');
+  expect(document.body.textContent).not.toContain('vault://secret-pointer');
+  expect(document.body.textContent).not.toContain('Rules of engagement');
+  expect(document.body.textContent).not.toContain('Credentials vault pointer');
+  view.unmount();
+});
+
+test('environment settings show RoE to managers and load ACL', async () => {
+  const EnvironmentSettingsTab = require('./EnvironmentSettingsTab').default;
+  const view = mount(
+    <EnvironmentSettingsTab
+      appId={1}
+      env={SECRET_ENV}
+      canManage
+      pentestUsers={['ada']}
+      onSaveEnvironment={() => {}}
+    />
+  );
+
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  expect(document.body.textContent).toContain('SECRET_ROE_TEXT');
+  expect(document.body.textContent).toContain('Rules of engagement');
+  expect(document.body.textContent).toContain('Credentials vault pointer');
+  expect(document.body.textContent).toContain('Environment access');
+  expect(document.body.textContent).toContain('Open to anyone with pentest view');
+  const vault = document.querySelector('input[placeholder="Path or URL — never paste a secret here"]');
+  expect(vault).toBeTruthy();
+  expect(vault.value).toBe('vault://secret-pointer');
+  view.unmount();
 });

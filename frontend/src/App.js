@@ -254,7 +254,7 @@ const App = () => {
           path="/records"
           element={loggedIn && hasPermission('view_records') ? 
             <RecordsTable userRole={userRole} userPermissions={userPermissions} darkMode={darkMode}/> : 
-              <Navigate to="/login" />}
+              <Navigate to={loggedIn ? getDefaultRoute() : "/login"} />}
         />
         <Route
           path="/login"
@@ -270,6 +270,7 @@ const App = () => {
               resetUserType={resetUserType}
               setResetUserType={setResetUserType}
               darkMode={darkMode}
+              setDarkMode={setDarkMode}
             /> : <Navigate to={getDefaultRoute()} replace />
           }
         />
@@ -294,13 +295,13 @@ const App = () => {
                   username={username}
                   userRole={userRole}
                   userPermissions={userPermissions}
-                /> : <Navigate to="/login" />
+                /> : <Navigate to={loggedIn ? getDefaultRoute() : "/login"} />
             }
         />
         <Route
           path="/apps/:appId"
           element={
-            loggedIn && hasPermission('view_security_dashboard') ?
+            loggedIn && hasPermission('view_pentest_page') ?
               <AppWorkspace userRole={userRole} userPermissions={userPermissions} username={username} /> :
               <Navigate to={loggedIn ? getDefaultRoute() : '/login'} />
           }
@@ -309,6 +310,14 @@ const App = () => {
           <Route path="waves/:waveId" />
           <Route path="findings/:findingId" />
         </Route>
+        <Route
+          path="/apps/:appId/waves/:waveId/scan-live"
+          element={
+            loggedIn && hasPermission('view_pentest_page') ?
+              <ScanLive /> :
+              <Navigate to={loggedIn ? getDefaultRoute() : '/login'} />
+          }
+        />
         <Route
           path="/pentest/record/:recordId"
           element={
@@ -329,7 +338,7 @@ const App = () => {
           path="/pentest/record/:recordId/scan-live"
           element={
             loggedIn && hasPermission('view_pentest_page') ?
-              <ScanLive darkMode={darkMode} /> :
+              <ScanLive /> :
               <Navigate to={loggedIn ? "/pentest" : "/login"} />
           }
         />

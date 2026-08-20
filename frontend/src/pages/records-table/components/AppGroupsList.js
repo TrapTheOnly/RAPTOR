@@ -72,7 +72,7 @@ const AppGroupSection = ({
   const actions = [];
   if (appId && canViewSecurityDashboard) {
     actions.push(
-      <Button key="open" size="small" startIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => onOpenApp(appId)}>
+      <Button key="open" size="small" variant="outlined" startIcon={<OpenInNew />} onClick={() => onOpenApp(appId)}>
         Open app
       </Button>
     );
@@ -83,7 +83,7 @@ const AppGroupSection = ({
         key="pentest"
         size="small"
         variant="outlined"
-        startIcon={<Security sx={{ fontSize: 14 }} />}
+        startIcon={<Security />}
         onClick={() => onOpenPentest(appId)}
       >
         Pentest
@@ -92,7 +92,13 @@ const AppGroupSection = ({
   }
   if (canExportRecords) {
     actions.push(
-      <Button key="export" size="small" startIcon={<FileDownload sx={{ fontSize: 14 }} />} onClick={() => onExportGroup(group)}>
+      <Button
+        key="export"
+        size="small"
+        variant="contained"
+        startIcon={<FileDownload />}
+        onClick={() => onExportGroup(group)}
+      >
         Export hosts
       </Button>
     );
@@ -102,7 +108,8 @@ const AppGroupSection = ({
       <Button
         key="manage"
         size="small"
-        startIcon={<AccountTree sx={{ fontSize: 14 }} />}
+        variant="contained"
+        startIcon={<AccountTree />}
         onClick={onManageApps}
       >
         Manage

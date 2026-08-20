@@ -3,6 +3,7 @@ export {
   Surface,
   Rule,
   Button,
+  RefreshButton,
   Field,
   Tag,
   EnvTag,
@@ -33,3 +34,4 @@ export {
 export { Combo } from './combo';
 export { CommandPalette } from './CommandPalette';
 export { LineChart } from './charts';
+export { OsMark, ProviderMark } from './brands';

@@ -29,7 +29,26 @@ export const COMMON_PASSWORDS = new Set([
   'shadow'
 ]);
 
-export const DRAWER_WIDTH = 280;
+export const SETTINGS_NAV_WIDTH = 240;
+
+export const USER_SUBSECTIONS = [
+  { key: 'existing', label: 'Existing Users', tabLabel: 'Existing' },
+  { key: 'add-domain', label: 'Add LDAP Users', tabLabel: 'LDAP' },
+  { key: 'local', label: 'Add Local Users', tabLabel: 'Local' },
+  { key: 'service-accounts', label: 'Service Accounts', tabLabel: 'Service accounts' }
+];
+
+export const DOMAIN_SUBSECTIONS = [
+  { key: 'collectors', label: 'Collectors', tabLabel: 'Collectors', requires: 'collectors' },
+  { key: 'cloud', label: 'Cloud DNS', tabLabel: 'Cloud DNS', requires: 'collectors' },
+  { key: 'ip-sources', label: 'IP Sources', tabLabel: 'IP Sources', requires: 'ipSources' }
+];
+
+export const AI_SCANNER_SUBSECTIONS = [
+  { key: 'connections', label: 'Connections', tabLabel: 'Connections' },
+  { key: 'local', label: 'Local model', tabLabel: 'Local model' },
+  { key: 'policy', label: 'Policy', tabLabel: 'Policy' }
+];
 
 export const ROLE_OPTIONS = [
   { value: 'user', label: 'User' },
@@ -37,10 +56,13 @@ export const ROLE_OPTIONS = [
   { value: 'manager', label: 'Manager' }
 ];
 
+// Checklist template CRUD stays admin-only in AdminSettings. Do not expose it as an optional
+// role permission or move it onto managers.
 export const ROLE_METADATA = {
   user: {
     label: 'User',
-    description: 'Default access to records with optional dashboard, pentest view, and app management.',
+    description:
+      'Default access to records with optional dashboard, pentest dashboard (Security index), and app management. Optional pentest dashboard is not host-notebook access.',
     optionalPermissions: ['view_dashboard', 'view_security_dashboard', 'manage_apps']
   },
   pentester: {
@@ -67,7 +89,7 @@ export const OPTIONAL_PERMISSION_LABELS = {
   },
   view_security_dashboard: {
     label: 'View pentest dashboard',
-    description: 'Allows access to the pentest dashboard overview.'
+    description: 'Allows access to the Security index (/pentest). Does not grant host notebooks or the app workspace.'
   },
   manage_apps: {
     label: 'Manage apps',

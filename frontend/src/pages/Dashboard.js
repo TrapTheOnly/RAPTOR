@@ -7,6 +7,7 @@ import {
   Page,
   PageHeader,
   Progress,
+  RefreshButton,
   Tag
 } from '../design/primitives';
 import { SPACE } from '../design/tokens';
@@ -79,17 +80,13 @@ const Dashboard = ({ username = '', userRole, userPermissions = [] }) => {
   const openRecord = useCallback(
     (recordId) => {
       if (recordId == null || recordId === '') return false;
-      if (canViewPentestPage) {
-        navigate(`/pentest/record/${recordId}`);
-        return true;
-      }
       if (canViewRecordDetails) {
         navigate(`/records/record/${recordId}`);
         return true;
       }
       return false;
     },
-    [canViewPentestPage, canViewRecordDetails, navigate]
+    [canViewRecordDetails, navigate]
   );
 
   const fetchDashboard = useCallback(async ({ silent = false } = {}) => {
@@ -239,7 +236,7 @@ const Dashboard = ({ username = '', userRole, userPermissions = [] }) => {
             </Button>
             {arranging ? (
               <Button
-                variant="text"
+                variant="outlined"
                 size="small"
                 onClick={() =>
                   persistLayout({
@@ -251,14 +248,7 @@ const Dashboard = ({ username = '', userRole, userPermissions = [] }) => {
                 Reset
               </Button>
             ) : null}
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => fetchDashboard()}
-              disabled={loading}
-            >
-              Refresh
-            </Button>
+            <RefreshButton onClick={() => fetchDashboard()} disabled={loading} />
           </>
         }
       />

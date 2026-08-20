@@ -30,6 +30,20 @@ const waveEnvIds = (wave) => {
   return raw.map((id) => Number(id)).filter((id) => Number.isFinite(id));
 };
 
+const PACKAGE_TO_SCOPE = {
+  owner_delivery: 'application',
+  wave_archive: 'wave',
+  retest_pack: 'application',
+  internal_draft: 'application'
+};
+
+const templateSupportsPackage = (template, packageKey) => {
+  const scopes = template?.template?.supported_scopes || template?.supported_scopes;
+  if (!Array.isArray(scopes) || scopes.length === 0) return true;
+  const needed = PACKAGE_TO_SCOPE[packageKey] || 'application';
+  return scopes.includes(needed);
+};
+
 const EMPTY_TEMPLATES = [];
 
 const ExportSheetDialog = ({
@@ -45,13 +59,12 @@ const ExportSheetDialog = ({
   onPreview,
   defaultPackage = 'owner_delivery',
   scopeLabel,
-  lockedWave = null,
+  scopedWave = null,
   templates = EMPTY_TEMPLATES
 }) => {
   const palette = usePalette();
-  const ending = Boolean(lockedWave);
-  const [packageKey, setPackageKey] = useState(ending ? 'wave_archive' : defaultPackage);
-  const [waveId, setWaveId] = useState(lockedWave?.id || '');
+  const [packageKey, setPackageKey] = useState(scopedWave ? 'wave_archive' : defaultPackage);
+  const [waveId, setWaveId] = useState(scopedWave?.id || '');
   const [selectedEnvIds, setSelectedEnvIds] = useState(defaultEnvIds);
   const [severityFloor, setSeverityFloor] = useState('0');
   const [hostPrefix, setHostPrefix] = useState('');
@@ -64,9 +77,9 @@ const ExportSheetDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    const nextPackage = lockedWave ? 'wave_archive' : defaultPackage;
-    const nextWaveId = lockedWave?.id || '';
-    const nextEnvs = lockedWave ? waveEnvIds(lockedWave) : defaultEnvIds;
+    const nextPackage = scopedWave ? 'wave_archive' : defaultPackage;
+    const nextWaveId = scopedWave?.id || '';
+    const nextEnvs = scopedWave ? waveEnvIds(scopedWave) : defaultEnvIds;
     setPackageKey(nextPackage);
     setWaveId(nextWaveId);
     setSelectedEnvIds(nextEnvs);
@@ -76,16 +89,33 @@ const ExportSheetDialog = ({
     setIncludeDrafts(nextPackage === 'internal_draft');
     setConfirmed(false);
     setPreview(null);
-    setTemplateId(templates[0] ? String(templates[0].id) : '');
-  }, [open, defaultEnvIds, defaultPackage, lockedWave, templates]);
+    const scoped = templates.filter((item) => templateSupportsPackage(item, nextPackage));
+    setTemplateId(scoped[0] ? String(scoped[0].id) : '');
+  }, [open, defaultEnvIds, defaultPackage, scopedWave, templates]);
 
-  const selectableEnvs = useMemo(() => {
-    const available = environments.filter((env) => env.slug !== 'unassigned');
-    if (!lockedWave) return available;
-    const allowed = new Set(waveEnvIds(lockedWave).map(String));
-    return available.filter((env) => allowed.has(String(env.id)));
-  }, [environments, lockedWave]);
-  const openWaves = useMemo(() => waves.filter((wave) => wave.status === 'open'), [waves]);
+  const selectableEnvs = useMemo(
+    () => environments.filter((env) => env.slug !== 'unassigned'),
+    [environments]
+  );
+  const waveOptions = useMemo(
+    () =>
+      waves.map((wave) => ({
+        value: wave.id,
+        label: wave.status === 'open' ? wave.name : `${wave.name} (ended)`
+      })),
+    [waves]
+  );
+  const scopedTemplates = useMemo(
+    () => templates.filter((item) => templateSupportsPackage(item, packageKey)),
+    [templates, packageKey]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    if (!scopedTemplates.some((item) => String(item.id) === String(templateId))) {
+      setTemplateId(scopedTemplates[0] ? String(scopedTemplates[0].id) : '');
+    }
+  }, [open, packageKey, scopedTemplates, templateId]);
 
   const requestPayload = useMemo(
     () => ({
@@ -102,7 +132,7 @@ const ExportSheetDialog = ({
   );
 
   const packageReady = packageKey !== 'wave_archive' || Boolean(waveId);
-  const templateReady = templates.length === 0 || Boolean(templateId);
+  const templateReady = templates.length === 0 || (scopedTemplates.length > 0 && Boolean(templateId));
   const canSubmit =
     canExport && confirmed && !generating && selectedEnvIds.length > 0 && packageReady && templateReady;
 
@@ -157,7 +187,7 @@ const ExportSheetDialog = ({
       open={open}
       onClose={onClose}
       maxWidth="md"
-      title={ending ? `End “${lockedWave.name}”` : 'Export sheet'}
+      title="Export sheet"
       actions={
         <>
           <label style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -175,21 +205,13 @@ const ExportSheetDialog = ({
             onClick={() => onGenerate(requestPayload)}
             startIcon={generating ? <CircularProgress size={14} color="inherit" /> : <Description />}
           >
-            {generating
-              ? ending
-                ? 'Ending…'
-                : 'Generating…'
-              : ending
-                ? 'End and export'
-                : `Generate ${meta.label.toLowerCase()}`}
+            {generating ? 'Generating…' : `Generate ${meta.label.toLowerCase()}`}
           </Button>
         </>
       }
     >
       <Text variant="meta" tone="secondary">
-        {ending
-          ? 'Exports every finding on this wave, then freezes the engagement. It cannot be reopened.'
-          : `${scopeLabel || 'Application scope'} · one sheet, four named exports`}
+        {scopeLabel || 'Application scope'} · generating a report does not end the wave
       </Text>
 
       <div
@@ -200,60 +222,48 @@ const ExportSheetDialog = ({
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {ending ? (
-            <>
-              <Field
-                label="Export"
-                value="Wave archive — every finding on this engagement"
-                disabled
-              />
-              <Field label="Wave" value={lockedWave.name} disabled />
-            </>
-          ) : (
-            <Combo
-              label="Export"
-              mode="enum"
-              options={EXPORT_PACKAGES.map((item) => ({ value: item.key, label: item.label }))}
-              value={packageKey}
-              onChange={handlePackageChange}
-              hint={meta.blurb}
-            />
-          )}
+          <Combo
+            label="Export"
+            mode="enum"
+            options={EXPORT_PACKAGES.map((item) => ({ value: item.key, label: item.label }))}
+            value={packageKey}
+            onChange={handlePackageChange}
+            hint={meta.blurb}
+          />
 
-          {packageKey === 'wave_archive' && !ending ? (
+          {packageKey === 'wave_archive' ? (
             <Combo
               label="Wave"
               mode="enum"
-              options={openWaves.map((wave) => ({ value: wave.id, label: wave.name }))}
+              options={waveOptions}
               value={waveId}
               disableClearable={false}
-              placeholder={openWaves.length === 0 ? 'No open waves' : 'Choose a wave'}
+              placeholder={waveOptions.length === 0 ? 'No waves' : 'Choose a wave'}
               onChange={handleWaveChange}
             />
           ) : null}
 
-          {templates.length > 0 ? (
+          {scopedTemplates.length > 0 ? (
             <Combo
               label="Report template"
               mode="enum"
-              options={templates.map((item) => ({
+              options={scopedTemplates.map((item) => ({
                 value: String(item.id),
                 label: item.name || `Template ${item.id}`
               }))}
               value={templateId}
               onChange={setTemplateId}
             />
+          ) : templates.length > 0 ? (
+            <Text variant="meta" tone="secondary">
+              No templates support this export scope.
+            </Text>
           ) : null}
 
           <div>
             <Text as="div" variant="micro" tone="tertiary" style={{ marginBottom: 8 }}>
               Environments
             </Text>
-            {ending ? (
-              <Text as="p" variant="meta" tone="secondary" style={{ margin: '0 0 8px' }}>
-                Every environment on this wave is included. They cannot be changed while ending.
-              </Text>
-            ) : null}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {selectableEnvs.map((env) => (
                 <label
@@ -263,13 +273,12 @@ const ExportSheetDialog = ({
                     alignItems: 'center',
                     gap: 8,
                     minHeight: 32,
-                    cursor: ending ? 'default' : 'pointer'
+                    cursor: 'pointer'
                   }}
                 >
                   <Checkbox
                     size="small"
                     checked={selectedEnvIds.map(Number).includes(Number(env.id))}
-                    disabled={ending}
                     onChange={() => toggleEnv(env.id)}
                   />
                   <EnvTag slug={env.slug} label={env.slug} />

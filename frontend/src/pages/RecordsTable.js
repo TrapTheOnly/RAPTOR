@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Dns, Download, Refresh } from '@mui/icons-material';
+import { Dns, Download } from '@mui/icons-material';
 import AppGroupsList, { InventoryHead } from './records-table/components/AppGroupsList';
 import CreateManualRecordDialog from './records-table/components/CreateManualRecordDialog';
 import ManageAppsDialog from './records-table/components/ManageAppsDialog';
@@ -8,6 +8,7 @@ import RecordCard from './records-table/components/RecordCard';
 import RecordsStatsBar from './records-table/components/RecordsStatsBar';
 import SearchFiltersSection from './records-table/components/SearchFiltersSection';
 import { INVENTORY_MIN_WIDTH_FLAT, INVENTORY_MIN_WIDTH_GROUPED, INVENTORY_TABLE, SEARCH_PARAMETERS } from './records-table/constants';
+import { hasPermission as hasRolePermission } from '../utils/permissions';
 import {
   createManualRecord,
   createApp,
@@ -16,6 +17,7 @@ import {
   getApps,
   getEnvironments,
   getRecords,
+  getRecordById,
   resolveSyncConflictById,
   getSessionStatus,
   renameApp,
@@ -40,6 +42,8 @@ import {
   Page,
   Panel,
   Progress,
+  ProviderMark,
+  RefreshButton,
   Surface,
   Text,
   Toast
@@ -88,13 +92,14 @@ const RecordsTable = ({ userRole, userPermissions }) => {
   const [appsBusy, setAppsBusy] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [pendingConflictId, setPendingConflictId] = useState(null);
+  const [conflictDetail, setConflictDetail] = useState(null);
+  const [conflictIp, setConflictIp] = useState('');
   const [toast, setToast] = useState(null);
   const coldStart = useRef(true);
   const seededAppKeys = useRef(new Set());
 
   const navigate = useNavigate();
-  const hasPermission = (permission) =>
-    userRole === 'admin' || userPermissions?.includes(permission);
+  const hasPermission = (permission) => hasRolePermission(userRole, userPermissions, permission);
   const canDeleteRecords = hasPermission('delete_records');
   const canManageApps = hasPermission('manage_apps');
   const canCreateManualRecords = hasPermission('create_manual_records');
@@ -103,7 +108,8 @@ const RecordsTable = ({ userRole, userPermissions }) => {
   const canExportRecords = hasPermission('export_records');
   const canViewPentestPage = hasPermission('view_pentest_page');
   const canViewSecurityDashboard = hasPermission('view_security_dashboard');
-  const canResolveSyncConflicts = userRole === 'admin';
+  const normalizedRole = String(userRole || '').trim().toLowerCase();
+  const canResolveSyncConflicts = normalizedRole === 'admin' || normalizedRole === 'manager';
 
   const fetchRecords = useCallback(async () => {
     if (coldStart.current) setLoading(true);
@@ -456,8 +462,12 @@ const RecordsTable = ({ userRole, userPermissions }) => {
   const confirmResolveConflict = async () => {
     if (!pendingConflictId) return;
     try {
-      await resolveSyncConflictById(pendingConflictId);
+      const payload = {};
+      if (conflictIp) payload.ip_address = conflictIp;
+      await resolveSyncConflictById(pendingConflictId, payload);
       setPendingConflictId(null);
+      setConflictDetail(null);
+      setConflictIp('');
       fetchRecords();
     } catch (error) {
       setToast({
@@ -503,20 +513,42 @@ const RecordsTable = ({ userRole, userPermissions }) => {
   const pendingDelete = records.find((record) => record.id === pendingDeleteId);
   const pendingConflict = records.find((record) => record.id === pendingConflictId);
 
+  useEffect(() => {
+    if (!pendingConflictId) {
+      setConflictDetail(null);
+      setConflictIp('');
+      return undefined;
+    }
+    let cancelled = false;
+    getRecordById(pendingConflictId)
+      .then((response) => {
+        if (cancelled) return;
+        const detail = response.data || null;
+        setConflictDetail(detail);
+        const seen = detail?.seen_by || [];
+        const other = seen.find((item) => item.ip_address && item.ip_address !== detail?.ip_address);
+        setConflictIp(other?.ip_address || detail?.ip_address || '');
+      })
+      .catch(() => {
+        if (!cancelled) setConflictDetail(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingConflictId]);
+
   return (
     <Page>
       <PageHeader
         title="Asset Inventory"
         actions={
           <>
-            <Button size="small" startIcon={<Refresh sx={{ fontSize: 16 }} />} onClick={fetchRecords}>
-              Refresh
-            </Button>
+            <RefreshButton onClick={fetchRecords} />
             {canExportRecords ? (
               <Button
                 size="small"
-                variant="outlined"
-                startIcon={<Download sx={{ fontSize: 16 }} />}
+                variant="contained"
+                startIcon={<Download />}
                 onClick={exportCSV}
               >
                 Export
@@ -697,15 +729,41 @@ const RecordsTable = ({ userRole, userPermissions }) => {
           <>
             <Button onClick={() => setPendingConflictId(null)}>Cancel</Button>
             <Button variant="contained" onClick={confirmResolveConflict}>
-              Adopt imported data
+              {pendingConflict?.sync_conflict_reason === 'multi_source_a_disagreement'
+                ? 'Use selected IP'
+                : 'Adopt imported data'}
             </Button>
           </>
         }
       >
-        <Text as="p" variant="body" style={{ margin: 0 }}>
-          Convert {pendingConflict?.name || 'this manual host'} into an automated asset using the
-          current live import.
-        </Text>
+        {pendingConflict?.sync_conflict_reason === 'multi_source_a_disagreement' ? (
+          <div>
+            <Text as="p" variant="body" style={{ margin: '0 0 12px' }}>
+              DNS sources disagree on {pendingConflict?.name || 'this host'}. Keep the current pentest
+              IP or pick another A record from a live source.
+            </Text>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {(conflictDetail?.seen_by || []).map((item) => (
+                <Button
+                  key={`${item.source_id}-${item.ip_address}`}
+                  size="small"
+                  variant={conflictIp === item.ip_address ? 'contained' : 'outlined'}
+                  onClick={() => setConflictIp(item.ip_address)}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <ProviderMark type={item.source_type} size={14} />
+                    {item.display_name || item.source_type}: {item.ip_address}
+                  </span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <Text as="p" variant="body" style={{ margin: 0 }}>
+            Convert {pendingConflict?.name || 'this manual host'} into an automated asset using the
+            current live import.
+          </Text>
+        )}
       </Panel>
 
       <Toast

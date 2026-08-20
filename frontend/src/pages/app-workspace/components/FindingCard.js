@@ -19,12 +19,14 @@ import {
   Text,
   severityKeyFromScore
 } from '../../../design/primitives';
+import { hostNotebookPath } from '../../../design/navigation';
 import { OCCURRENCE_STATUS_OPTIONS, statusMeta } from '../../../theme/tokens';
 
 export const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
 
-const OccurrenceRow = ({ occurrence, canModify, busy, onStatusChange }) => {
+const OccurrenceRow = ({ occurrence, canModify, busy, onStatusChange, waveId }) => {
   const isMissing = occurrence.host_status === 'missing';
+  const notebookTo = hostNotebookPath(occurrence.record_id, waveId);
 
   return (
     <div
@@ -74,11 +76,11 @@ const OccurrenceRow = ({ occurrence, canModify, busy, onStatusChange }) => {
         ) : (
           <StatusGlyph status={occurrence.status} />
         )}
-        <Tooltip title="Open host notebook">
-          <IconButton size="small" component={RouterLink} to={`/pentest/record/${occurrence.record_id}`}>
-            <Launch sx={{ fontSize: 16 }} />
-          </IconButton>
-        </Tooltip>
+        {notebookTo ? (
+          <Button size="small" variant="outlined" component={RouterLink} to={notebookTo}>
+            Notebook
+          </Button>
+        ) : null}
       </div>
     </div>
   );
@@ -193,6 +195,7 @@ const FindingCard = ({
             canModify={canModify}
             busy={busy}
             onStatusChange={(recordId, status) => onOccurrenceStatusChange(finding.id, recordId, status)}
+            waveId={finding.discovered_wave_id}
           />
         ))
       )}
