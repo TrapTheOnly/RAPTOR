@@ -13,8 +13,6 @@ class _FakeCursor:
 
         if normalized.startswith("insert into ip_sources"):
             source_name, ip_address = params
-            if ip_address in self._state["ip_sources"]:
-                raise RuntimeError("duplicate key")
             self._state["ip_sources"][ip_address] = source_name
             self.rowcount = 1
             self._rows = []
@@ -113,3 +111,22 @@ def test_add_and_delete_ip_source_updates_records(monkeypatch):
     assert deleted == ("Corp", 1)
     assert state["records"][0]["source"] == "Other"
     assert state["records"][0]["status"] == "updated"
+
+
+def test_ensure_ip_sources_upserts_provider_group(monkeypatch):
+    state = {
+        "ip_sources": {"1.1.1.1": "Corp"},
+        "records": [],
+    }
+    monkeypatch.setattr(ip_sources_repository, "get_db_connection", lambda _db_path: _FakeConnection(state))
+
+    written = ip_sources_repository.ensure_ip_sources(
+        "Cloudflare",
+        ["1.1.1.1", " 1.1.1.1 ", "8.8.8.8", ""],
+        db_path="postgresql://unit-test",
+    )
+    assert written == 2
+    assert state["ip_sources"]["1.1.1.1"] == "Cloudflare"
+    assert state["ip_sources"]["8.8.8.8"] == "Cloudflare"
+    assert ip_sources_repository.ip_source_name_for_dns_type("route53") == "AWS"
+    assert ip_sources_repository.ip_source_name_for_dns_type("bind_agent") is None

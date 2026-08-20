@@ -1,8 +1,10 @@
+import ipaddress
 import logging
 import uuid
 from typing import Any, Dict, Iterable, List, Optional
 
-from app.repositories.dns_sources_repository import record_observations
+from app.repositories.dns_sources_repository import get_dns_source, record_observations
+from app.repositories.ip_sources_repository import ensure_ip_sources, ip_source_name_for_dns_type
 from app.repositories.records_repository import determine_source, store_records_in_db
 from app.services.ingest.models import ResourceRecord
 from app.services.ingest.zone_parse import a_records_as_hosts
@@ -10,6 +12,22 @@ from app.services.ingest.zone_parse import a_records_as_hosts
 logger = logging.getLogger(__name__)
 
 PROJECTABLE_RRTYPES = {"A"}
+
+
+def _as_int(value: Any) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_ipv4(value: str) -> bool:
+    try:
+        return isinstance(ipaddress.ip_address(str(value or "").strip()), ipaddress.IPv4Address)
+    except ValueError:
+        return False
 
 
 def _as_resource_record(item: Any) -> Optional[ResourceRecord]:
@@ -22,17 +40,36 @@ def _as_resource_record(item: Any) -> Optional[ResourceRecord]:
     rdata = str(item.get("rdata") if item.get("rdata") is not None else item.get("ip_address") or "").strip()
     if not fqdn or not rdata:
         return None
-    ttl_raw = item.get("ttl")
-    ttl = int(ttl_raw) if ttl_raw not in (None, "") else None
+    ttl = _as_int(item.get("ttl"))
     zone = str(item.get("zone") or "").strip().lower().rstrip(".")
-    return ResourceRecord(fqdn=fqdn, rrtype=rrtype, rdata=rdata, ttl=ttl, zone=zone)
+    provider_zone_id = str(item.get("provider_zone_id") or "").strip() or None
+    provider_record_id = str(item.get("provider_record_id") or "").strip() or None
+    return ResourceRecord(
+        fqdn=fqdn,
+        rrtype=rrtype,
+        rdata=rdata,
+        ttl=ttl,
+        zone=zone,
+        provider_zone_id=provider_zone_id,
+        provider_record_id=provider_record_id,
+    )
 
 
-def project_a_records(records: Iterable[Any]) -> List[Dict[str, str]]:
+def project_a_records(
+    records: Iterable[Any],
+    *,
+    ip_source_name: Optional[str] = None,
+) -> List[Dict[str, str]]:
     parsed = [record for record in (_as_resource_record(item) for item in records) if record]
-    hosts = a_records_as_hosts(parsed)
+    projectable = [
+        record
+        for record in parsed
+        if record.rrtype in PROJECTABLE_RRTYPES and is_ipv4(record.rdata)
+    ]
+    hosts = a_records_as_hosts(projectable)
+    label = str(ip_source_name or "").strip()
     for host in hosts:
-        host["source"] = determine_source(host["ip_address"])
+        host["source"] = label or determine_source(host["ip_address"])
     return hosts
 
 
@@ -57,6 +94,9 @@ def apply_ingest_batch(
             "rdata": record.rdata,
             "ip_address": record.rdata if record.rrtype == "A" else "",
             "ttl": record.ttl,
+            "zone": record.zone,
+            "provider_zone_id": record.provider_zone_id,
+            "provider_record_id": record.provider_record_id,
         }
         for record in parsed
     ]
@@ -66,7 +106,11 @@ def apply_ingest_batch(
         resolved_batch_id,
         cursor_value=cursor or resolved_batch_id,
     )
-    projected = project_a_records(parsed)
+    dns_source = get_dns_source(source_id, mask=True)
+    ip_source_name = ip_source_name_for_dns_type((dns_source or {}).get("type"))
+    projected = project_a_records(parsed, ip_source_name=ip_source_name)
+    if projected and ip_source_name:
+        ensure_ip_sources(ip_source_name, [host["ip_address"] for host in projected])
     if projected:
         store_records_in_db(projected, source_id=source_id)
     logger.info(

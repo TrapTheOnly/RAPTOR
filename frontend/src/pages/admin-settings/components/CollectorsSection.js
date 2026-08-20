@@ -1,47 +1,34 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
+import { Dns as DnsIcon } from '@mui/icons-material';
 import {
-  Alert,
-  Avatar,
-  Box,
   Button,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Pagination,
-  Paper,
-  Select,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography
-} from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
-import {
-  ContentCopy as CopyIcon,
-  Delete as DeleteIcon,
-  Dns as DnsIcon,
-  Download as DownloadIcon,
-  Edit as EditIcon,
-  Key as KeyIcon,
-  PlayArrow as CollectIcon,
-  Refresh as RefreshIcon,
-  Sensors as PingIcon
-} from '@mui/icons-material';
+  Combo,
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  Mono,
+  OsMark,
+  Panel,
+  Progress,
+  RefreshButton,
+  StatusGlyph,
+  Surface,
+  Tag,
+  Text
+} from '../../../design/primitives';
+import { SPACE } from '../../../design/tokens';
 import SectionHeader from './SectionHeader';
 import CollectorsTopology from './CollectorsTopology';
 
 const GRAPH_PAGE_SIZE = 12;
 const TABLE_PAGE_SIZE = 25;
+
+const MODE_OPTIONS = [
+  { value: 'one_sided', label: 'One-sided (airgap)' },
+  { value: 'two_sided', label: 'Two-sided (pingable)' }
+];
 
 const formatInterval = (seconds) => {
   const value = Number(seconds);
@@ -59,180 +46,100 @@ const formatInterval = (seconds) => {
 };
 
 const formatWhen = (value) => {
-  if (!value) {
-    return 'never';
-  }
+  if (!value) return 'never';
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return String(value);
-  }
+  if (Number.isNaN(parsed.getTime())) return String(value);
   return parsed.toLocaleString();
 };
 
 const formatRelative = (value) => {
-  if (!value) {
-    return 'never';
-  }
+  if (!value) return 'never';
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return String(value);
-  }
+  if (Number.isNaN(parsed.getTime())) return String(value);
   const delta = Date.now() - parsed.getTime();
-  if (delta < 0) {
-    return parsed.toLocaleString();
-  }
-  if (delta < 45000) {
-    return 'just now';
-  }
-  if (delta < 3600000) {
-    return `${Math.max(1, Math.round(delta / 60000))}m ago`;
-  }
-  if (delta < 86400000) {
-    return `${Math.max(1, Math.round(delta / 3600000))}h ago`;
-  }
-  if (delta < 7 * 86400000) {
-    return `${Math.max(1, Math.round(delta / 86400000))}d ago`;
-  }
+  if (delta < 0) return parsed.toLocaleString();
+  if (delta < 45000) return 'just now';
+  if (delta < 3600000) return `${Math.max(1, Math.round(delta / 60000))}m ago`;
+  if (delta < 86400000) return `${Math.max(1, Math.round(delta / 3600000))}h ago`;
+  if (delta < 7 * 86400000) return `${Math.max(1, Math.round(delta / 86400000))}d ago`;
   return parsed.toLocaleDateString();
 };
 
-const AgentCard = ({
-  agent,
-  pinging,
-  collecting,
-  onEdit,
-  onPing,
-  onCollect,
-  onDelete
-}) => {
-  const theme = useTheme();
+const CopyRow = ({ label, value, onCopy }) => (
+  <div style={{ marginTop: SPACE.x8 }}>
+    {label ? (
+      <Text as="div" variant="micro" tone="tertiary">
+        {label}
+      </Text>
+    ) : null}
+    <div style={{ display: 'flex', gap: SPACE.x8, alignItems: 'flex-start', marginTop: 4 }}>
+      <Mono style={{ wordBreak: 'break-all', flex: 1 }}>{value}</Mono>
+      <Button size="small" onClick={() => onCopy(value)}>
+        Copy
+      </Button>
+    </div>
+  </div>
+);
+
+const AgentRow = ({ agent, pinging, collecting, onEdit, onPing, onCollect, onDelete }) => {
+  const [open, setOpen] = useState(false);
   const name = agent.display_name || agent.hostname || agent.id;
   const hostLine = [agent.hostname, agent.last_seen_ip].filter(Boolean).join(' · ');
   const twoSided = agent.mode === 'two_sided';
-  const statusColor = agent.online ? theme.palette.success.main : theme.palette.warning.main;
   const pingBusy = pinging === agent.id;
   const collectBusy = collecting === agent.id;
 
   return (
-    <Paper
-      sx={{
-        p: 1.75,
-        backgroundColor: 'background.default',
-        border: `1px solid ${theme.palette.divider}`,
-        '&:hover': {
-          borderColor: theme.palette.primary.main,
-          backgroundColor: alpha(theme.palette.primary.main, 0.02)
-        },
-        transition: 'all 0.2s ease-in-out'
-      }}
+    <DataRow
+      id={agent.id}
+      expanded={open}
+      onToggle={() => setOpen((value) => !value)}
+      leading={
+        <StatusGlyph status={agent.online ? 'unchanged' : 'missing'} label={agent.online ? 'Online' : 'Offline'} />
+      }
+      title={<Text variant="bodyStrong">{name}</Text>}
+      meta={
+        hostLine ? (
+          <Text as="div" variant="meta" tone="secondary" style={{ marginTop: 2 }}>
+            {hostLine}
+          </Text>
+        ) : null
+      }
+      trailing={
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: SPACE.x8, flexWrap: 'wrap' }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Tag>{twoSided ? 'two-sided' : 'one-sided'}</Tag>
+          <Tag>{formatInterval(agent.interval_seconds)}</Tag>
+          <Button size="small" onClick={() => onEdit(agent)}>
+            Edit
+          </Button>
+          <Button size="small" disabled={!twoSided || pingBusy} onClick={() => onPing(agent)}>
+            {pingBusy ? 'Pinging…' : 'Ping'}
+          </Button>
+          <Button size="small" disabled={collectBusy} onClick={() => onCollect(agent)}>
+            {collectBusy ? 'Collecting…' : 'Collect'}
+          </Button>
+          <Button size="small" onClick={() => onDelete(agent)}>
+            Delete
+          </Button>
+        </div>
+      }
     >
-      <Box
-        display="flex"
-        alignItems="flex-start"
-        gap={1.5}
-        sx={{ flexDirection: { xs: 'column', sm: 'row' } }}
-      >
-        <Box display="flex" alignItems="flex-start" gap={1.5} minWidth={0} flex={1}>
-          <Avatar
-            sx={{
-              width: 40,
-              height: 40,
-              bgcolor: alpha(statusColor, 0.16),
-              color: statusColor,
-              fontSize: 16,
-              fontWeight: 700
-            }}
-          >
-            {(name || '?').charAt(0).toUpperCase()}
-          </Avatar>
-          <Box minWidth={0} flex={1}>
-            <Box display="flex" alignItems="center" gap={0.75} flexWrap="wrap">
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }} noWrap>
-                {name}
-              </Typography>
-              <Chip
-                size="small"
-                label={agent.online ? 'online' : 'offline'}
-                sx={{
-                  fontWeight: 600,
-                  backgroundColor: alpha(statusColor, 0.14),
-                  color: statusColor,
-                  border: `1px solid ${alpha(statusColor, 0.35)}`
-                }}
-              />
-              <Chip
-                size="small"
-                variant="outlined"
-                label={twoSided ? 'two-sided' : 'one-sided'}
-              />
-              <Chip size="small" variant="outlined" label={formatInterval(agent.interval_seconds)} />
-            </Box>
-            {hostLine ? (
-              <Typography variant="caption" color="text.secondary" display="block" noWrap>
-                {hostLine}
-              </Typography>
-            ) : null}
-            <Typography variant="caption" color="text.secondary" display="block">
-              <Tooltip title={formatWhen(agent.last_seen_at)}>
-                <Box component="span">Live {formatRelative(agent.last_seen_at)}</Box>
-              </Tooltip>
-              {' · '}
-              <Tooltip title={formatWhen(agent.last_ingest_at)}>
-                <Box component="span">ingest {formatRelative(agent.last_ingest_at)}</Box>
-              </Tooltip>
-            </Typography>
-            {twoSided && agent.callback_url ? (
-              <Tooltip title={agent.callback_url}>
-                <Typography variant="caption" color="text.secondary" display="block" noWrap>
-                  {agent.callback_url}
-                </Typography>
-              </Tooltip>
-            ) : null}
-          </Box>
-        </Box>
-
-        <Box display="flex" alignItems="center" gap={0.25} sx={{ ml: { sm: 'auto' }, flexShrink: 0 }}>
-          <Tooltip title="Edit name and callback">
-            <IconButton size="small" color="primary" onClick={() => onEdit(agent)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={twoSided ? 'Ping' : 'Ping requires two-sided mode'}>
-            <span>
-              <IconButton
-                size="small"
-                disabled={!twoSided || pingBusy}
-                onClick={() => onPing(agent)}
-              >
-                {pingBusy ? <CircularProgress size={16} /> : <PingIcon fontSize="small" />}
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Collect now">
-            <span>
-              <IconButton
-                size="small"
-                color="primary"
-                disabled={collectBusy}
-                onClick={() => onCollect(agent)}
-              >
-                {collectBusy ? <CircularProgress size={16} /> : <CollectIcon fontSize="small" />}
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => onDelete(agent)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Box>
-    </Paper>
+      <Text as="div" variant="meta" tone="secondary" title={formatWhen(agent.last_seen_at)}>
+        Live {formatRelative(agent.last_seen_at)} · ingest {formatRelative(agent.last_ingest_at)}
+      </Text>
+      {twoSided && agent.callback_url ? (
+        <Mono as="div" tone="secondary" style={{ marginTop: 4 }}>
+          {agent.callback_url}
+        </Mono>
+      ) : null}
+    </DataRow>
   );
 };
 
 const CollectorsSection = ({ showMessage }) => {
-  const theme = useTheme();
   const [agents, setAgents] = useState([]);
   const [graphAgents, setGraphAgents] = useState([]);
   const [total, setTotal] = useState(0);
@@ -315,9 +222,7 @@ const CollectorsSection = ({ showMessage }) => {
   };
 
   const handleSaveEdit = async () => {
-    if (!editAgent) {
-      return;
-    }
+    if (!editAgent) return;
     setSavingEdit(true);
     try {
       const body = { display_name: editName.trim() };
@@ -376,9 +281,7 @@ const CollectorsSection = ({ showMessage }) => {
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) {
-      return;
-    }
+    if (!deleteTarget) return;
     try {
       await axios.delete(`/admin/collectors/${deleteTarget.id}`);
       showMessage('success', `Deleted ${deleteTarget.display_name || deleteTarget.hostname}.`);
@@ -390,7 +293,7 @@ const CollectorsSection = ({ showMessage }) => {
   };
 
   if (loading) {
-    return null;
+    return <Progress deferred />;
   }
 
   const tablePages = Math.max(1, Math.ceil(total / TABLE_PAGE_SIZE));
@@ -399,278 +302,233 @@ const CollectorsSection = ({ showMessage }) => {
   const windowsReady = Boolean(downloads['windows-amd64.exe']?.available);
 
   return (
-    <Stack spacing={3}>
-      <Card>
-        <CardContent>
-          <SectionHeader icon={DnsIcon} title="DNS Collectors" />
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Download the packaged agent from this page. Drop it on the DNS host, run setup once with
-            the enroll token, and it will push zones to RAPTOR. One-sided agents (air-gapped) only
-            call out; two-sided agents also accept a ping from RAPTOR. Keep
-            <code> raptor-collector run </code> running for two-sided health checks.
-            {version ? ` Current package: v${version}.` : ''}
-          </Typography>
+    <div>
+      <SectionHeader title="DNS Collectors">
+        {version ? <Tag>{`v${version}`}</Tag> : null}
+      </SectionHeader>
+      <Text as="p" variant="meta" tone="secondary" style={{ margin: `0 0 ${SPACE.x16}px` }}>
+        Install an agent on each DNS host and enroll it with a token.
+      </Text>
 
-          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              href="/collector/v1/download/linux-amd64"
-              disabled={!linuxReady}
-            >
-              Linux amd64
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              href="/collector/v1/download/linux-arm64"
-              disabled={!downloads['linux-arm64']?.available}
-            >
-              Linux arm64
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              href="/collector/v1/download/windows-amd64.exe"
-              disabled={!windowsReady}
-            >
-              Windows exe
-            </Button>
-            <Button variant="outlined" startIcon={<DownloadIcon />} href="/collector/v1/download/install.ps1">
-              Windows install.ps1
-            </Button>
-            <Button variant="outlined" startIcon={<DownloadIcon />} href="/collector/v1/download/install.sh">
-              Linux install.sh
-            </Button>
-          </Stack>
-          {!linuxReady && !windowsReady ? (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Binaries are built into the RAPTOR image. Rebuild with the collector stage, or run
-              <code> make collector-dist </code> in the repo.
-            </Alert>
-          ) : null}
+      <div style={{ display: 'flex', gap: SPACE.x8, flexWrap: 'wrap', marginBottom: SPACE.x16 }}>
+        <Button
+          variant="outlined"
+          size="small"
+          href="/collector/v1/download/linux-amd64"
+          disabled={!linuxReady}
+          startIcon={<OsMark type="linux" />}
+        >
+          Linux amd64
+        </Button>
+        <Button
+          variant="outlined"
+          size="small"
+          href="/collector/v1/download/linux-arm64"
+          disabled={!downloads['linux-arm64']?.available}
+          startIcon={<OsMark type="linux" />}
+        >
+          Linux arm64
+        </Button>
+        <Button
+          variant="outlined"
+          size="small"
+          href="/collector/v1/download/windows-amd64.exe"
+          disabled={!windowsReady}
+          startIcon={<OsMark type="windows" />}
+        >
+          Windows exe
+        </Button>
+        <Button
+          variant="outlined"
+          size="small"
+          href="/collector/v1/download/install.ps1"
+          startIcon={<OsMark type="windows" />}
+        >
+          Windows install.ps1
+        </Button>
+        <Button
+          variant="outlined"
+          size="small"
+          href="/collector/v1/download/install.sh"
+          startIcon={<OsMark type="linux" />}
+        >
+          Linux install.sh
+        </Button>
+      </div>
 
-          <Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
-            <TextField
-              size="small"
-              label="Agent name"
-              value={label}
-              onChange={(event) => setLabel(event.target.value)}
-              placeholder="dc01-dns"
-              sx={{ minWidth: 180, flex: '1 1 180px', maxWidth: 280 }}
-            />
-            <FormControl size="small" sx={{ minWidth: 180, flex: '1 1 180px', maxWidth: 260 }}>
-              <InputLabel>Contact mode</InputLabel>
-              <Select
-                label="Contact mode"
-                value={mode}
-                onChange={(event) => setMode(event.target.value)}
-              >
-                <MenuItem value="one_sided">One-sided (airgap)</MenuItem>
-                <MenuItem value="two_sided">Two-sided (pingable)</MenuItem>
-              </Select>
-            </FormControl>
-            <Button variant="contained" startIcon={<KeyIcon />} onClick={handleCreateToken}>
-              Create enroll token
-            </Button>
-            <Button startIcon={<RefreshIcon />} onClick={fetchPage}>
-              Refresh
-            </Button>
-          </Stack>
+      {!linuxReady && !windowsReady ? (
+        <Text as="p" variant="meta" tone="secondary" style={{ margin: `0 0 ${SPACE.x16}px` }}>
+          Binaries are built into the RAPTOR image. Rebuild with the collector stage, or run{' '}
+          <Mono>make collector-dist</Mono> in the repo.
+        </Text>
+      ) : null}
 
-          {enroll ? (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                Bootstrap token (shown once)
-              </Typography>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                <Box component="code" sx={{ fontSize: 13, wordBreak: 'break-all' }}>
-                  {enroll.token}
-                </Box>
-                <IconButton size="small" onClick={() => handleCopy(enroll.token)}>
-                  <CopyIcon fontSize="small" />
-                </IconButton>
-              </Stack>
-              <Typography variant="caption" display="block" sx={{ mb: 1 }}>
-                Linux
-              </Typography>
-              <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ mb: 1 }}>
-                <Box component="code" sx={{ fontSize: 12, wordBreak: 'break-all' }}>
-                  {enroll.install?.linux || enroll.enroll_command}
-                </Box>
-                <IconButton
-                  size="small"
-                  onClick={() => handleCopy(enroll.install?.linux || enroll.enroll_command)}
-                >
-                  <CopyIcon fontSize="small" />
-                </IconButton>
-              </Stack>
-              <Typography variant="caption" display="block" sx={{ mb: 1 }}>
-                Windows
-              </Typography>
-              <Stack direction="row" spacing={1} alignItems="flex-start">
-                <Box component="code" sx={{ fontSize: 12, wordBreak: 'break-all' }}>
-                  {enroll.install?.windows}
-                </Box>
-                <IconButton size="small" onClick={() => handleCopy(enroll.install?.windows || '')}>
-                  <CopyIcon fontSize="small" />
-                </IconButton>
-              </Stack>
-            </Alert>
-          ) : null}
-
-          <CollectorsTopology
-            agents={graphAgents}
-            page={graphPage}
-            pageCount={graphPages}
-            onPageChange={setGraphPage}
-          />
-
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1.5}
-            alignItems={{ sm: 'center' }}
-            sx={{ mt: 3, mb: 1.5 }}
-          >
-            <TextField
-              size="small"
-              label="Search agents"
-              value={query}
-              onChange={(event) => {
-                setTablePage(1);
-                setGraphPage(1);
-                setQuery(event.target.value);
-              }}
-              sx={{ maxWidth: 320, width: '100%' }}
-            />
-            <Chip
-              label={`${total} agent${total === 1 ? '' : 's'}`}
-              size="small"
-              sx={{
-                backgroundColor: alpha(theme.palette.info.main, 0.1),
-                color: theme.palette.info.main
-              }}
-            />
-          </Stack>
-
-          {agents.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <DnsIcon sx={{ fontSize: 56, color: 'text.secondary', mb: 1 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                No collectors enrolled yet
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Create an enroll token and run setup on a DNS host.
-              </Typography>
-            </Box>
-          ) : (
-            <Stack spacing={1.25}>
-              {agents.map((agent) => (
-                <AgentCard
-                  key={agent.id}
-                  agent={agent}
-                  pinging={pinging}
-                  collecting={collecting}
-                  onEdit={openEdit}
-                  onPing={handlePing}
-                  onCollect={handleCollectNow}
-                  onDelete={setDeleteTarget}
-                />
-              ))}
-            </Stack>
-          )}
-          {tablePages > 1 ? (
-            <Pagination
-              sx={{ mt: 2 }}
-              count={tablePages}
-              page={tablePage}
-              onChange={(_, value) => setTablePage(value)}
-            />
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Dialog
-        open={Boolean(editAgent)}
-        onClose={closeEdit}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2.5,
-            border: `1px solid ${theme.palette.divider}`,
-            backgroundColor: theme.palette.background.paper
-          }
+      <div
+        style={{
+          display: 'flex',
+          gap: SPACE.x12,
+          flexWrap: 'wrap',
+          alignItems: 'flex-end',
+          marginBottom: SPACE.x16
         }}
       >
-        <DialogTitle sx={{ borderBottom: `1px solid ${theme.palette.divider}` }}>
-          <Box display="flex" alignItems="center" gap={1.25}>
-            <Box
-              sx={{
-                width: 34,
-                height: 34,
-                borderRadius: 1.5,
-                backgroundColor: alpha(theme.palette.primary.main, 0.12),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <EditIcon sx={{ color: theme.palette.primary.main, fontSize: 20 }} />
-            </Box>
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                Edit agent
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {editAgent?.hostname || editAgent?.id}
-              </Typography>
-            </Box>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 2 }}>
-            <TextField
-              size="small"
-              label="Display name"
-              value={editName}
-              onChange={(event) => setEditName(event.target.value)}
-              fullWidth
-            />
-            {editAgent?.mode === 'two_sided' ? (
-              <TextField
-                size="small"
-                label="Callback URL"
-                value={editCallback}
-                onChange={(event) => setEditCallback(event.target.value)}
-                placeholder="http://10.0.0.5:7444"
-                fullWidth
-              />
-            ) : null}
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={closeEdit}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveEdit} disabled={savingEdit}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <Field
+          label="Agent name"
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          placeholder="dc01-dns"
+          fullWidth={false}
+          style={{ minWidth: 180, flex: '1 1 180px', maxWidth: 280 }}
+        />
+        <Combo
+          label="Contact mode"
+          options={MODE_OPTIONS}
+          value={mode}
+          onChange={(next) => next && setMode(next)}
+          disableClearable
+          fullWidth={false}
+          style={{ minWidth: 180, flex: '1 1 180px', maxWidth: 260 }}
+        />
+        <Button variant="contained" onClick={handleCreateToken}>
+          Create enroll token
+        </Button>
+        <RefreshButton onClick={fetchPage} />
+      </div>
 
-      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
-        <DialogTitle>Delete collector</DialogTitle>
-        <DialogContent>
+      {enroll ? (
+        <Surface style={{ padding: SPACE.x16, marginBottom: SPACE.x16 }}>
+          <Text variant="bodyStrong">Bootstrap token (shown once)</Text>
+          <CopyRow value={enroll.token} onCopy={handleCopy} />
+          <CopyRow label="Linux" value={enroll.install?.linux || enroll.enroll_command} onCopy={handleCopy} />
+          <CopyRow label="Windows" value={enroll.install?.windows || ''} onCopy={handleCopy} />
+        </Surface>
+      ) : null}
+
+      <CollectorsTopology
+        agents={graphAgents}
+        page={graphPage}
+        pageCount={graphPages}
+        onPageChange={setGraphPage}
+      />
+
+      <div
+        style={{
+          display: 'flex',
+          gap: SPACE.x12,
+          alignItems: 'flex-end',
+          marginTop: SPACE.x24,
+          marginBottom: SPACE.x12
+        }}
+      >
+        <Field
+          label="Search agents"
+          value={query}
+          onChange={(event) => {
+            setTablePage(1);
+            setGraphPage(1);
+            setQuery(event.target.value);
+          }}
+          fullWidth={false}
+          style={{ maxWidth: 320, width: '100%' }}
+        />
+        <Tag>{`${total} agent${total === 1 ? '' : 's'}`}</Tag>
+      </div>
+
+      {agents.length === 0 ? (
+        <EmptyState
+          icon={DnsIcon}
+          title="No collectors enrolled yet"
+          hint="Create an enroll token and run setup on a DNS host."
+        />
+      ) : (
+        <DataList>
+          {agents.map((agent) => (
+            <AgentRow
+              key={agent.id}
+              agent={agent}
+              pinging={pinging}
+              collecting={collecting}
+              onEdit={openEdit}
+              onPing={handlePing}
+              onCollect={handleCollectNow}
+              onDelete={setDeleteTarget}
+            />
+          ))}
+        </DataList>
+      )}
+
+      {tablePages > 1 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: SPACE.x8, marginTop: SPACE.x16 }}>
+          <Button size="small" disabled={tablePage <= 1} onClick={() => setTablePage((page) => page - 1)}>
+            Previous
+          </Button>
+          <Mono>
+            {tablePage} / {tablePages}
+          </Mono>
+          <Button
+            size="small"
+            disabled={tablePage >= tablePages}
+            onClick={() => setTablePage((page) => page + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      ) : null}
+
+      <Panel
+        open={Boolean(editAgent)}
+        onClose={closeEdit}
+        title="Edit agent"
+        actions={
+          <>
+            <Button onClick={closeEdit} variant="outlined">
+              Cancel
+            </Button>
+            <Button variant="contained" onClick={handleSaveEdit} disabled={savingEdit}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        <Text variant="meta" tone="secondary">
+          {editAgent?.hostname || editAgent?.id}
+        </Text>
+        <Field
+          label="Display name"
+          value={editName}
+          onChange={(event) => setEditName(event.target.value)}
+        />
+        {editAgent?.mode === 'two_sided' ? (
+          <Field
+            label="Callback URL"
+            value={editCallback}
+            onChange={(event) => setEditCallback(event.target.value)}
+            placeholder="http://10.0.0.5:7444"
+          />
+        ) : null}
+      </Panel>
+
+      <Panel
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete collector"
+        actions={
+          <>
+            <Button onClick={() => setDeleteTarget(null)} variant="outlined">
+              Cancel
+            </Button>
+            <Button variant="contained" onClick={handleDelete}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <Text variant="body">
           Delete {deleteTarget?.display_name || deleteTarget?.hostname}? The key is invalidated
           immediately. A still-running agent will be refused on the next ingest.
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={handleDelete}>
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Stack>
+        </Text>
+      </Panel>
+    </div>
   );
 };
 

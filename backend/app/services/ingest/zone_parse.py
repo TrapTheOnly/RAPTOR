@@ -1,4 +1,4 @@
-"""BIND-style zone text parser used by the bind_file compatibility adapter."""
+"""BIND-style zone text parser for ingest helpers."""
 
 import re
 from typing import Iterable, List, Optional, Tuple

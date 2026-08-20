@@ -1,81 +1,54 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, Divider, Stack, Tab, Tabs } from '@mui/material';
-import { Dns as DnsIcon, Storage as StorageIcon } from '@mui/icons-material';
+import React, { useEffect, useMemo } from 'react';
+import { Tabs } from '../../../design/primitives';
+import { SPACE } from '../../../design/tokens';
+import { DOMAIN_SUBSECTIONS } from '../constants';
 
 const DomainsManagementSection = ({
   canManageCollectors,
   canRunMaintenance,
   canManageIpSources,
+  tab,
+  onSelectTab,
   collectors,
   refresh,
+  cloudDns,
   ipSources
 }) => {
   const tabs = useMemo(() => {
-    const items = [];
-    if (canManageCollectors || canRunMaintenance) {
-      items.push({
-        value: 'collectors',
-        label: 'Collectors',
-        icon: <DnsIcon fontSize="small" />
-      });
-    }
-    if (canManageIpSources) {
-      items.push({
-        value: 'ip-sources',
-        label: 'IP Sources',
-        icon: <StorageIcon fontSize="small" />
-      });
-    }
-    return items;
+    const flags = {
+      collectors: canManageCollectors || canRunMaintenance,
+      cloud: canManageCollectors,
+      ipSources: canManageIpSources
+    };
+    return DOMAIN_SUBSECTIONS.filter((item) => {
+      if (item.key === 'collectors') return flags.collectors;
+      if (item.key === 'cloud') return flags.cloud;
+      if (item.key === 'ip-sources') return flags.ipSources;
+      return false;
+    }).map((item) => ({ value: item.key, label: item.tabLabel }));
   }, [canManageCollectors, canManageIpSources, canRunMaintenance]);
 
-  const [tab, setTab] = useState(tabs[0]?.value || 'collectors');
-
   useEffect(() => {
+    if (!tabs.length) return;
     if (!tabs.some((item) => item.value === tab)) {
-      setTab(tabs[0]?.value || 'collectors');
+      onSelectTab(tabs[0].value);
     }
-  }, [tab, tabs]);
+  }, [onSelectTab, tab, tabs]);
 
-  if (!tabs.length) {
-    return null;
-  }
+  if (!tabs.length) return null;
 
   return (
-    <Stack spacing={2}>
-      <Card variant="outlined">
-        <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>
-          <Tabs
-            value={tab}
-            onChange={(_, value) => setTab(value)}
-            variant="scrollable"
-            allowScrollButtonsMobile
-            sx={{ minHeight: 42 }}
-          >
-            {tabs.map((item) => (
-              <Tab
-                key={item.value}
-                value={item.value}
-                label={item.label}
-                icon={item.icon}
-                iconPosition="start"
-                sx={{ minHeight: 42, textTransform: 'none', fontWeight: 600 }}
-              />
-            ))}
-          </Tabs>
-          <Divider sx={{ mt: 1 }} />
-        </CardContent>
-      </Card>
-
+    <div>
+      <Tabs value={tab} onChange={onSelectTab} items={tabs} />
       {tab === 'collectors' ? (
-        <Stack spacing={2}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.x16 }}>
           {canManageCollectors ? collectors : null}
           {canRunMaintenance ? refresh : null}
-        </Stack>
-      ) : (
-        ipSources
-      )}
-    </Stack>
+        </div>
+      ) : null}
+      {tab === 'cloud' ? cloudDns : null}
+      {tab === 'ip-sources' ? ipSources : null}
+    </div>
   );
 };
 
