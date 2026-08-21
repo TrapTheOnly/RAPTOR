@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, session, request
 
 from app.http.request_utils import parse_json_object
-from app.services import dns_sync_service, offsec_admin_service, service_account_service, user_admin_service
+from app.services import offsec_admin_service, service_account_service, user_admin_service
 from app.http.decorators.admin_required import admin_required
 from app.repositories.email_config_repository import get_email_config, upsert_email_config
 from app.integrations.email.client import send_email, test_smtp_connection
@@ -62,13 +62,6 @@ def update_user_permissions():
 @admin_required
 def api_delete_user():
     payload, status_code = user_admin_service.delete_user_service(parse_json_object())
-    return jsonify(payload), status_code
-
-
-@admin_bp.route("/manual-update", methods=["POST"])
-@admin_required
-def manual_update():
-    payload, status_code = user_admin_service.manual_update(dns_sync_service.update_data)
     return jsonify(payload), status_code
 
 

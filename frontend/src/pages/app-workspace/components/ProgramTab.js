@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
-import { Add, DeleteOutline, Language, Launch, Save, ShareOutlined } from '@mui/icons-material';
+import { Add, DeleteOutline, Language, Save, ShareOutlined } from '@mui/icons-material';
 import {
   Button,
   DataList,
@@ -202,16 +201,6 @@ const ProgramTab = ({
                   <Text as="div" variant="meta" tone="secondary" style={{ marginTop: 4 }}>
                     owned by {host.owner_application_name || `app ${host.owner_application_id}`}
                   </Text>
-                }
-                trailing={
-                  <Button
-                    size="small"
-                    component={RouterLink}
-                    to={`/pentest/record/${host.id}`}
-                    endIcon={<Launch sx={{ fontSize: 15 }} />}
-                  >
-                    Notebook
-                  </Button>
                 }
               />
             ))}

@@ -6,12 +6,12 @@
     "Managers",
     "Admins"
   ],
-  "summary": "Maps the report lifecycle from draft content to final PDF attachment and delivery readiness.",
+  "summary": "Maps host and application report generation from persisted data through a shared ReportContext builder to a signed PDF.",
   "coverage": [
     "Required inputs and pre-export checks",
-    "How findings, checklists, and metadata become report content",
-    "Draft/replace/delete report behavior",
-    "Versioning and verification practices"
+    "How findings, occurrences, and metadata become report content",
+    "Host generate versus application sheet export",
+    "HMAC chrome and file replacement"
   ],
   "article": {
     "warning": {
@@ -26,15 +26,15 @@
         "id": "flow-objective",
         "title": "Flow objective",
         "paragraphs": [
-          "RAPTOR supports two report tracks for each pentest record. The generated track builds a structured PDF from report templates and current pentest data. The manual track stores an uploaded PDF file as a record attachment.",
-          "Teams typically use generated reports for repeatable operational handoff and governance review, then use manual uploads only when an external document must be attached exactly as provided."
+          "RAPTOR keeps two generate endpoints that share one builder and one renderer. `POST /pentest/:id/generate-report` exports a single host. `POST /api/apps/:id/generate-report` exports an application, environment, or wave package (`owner_delivery`, `wave_archive`, `retest_pack`, `internal_draft`).",
+          "Both paths call `build_report_context` (host adapter or sheet builder), apply the org brand kit, then `render_pentest_report_pdf(context, template_definition)`. A record can still hold a manual uploaded PDF alongside the generated file."
         ]
       },
       {
         "id": "generation-prerequisites",
         "title": "Generation prerequisites and gates",
         "paragraphs": [
-          "Report generation is permission-gated and record-gated. Every request is validated for role capability and assignment access before PDF creation starts."
+          "Report generation is permission-gated and record-gated. Host generate requires `export_pentests` plus owner, collaborator, or override. Application sheet export uses the same export permission on the app workspace. Wave packages can be generated while the wave is still open; ending a wave is a separate freeze and does not run as part of export."
         ],
         "table": {
           "columns": [
@@ -45,27 +45,32 @@
           "rows": [
             [
               "User has `export_pentests`",
-              "`@permission_required('export_pentests')` on `POST /pentest/:id/generate-report`",
+              "`POST /pentest/:id/generate-report` and the app generate route",
               "Request is rejected with `403 Unauthorized access`."
             ],
             [
-              "Record-level access policy passes",
-              "`enforce_pentest_record_access()`",
-              "Request is rejected with `403` and assignment-specific message."
+              "Record-level access policy passes (host track)",
+              "Owner, collaborator, or manager/admin override",
+              "Request is rejected with `403` and an assignment-specific message. Viewer cannot generate."
             ],
             [
-              "Target record exists",
-              "`get_record_details_internal(record_id)`",
-              "Request returns `404 Record not found`."
+              "Target record or application exists",
+              "Record lookup or applications repository",
+              "Request returns `404`."
             ],
             [
-              "Pentest data exists",
+              "Pentest data exists (host track)",
               "`get_pentest_data_internal(record_id)`",
               "Request returns `404 Pentest data not found`."
             ],
             [
-              "Template id is valid and enabled",
-              "`report_templates` lookup + enabled checks",
+              "Findings under the export cap (sheet track)",
+              "`fetch_app_findings` total versus 200-row cap",
+              "Request fails loud if the cap would truncate. Silent cuts are not allowed."
+            ],
+            [
+              "Template id is valid; enabled unless actor may use disabled templates",
+              "`report_templates` lookup; disabled templates allowed for admin or `manage_report_templates`",
               "Request returns `400` or `404` depending on failure cause."
             ]
           ]
@@ -75,8 +80,8 @@
         "id": "generation-pipeline",
         "title": "How report content is assembled",
         "paragraphs": [
-          "The PDF renderer builds a report model from record metadata, pentest lifecycle fields, vulnerability payload, checklist states, and open ports. It then resolves placeholder tokens and renders template blocks in order.",
-          "Checklist coverage is derived from selected checklists plus auto-enabled templates triggered by open ports. Vulnerability severity is derived from CVSS base score and used in both metrics and chart output."
+          "The builder produces a typed `ReportContext`: scope, package, application, environments, optional wave, hosts, findings with occurrence rows, and metrics. Occurrence-status counts use open-like and closed vocabularies. Findings never stringify hosts into the description field.",
+          "The renderer lints tokens, draws named cover / header / footer regions, and walks template blocks in order. Empty host-only blocks omit. Footer chrome is company name and date. Brand kit print ink and logo override template hex wells at generate time. Severity and occurrence charts stay together on the page after overview, snapshot, and table of contents."
         ],
         "table": {
           "columns": [
@@ -86,51 +91,56 @@
           ],
           "rows": [
             [
-              "`records.description`",
-              "`markdown` block when field is `description`",
-              "Supports headings, lists, inline code, links, and embedded pentest images."
+              "Application, environments, wave",
+              "Cover, overview, wave coverage chart",
+              "Sheet exports pass `wave_id` / `env_ids` into findings fetch."
             ],
             [
-              "`pentest_data.notes`",
-              "`markdown` block when field is `notes`",
-              "Common location for analyst narrative and remediation context."
+              "`records.description` / `pentest_data.notes`",
+              "`markdown` block on host exports",
+              "Omits on application packages."
             ],
             [
               "`pentest_data.open_ports`",
-              "`open_ports` block and metrics",
-              "Ports are normalized and mapped to likely service names."
+              "`open_ports` block on host exports",
+              "Omits when the envelope has no ports."
             ],
             [
-              "`pentest_data.checklist_states` + enabled templates",
-              "`checklists` block and checklist metrics",
-              "Completion, irrelevant, and unstarted counts are computed per template."
+              "Checklist states + enabled templates",
+              "`checklists` block and checklist chart",
+              "Omits when empty."
             ],
             [
-              "`pentest_data.vulnerabilities`",
-              "`vulnerabilities` block, severity chart, risk metrics",
-              "Each finding includes severity, CVSS score, and optional detailed description."
+              "Findings + occurrences",
+              "`vulnerabilities` block, severity chart, occurrence chart, metrics",
+              "Each finding lists occurrence DNS, environment, and status glyph, then Impact, Evidence, and Remediation as separate sections. `retest_pack` omits fixed occurrences."
+            ],
+            [
+              "Export HMAC",
+              "`report_exports` / host export rows",
+              "`content_hash` and `signature` are stored on both host and sheet exports. They are not printed in the PDF footer."
             ]
           ]
         }
       },
       {
         "id": "operator-sequence",
-        "title": "Operator sequence in Pentest Record",
+        "title": "Operator sequence",
         "paragraphs": [
-          "Use the Overview tab in the pentest record workspace for report operations. The generated report flow is deterministic and should be followed in a fixed order to avoid stale output."
+          "Host reports are generated from the pentest record Overview tab. Application, environment, and wave packages are generated from the app workspace Export sheet. Confirm scope in the sheet; the sheet preview is a scope summary, not a second document."
         ],
         "orderedList": [
-          "Update status, vulnerability flags, dates, notes, checklist states, and findings.",
-          "Click `Save Progress` to persist the latest record state.",
-          "Choose a template from `Report Template` in `Generated Report`.",
-          "Click `Generate Report` and wait for success confirmation.",
-          "Validate `Last generated` timestamp and use `Download Generated` for review or distribution."
+          "Save pentest or finding edits so the database holds the latest state.",
+          "Host track: choose a template under Generated Report, then Generate Report.",
+          "Sheet track: open Export sheet, choose package (`owner_delivery`, `wave_archive`, `retest_pack`, or `internal_draft`), environments or wave, and a template whose `supported_scopes` match.",
+          "Confirm the export scope, generate, then download. Classification lives on the cover; the footer is company name and date.",
+          "If output is stale, save again and regenerate. Generation always reads persisted state."
         ],
         "tip": {
           "variant": "tip",
           "title": "TIP",
           "paragraphs": [
-            "If the generated report does not reflect your latest edits, save again and regenerate. Generation always reads persisted state, not unsaved editor state."
+            "The Settings paper preview swaps a frozen sample envelope (`host`, `env`, `wave`, and the four packages). It is not a live PDF of the current engagement."
           ]
         }
       },
@@ -139,7 +149,7 @@
         "title": "File lifecycle and replacement behavior",
         "paragraphs": [
           "Generated and manual report files are stored separately. Regenerating replaces the generated artifact pointer and attempts cleanup of the previous generated file. Manual PDF upload updates the manual `report_file` pointer when the record is saved.",
-          "A record can hold both files at the same time. Download actions are separate so teams can compare a template-generated package with an externally authored PDF when required."
+          "A host record can hold both files at the same time. Application sheet exports write `report_exports` rows with `package`, `content_hash`, and `signature`. Host generate writes the same HMAC columns with `package='host'`."
         ],
         "table": {
           "columns": [
@@ -150,10 +160,16 @@
           ],
           "rows": [
             [
-              "Generated PDF",
+              "Host generated PDF",
               "`POST /pentest/:id/generate-report`",
               "`GET /pentest/:id/generated-report`",
               "`DELETE /pentest/:id/generated-report`"
+            ],
+            [
+              "Application / wave sheet PDF",
+              "`POST /api/apps/:id/generate-report`",
+              "Stored `report_exports` file path",
+              "Replaced on the next generate for that scope"
             ],
             [
               "Manual PDF",

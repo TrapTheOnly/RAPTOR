@@ -38,8 +38,9 @@ const MergeFindingsDialog = ({ open, survivor, findings, onClose, onMerge }) => 
       }
     >
       <Alert severity="info">
-        The finding you keep keeps its write-up, category, CVSS score, and ticket. Empty fields fill from
-        the duplicate. Hosts and collaborators move across, then the duplicate is removed.
+        The finding you keep keeps its write-up, category, CVSS score, and ticket. Empty description,
+        impact, evidence, and remediation fill from the duplicate. Hosts and collaborators move across,
+        then the duplicate is removed.
       </Alert>
       <div>
         <Text as="div" variant="micro" tone="tertiary" style={{ marginBottom: 6 }}>

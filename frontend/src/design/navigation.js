@@ -21,6 +21,12 @@
 /** Hide refresh chrome that would exist for less than this. */
 export const LOADING_DEFER_MS = 200;
 
+/** Host notebooks only exist inside a wave. Returns null without a wave id. */
+export const hostNotebookPath = (recordId, waveId) => {
+  if (recordId == null || recordId === '' || waveId == null || waveId === '') return null;
+  return `/pentest/record/${recordId}?wave=${waveId}`;
+};
+
 /**
  * Stable identity for a product surface. Route transitions key on this, not
  * the raw pathname, so drill-downs and doc pages do not tear the tree down.

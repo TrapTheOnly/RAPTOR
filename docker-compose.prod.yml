@@ -15,22 +15,38 @@ services:
     networks:
         - app_network
     volumes:
-      - dns_zonefiles_volume:/usr/app/src/shared
       - certs_volume:/certs
       - db_and_backups_volume:/appdata
       - ftp_volume:/ftp/reports
     environment:
       - ENVIRONMENT=production
       - CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS must be set}
-      - UPDATE_TIME
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
       - DATA_PATH=${DATA_PATH:-/appdata/data}
-      - SHARED_PATH
-      - BACKUP_FOLDER
       - LDAP_DOMAIN
       - LDAP_SERVER
       - LDAP_USER
       - LDAP_PASS
+      - LDAP_USERS_DN
+      - LDAP_VENDOR
+      - LDAP_USE_SSL
+      - LDAP_START_TLS
+      - LDAP_TRUSTSTORE
+      - LDAP_USERNAME_ATTR
+      - LDAP_UUID_ATTR
+      - LDAP_USER_OBJECT_CLASSES
+      - KEYCLOAK_IDP_ALIAS
+      - KEYCLOAK_IDP_PROVIDER
+      - KEYCLOAK_IDP_DISPLAY_NAME
+      - KEYCLOAK_IDP_ISSUER
+      - KEYCLOAK_IDP_AUTHORIZATION_URL
+      - KEYCLOAK_IDP_TOKEN_URL
+      - KEYCLOAK_IDP_JWKS_URL
+      - KEYCLOAK_IDP_LOGOUT_URL
+      - KEYCLOAK_IDP_CLIENT_ID
+      - KEYCLOAK_IDP_CLIENT_SECRET
+      - KEYCLOAK_IDP_ENTITY_ID
+      - KEYCLOAK_IDP_SSO_URL
       - SECRET_KEY
       - ADMIN_USERNAME
       - APP_PORT
@@ -42,13 +58,24 @@ services:
       - FTP_HOST=ftp
       - SCANNER_BASE_URL=${SCANNER_BASE_URL:-http://scanner:8082}
       - SCANNER_INTERNAL_TOKEN=${SCANNER_INTERNAL_TOKEN:?SCANNER_INTERNAL_TOKEN must be set}
+      - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-http://local-llm:8083}
       - RAPTOR_SERVICE_API_KEY=${RAPTOR_SERVICE_API_KEY:?RAPTOR_SERVICE_API_KEY must be set}
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
       - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}
+      - KEYCLOAK_URL=${KEYCLOAK_URL:-http://keycloak:8080}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-raptor}
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD must be set}
+      - KEYCLOAK_LOGIN_CLIENT_ID=${KEYCLOAK_LOGIN_CLIENT_ID:-raptor-login}
+      - KEYCLOAK_LOGIN_CLIENT_SECRET=${KEYCLOAK_LOGIN_CLIENT_SECRET:?KEYCLOAK_LOGIN_CLIENT_SECRET must be set}
+      - KEYCLOAK_BACKEND_CLIENT_ID=${KEYCLOAK_BACKEND_CLIENT_ID:-raptor-backend}
+      - KEYCLOAK_BACKEND_CLIENT_SECRET=${KEYCLOAK_BACKEND_CLIENT_SECRET:?KEYCLOAK_BACKEND_CLIENT_SECRET must be set}
     depends_on:
       ftp:
         condition: service_started
       postgres:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     healthcheck:
       test:
@@ -58,8 +85,8 @@ services:
         - import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/healthz',timeout=5).status==200 else 1)
       interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 25s
+      retries: 8
+      start_period: 90s
     restart: unless-stopped
 
   worker:
@@ -68,17 +95,13 @@ services:
     networks:
       - app_network
     volumes:
-      - dns_zonefiles_volume:/usr/app/src/shared
       - db_and_backups_volume:/appdata
     environment:
       - RAPTOR_ROLE=worker
       - ENVIRONMENT=production
       - CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS must be set}
-      - UPDATE_TIME
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
       - DATA_PATH=${DATA_PATH:-/appdata/data}
-      - SHARED_PATH
-      - BACKUP_FOLDER
       - SECRET_KEY
       - APP_PORT
     depends_on:
@@ -136,8 +159,8 @@ services:
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - http_proxy=${HTTP_PROXY:-}
       - https_proxy=${HTTPS_PROXY:-}
-      - NO_PROXY=mcp,app,scanner,localhost,127.0.0.1
-      - no_proxy=mcp,app,scanner,localhost,127.0.0.1
+      - NO_PROXY=mcp,app,scanner,local-llm,localhost,127.0.0.1
+      - no_proxy=mcp,app,scanner,local-llm,localhost,127.0.0.1
       - KALI_INTERNAL_TOKEN=${KALI_INTERNAL_TOKEN:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
@@ -169,6 +192,8 @@ services:
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
       - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}
       - KALI_INTERNAL_TOKEN=${KALI_INTERNAL_TOKEN:-}
+      - NO_PROXY=mcp,app,kali,local-llm,localhost,127.0.0.1
+      - no_proxy=mcp,app,kali,local-llm,localhost,127.0.0.1
     depends_on:
       mcp:
         condition: service_healthy
@@ -180,6 +205,37 @@ services:
         - python
         - -c
         - import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8082/healthz',timeout=5).status==200 else 1)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  local-llm:
+    build:
+      context: .
+      dockerfile: Dockerfile.local_llm
+      args:
+        - http_proxy=${HTTP_PROXY}
+        - https_proxy=${HTTP_PROXY}
+    image: raptor-local-llm-prod
+    container_name: raptor-local-llm-prod
+    networks:
+      - app_network
+    volumes:
+      - llm_models_volume:/models
+    environment:
+      - SCANNER_INTERNAL_TOKEN=${SCANNER_INTERNAL_TOKEN:?SCANNER_INTERNAL_TOKEN must be set}
+      - LOCAL_LLM_PORT=8083
+      - LOCAL_LLM_INFER_PORT=8084
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8083/healthz',timeout=5).status==200 else 1)
       interval: 15s
       timeout: 5s
       retries: 5
@@ -203,19 +259,36 @@ services:
         - app_network
     restart: unless-stopped
 
-  sftp:
-    build:
-      context: .
-      dockerfile: Dockerfile.sftp
-      args:
-        - DNS_SERVER_SSH_PUBKEY=${DNS_SERVER_SSH_PUBKEY}
-        - http_proxy=${HTTP_PROXY}
-    image: raptor-sftp-prod
-    container_name: raptor-sftp-prod
-    ports:
-      - "2222:22"
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.3
+    container_name: raptor-keycloak-prod
+    command: ["start", "--import-realm", "--http-enabled=true"]
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN:-admin}
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD must be set}
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB}?currentSchema=keycloak
+      - KC_DB_USERNAME=${POSTGRES_USER:?POSTGRES_USER must be set}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      - KC_DB_SCHEMA=keycloak
+      - KC_HEALTH_ENABLED=true
+      - KC_HTTP_MANAGEMENT_HEALTH_ENABLED=true
+      - KC_HTTP_ENABLED=true
+      - KC_HOSTNAME_STRICT=false
+      - KC_PROXY_HEADERS=xforwarded
     volumes:
-      - dns_zonefiles_volume:/chroot/upload
+      - ./deploy/keycloak/raptor-realm.json:/opt/keycloak/data/import/raptor-realm.json:ro
+    networks:
+      - app_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000; echo -e \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; timeout 5 cat <&3 | grep -q UP'"]
+      interval: 10s
+      timeout: 8s
+      retries: 30
+      start_period: 120s
     restart: unless-stopped
 
   postgres:
@@ -230,7 +303,7 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" && psql -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -c 'CREATE SCHEMA IF NOT EXISTS keycloak;'"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -241,9 +314,6 @@ volumes:
   db_and_backups_volume:
     name: ${DB_AND_BACKUPS_VOLUME_NAME:-raptor_db_and_backups_volume}
     driver: local
-  dns_zonefiles_volume:
-    name: ${DNS_ZONEFILES_VOLUME_NAME:-raptor_dns_zonefiles_volume}
-    driver: local
   certs_volume:
     name: ${CERTS_VOLUME_NAME:-raptor_certs_volume}
     driver: local
@@ -252,6 +322,9 @@ volumes:
     driver: local
   postgres_data_volume:
     name: ${POSTGRES_DATA_VOLUME_NAME:-raptor_postgres_data_volume}
+    driver: local
+  llm_models_volume:
+    name: ${LLM_MODELS_VOLUME_NAME:-raptor_llm_models_volume}
     driver: local
 
 networks:

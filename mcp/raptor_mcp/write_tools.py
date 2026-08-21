@@ -177,11 +177,15 @@ async def do_log_scan_event(
     event_type: str,
     payload: dict,
     settings: MCPSettings,
+    job_id: int = 0,
 ) -> Any:
+    body: dict = {"event_type": event_type, "payload": payload}
+    if job_id:
+        body["job_id"] = int(job_id)
     return await mutate_service_dataset(
         "post",
         f"/service-api/v1/pentests/{record_id}/scan-events",
-        {"event_type": event_type, "payload": payload},
+        body,
         settings,
     )
 

@@ -56,7 +56,8 @@ def list_service_accounts(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
                 k.rotated_at,
                 k.last_used_at,
                 k.created_by,
-                k.rotated_by
+                k.rotated_by,
+                k.keycloak_client_id
             FROM allowed_users u
             LEFT JOIN service_account_api_keys k ON k.service_account_id = u.id
             WHERE u.is_service_account = 1
@@ -106,7 +107,8 @@ def get_service_account_with_key(username: str, db_path: str = DB_PATH) -> Optio
                 k.rotated_at,
                 k.last_used_at,
                 k.created_by,
-                k.rotated_by
+                k.rotated_by,
+                k.keycloak_client_id
             FROM allowed_users u
             LEFT JOIN service_account_api_keys k ON k.service_account_id = u.id
             WHERE u.username = ?
@@ -119,7 +121,12 @@ def get_service_account_with_key(username: str, db_path: str = DB_PATH) -> Optio
     return _normalize_service_account_row(dict(row)) if row else None
 
 
-def create_service_account(username: str, db_path: str = DB_PATH) -> None:
+def create_service_account(
+    username: str,
+    db_path: str = DB_PATH,
+    keycloak_id: Optional[str] = None,
+    full_name: Optional[str] = None,
+) -> None:
     with get_db_connection(db_path) as conn:
         c = conn.cursor()
         c.execute(
@@ -130,14 +137,14 @@ def create_service_account(username: str, db_path: str = DB_PATH) -> None:
                 added_date,
                 role,
                 auth_type,
-                password,
-                must_reset,
                 permissions,
-                is_service_account
+                is_service_account,
+                full_name,
+                keycloak_id
             )
-            VALUES (?, '', (NOW() + INTERVAL '4 hours'), 'user', 'service', NULL, 0, '[]', 1)
+            VALUES (?, '', (NOW() + INTERVAL '4 hours'), 'user', 'service', '[]', 1, ?, ?)
             """,
-            (username,),
+            (username, full_name, keycloak_id),
         )
         conn.commit()
 
@@ -261,7 +268,8 @@ def get_service_account_key_by_fingerprint(
                 k.last_used_at,
                 u.id AS service_account_id,
                 u.username,
-                u.is_service_account
+                u.is_service_account,
+                k.keycloak_client_id
             FROM service_account_api_keys k
             INNER JOIN allowed_users u ON u.id = k.service_account_id
             WHERE k.api_key_fingerprint = ?
@@ -272,6 +280,25 @@ def get_service_account_key_by_fingerprint(
         )
         row = c.fetchone()
     return _normalize_service_account_row(dict(row)) if row else None
+
+
+def update_service_account_keycloak_client(
+    username: str,
+    keycloak_client_id: str,
+    db_path: str = DB_PATH,
+) -> None:
+    with get_db_connection(db_path) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE allowed_users SET keycloak_id = ? WHERE username = ?", (keycloak_client_id, username))
+        c.execute(
+            """
+            UPDATE service_account_api_keys
+            SET keycloak_client_id = ?
+            WHERE service_account_id = (SELECT id FROM allowed_users WHERE username = ?)
+            """,
+            (keycloak_client_id, username),
+        )
+        conn.commit()
 
 
 def touch_service_api_key_last_used(key_id: int, used_at: str, db_path: str = DB_PATH) -> None:
@@ -591,5 +618,6 @@ __all__ = [
     "rotate_service_account_key",
     "touch_service_api_key_last_used",
     "update_pentest_fields",
+    "update_service_account_keycloak_client",
     "update_service_account_scopes",
 ]

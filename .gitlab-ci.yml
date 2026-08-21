@@ -44,8 +44,11 @@ deploy_dev:
   - test -n "$POSTGRES_PASSWORD" || (echo "POSTGRES_PASSWORD must be set" && exit 1)
   - test -n "$MCP_SERVER_TOKEN" || (echo "MCP_SERVER_TOKEN must be set" && exit 1)
   - test -n "$RAPTOR_SERVICE_API_KEY" || (echo "RAPTOR_SERVICE_API_KEY must be set" && exit 1)
+  - test -n "$KEYCLOAK_ADMIN_PASSWORD" || (echo "KEYCLOAK_ADMIN_PASSWORD must be set" && exit 1)
+  - test -n "$KEYCLOAK_LOGIN_CLIENT_SECRET" || (echo "KEYCLOAK_LOGIN_CLIENT_SECRET must be set" && exit 1)
+  - test -n "$KEYCLOAK_BACKEND_CLIENT_SECRET" || (echo "KEYCLOAK_BACKEND_CLIENT_SECRET must be set" && exit 1)
   - docker compose -f $COMPOSE_FILE_DEV down || true
-  - docker compose -f $COMPOSE_FILE_DEV up -d postgres ftp sftp app worker mcp
+  - docker compose -f $COMPOSE_FILE_DEV up -d postgres ftp keycloak app worker mcp
   - echo "DEV environment is running."
   tags:
   - callisto
@@ -84,8 +87,11 @@ deploy_prod:
   - test -n "$RAPTOR_SERVICE_API_KEY" || (echo "RAPTOR_SERVICE_API_KEY must be set" && exit 1)
   - test -n "$CORS_ORIGINS" || (echo "CORS_ORIGINS must be set" && exit 1)
   - test -n "$SECRET_KEY" || (echo "SECRET_KEY must be set" && exit 1)
+  - test -n "$KEYCLOAK_ADMIN_PASSWORD" || (echo "KEYCLOAK_ADMIN_PASSWORD must be set" && exit 1)
+  - test -n "$KEYCLOAK_LOGIN_CLIENT_SECRET" || (echo "KEYCLOAK_LOGIN_CLIENT_SECRET must be set" && exit 1)
+  - test -n "$KEYCLOAK_BACKEND_CLIENT_SECRET" || (echo "KEYCLOAK_BACKEND_CLIENT_SECRET must be set" && exit 1)
   - docker compose -f $COMPOSE_FILE_PROD down || true
-  - docker compose -f $COMPOSE_FILE_PROD up -d postgres ftp sftp app worker mcp
+  - docker compose -f $COMPOSE_FILE_PROD up -d postgres ftp keycloak app worker mcp
   - echo "PROD environment is running."
   tags:
   - prod-kali

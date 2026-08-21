@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from app.services import service_account_service
+from app.services import keycloak_identity_service as identity
 
 
 def test_create_service_account_key_uses_default_rotation_window(monkeypatch):
@@ -26,6 +27,8 @@ def test_create_service_account_key_uses_default_rotation_window(monkeypatch):
         },
     ]
 
+    monkeypatch.setattr(identity, "push_service_account_credentials", lambda *args, **kwargs: "client-uuid")
+    monkeypatch.setattr(service_account_service, "update_service_account_keycloak_client", lambda *args, **kwargs: None)
     monkeypatch.setattr(service_account_service, "_utc_now", lambda: now)
     monkeypatch.setattr(service_account_service, "_generate_api_key", lambda: "raptor_sk_generated")
     monkeypatch.setattr(

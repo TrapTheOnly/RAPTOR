@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, session
 
 from app.http.request_utils import parse_json_object
 from app.services import records_service
-from app.http.decorators.admin_required import admin_required
+from app.http.decorators.admin_required import admin_or_manager_required
 from app.http.decorators.permission_required import permission_required
 
 records_bp = Blueprint("records", __name__)
@@ -80,11 +80,12 @@ def delete_record(record_id: int):
 
 
 @records_bp.route("/api/records/<int:record_id>/resolve-sync-conflict", methods=["POST"])
-@admin_required
+@admin_or_manager_required
 def resolve_sync_conflict(record_id: int):
     payload, status_code = records_service.resolve_sync_conflict(
         record_id,
         session.get("username", "unknown"),
+        parse_json_object(),
     )
     return jsonify(payload), status_code
 

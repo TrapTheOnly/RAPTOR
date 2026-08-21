@@ -53,14 +53,10 @@ def test_resolve_sync_conflict_converts_manual_record(monkeypatch):
         "origin": "manual",
         "sync_conflict": 1,
         "ip_address": "10.10.10.10",
+        "seen_by": [{"source_id": 3, "ip_address": "10.10.10.11"}],
     }
 
     monkeypatch.setattr(records_service.records_repository, "fetch_record_by_id", lambda record_id: dict(state))
-    monkeypatch.setattr(
-        records_service.dns_sync_service,
-        "find_live_imported_record",
-        lambda domain: {"name": domain, "ip_address": "10.10.10.11", "source": "Other"},
-    )
 
     def _resolve_manual_sync_conflict(**kwargs):
         state.update({"origin": "automated", "sync_conflict": 0, "ip_address": "10.10.10.11"})
@@ -68,7 +64,7 @@ def test_resolve_sync_conflict_converts_manual_record(monkeypatch):
 
     monkeypatch.setattr(
         records_service.records_repository,
-        "resolve_manual_sync_conflict",
+        "resolve_sync_conflict_with_ip",
         _resolve_manual_sync_conflict,
     )
 

@@ -1,0 +1,150 @@
+{
+  "realm": "raptor",
+  "enabled": true,
+  "displayName": "RAPTOR",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "none",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "passwordPolicy": "length(12) and maxLength(64) and notUsername",
+  "accessTokenLifespan": 3600,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 3600,
+  "ssoSessionMaxLifespan": 28800,
+  "offlineSessionIdleTimeout": 2592000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "actionTokenGeneratedByAdminLifespan": 43200,
+  "actionTokenGeneratedByUserLifespan": 300,
+  "internationalizationEnabled": false,
+  "clients": [
+    {
+      "clientId": "raptor-login",
+      "name": "RAPTOR login",
+      "description": "Confidential client used by the RAPTOR app for direct-grant login.",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "changeme-login",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {
+        "access.token.lifespan": "3600"
+      }
+    },
+    {
+      "clientId": "raptor-backend",
+      "name": "RAPTOR backend admin",
+      "description": "Service account used by RAPTOR to call the Keycloak Admin API.",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "changeme-backend",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": []
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "raptor-access",
+        "description": "Allowlisted RAPTOR operator. Required to sign in."
+      },
+      {
+        "name": "raptor-user",
+        "description": "RAPTOR User role",
+        "composite": true
+      },
+      {
+        "name": "raptor-pentester",
+        "description": "RAPTOR Pentester role",
+        "composite": true
+      },
+      {
+        "name": "raptor-manager",
+        "description": "RAPTOR Manager role",
+        "composite": true
+      },
+      {
+        "name": "raptor-admin",
+        "description": "RAPTOR Admin role",
+        "composite": true
+      }
+    ],
+    "client": {
+      "raptor-login": [
+        { "name": "view_settings" },
+        { "name": "view_dashboard" },
+        { "name": "view_records" },
+        { "name": "view_security_dashboard" },
+        { "name": "create_manual_records" },
+        { "name": "modify_records" },
+        { "name": "view_record_details" },
+        { "name": "export_records" },
+        { "name": "manage_apps" },
+        { "name": "view_pentest_page" },
+        { "name": "modify_pentests" },
+        { "name": "export_pentests" },
+        { "name": "manage_ip_sources" },
+        { "name": "manage_vuln_categories" },
+        { "name": "manage_report_templates" },
+        { "name": "reassign_pentests_admin" },
+        { "name": "delete_records" },
+        { "name": "modify_others_pentests_admin" }
+      ]
+    }
+  },
+  "users": [
+    {
+      "username": "service-account-raptor-backend",
+      "enabled": true,
+      "serviceAccountClientId": "raptor-backend",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users",
+          "manage-clients",
+          "view-clients",
+          "query-clients",
+          "manage-realm",
+          "view-realm",
+          "query-realms",
+          "manage-identity-providers",
+          "view-identity-providers",
+          "manage-events",
+          "view-events"
+        ]
+      }
+    }
+  ]
+}

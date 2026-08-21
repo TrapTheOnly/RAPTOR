@@ -13,8 +13,13 @@ from app.domain.offsec.shared import DB_PATH, safe_json_load, serialize_checklis
 from app.integrations.db.connection import ROW_AS_DICT, get_db_connection
 from app.integrations.storage.offsec_storage import delete_report, fetch_image, ftp_connect, save_report
 from app.http.decorators.permission_required import permission_required
+from app.integrations.reporting.report_context import coerce_report_context
+from app.integrations.reporting.report_context_builder import host_content_hash
 from app.integrations.reporting.report_pdf_render import render_pentest_report_pdf
+from app.services.phase2b_service import sign_export
+from app.services.authorization_service import user_has_permission
 from app.services.offsec.offsec_templates import bind_report_template_logo_for_template
+from app.services.report_brand_kit_service import apply_brand_kit, fetch_brand_kit
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +77,14 @@ def generate_report(record_id):
                 template_row = c.fetchone()
                 if not template_row:
                     return jsonify({"error": "Report template not found."}), 404
-                if int(template_row["enabled"] or 0) != 1 and session.get("user_type") != "admin":
-                    return jsonify({"error": "Selected report template is disabled."}), 400
+                if int(template_row["enabled"] or 0) != 1:
+                    username = session.get("username")
+                    role = session.get("user_type")
+                    can_use_disabled = role == "admin" or user_has_permission(
+                        username, role, "manage_report_templates"
+                    )
+                    if not can_use_disabled:
+                        return jsonify({"error": "Selected report template is disabled."}), 400
             else:
                 c.execute(
                     """
@@ -98,14 +109,22 @@ def generate_report(record_id):
             )
             if logo_error:
                 return jsonify({"error": logo_error}), 400
+            template_definition = apply_brand_kit(template_definition, fetch_brand_kit(c))
 
             checklist_templates = load_enabled_checklist_templates()
             pentest_data = get_pentest_data_internal(record_id)
             if not pentest_data:
                 return jsonify({"error": "Pentest data not found."}), 404
 
+            report_context = coerce_report_context(pentest_data, generated_by=session.get("username"))
+            content_hash = host_content_hash(report_context.get("findings") or [], record_id)
+            signature = sign_export(content_hash)
+            export_meta = dict(report_context.get("export") or {})
+            export_meta.update({"content_hash": content_hash, "signature": signature})
+            report_context["export"] = export_meta
+
             pdf_content = render_pentest_report_pdf(
-                pentest_data,
+                report_context,
                 template_definition,
                 checklist_templates=checklist_templates,
                 image_fetcher=fetch_image,
@@ -120,6 +139,8 @@ def generate_report(record_id):
                 generated_relative_path,
                 template_row["id"],
                 session.get("username") or "",
+                content_hash=content_hash,
+                signature=signature,
             )
 
             c.execute(

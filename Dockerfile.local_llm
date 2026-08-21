@@ -1,0 +1,53 @@
+FROM ghcr.io/ggml-org/llama.cpp:server AS llama
+
+FROM python:3.12-slim-bookworm
+
+WORKDIR /usr/app/src
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy
+ARG https_proxy
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends libgomp1 libcurl4 ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
+
+# Official server image copies the binary to /app (file or /app/llama-server).
+COPY --from=llama /app /opt/llama-src
+RUN set -eux; \
+    if [ -f /opt/llama-src ] && [ -x /opt/llama-src ]; then \
+      mv /opt/llama-src /usr/local/bin/llama-server; \
+    elif [ -x /opt/llama-src/llama-server ]; then \
+      ln -sf /opt/llama-src/llama-server /usr/local/bin/llama-server; \
+    else \
+      bin="$(find /opt/llama-src -type f -name llama-server | head -n 1)"; \
+      test -n "$bin"; \
+      ln -sf "$bin" /usr/local/bin/llama-server; \
+    fi; \
+    chmod +x /usr/local/bin/llama-server
+
+COPY local_llm/requirements.txt /usr/app/src/local_llm/requirements.txt
+RUN set -eux; \
+    pip_proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"; \
+    if [ -n "$pip_proxy" ]; then \
+      pip install --no-cache-dir --proxy "$pip_proxy" -r /usr/app/src/local_llm/requirements.txt; \
+    else \
+      pip install --no-cache-dir -r /usr/app/src/local_llm/requirements.txt; \
+    fi
+
+COPY local_llm/ /usr/app/src/local_llm/
+COPY scanner/models/raptor-local.json /opt/raptor-local.json
+
+RUN mkdir -p /models
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/usr/app/src
+ENV LOCAL_LLM_DEFINITION=/opt/raptor-local.json
+ENV LOCAL_LLM_MODELS_DIR=/models
+ENV LLAMA_SERVER_BIN=/usr/local/bin/llama-server
+
+EXPOSE 8083 8084
+
+CMD ["python", "-m", "local_llm.main"]

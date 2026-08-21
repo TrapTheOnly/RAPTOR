@@ -33,8 +33,8 @@ const CreateManualRecordDialog = ({
       }
     >
       <Text as="p" variant="meta" tone="secondary" style={{ margin: 0 }}>
-        Manual domains stay in the main registry and can later be adopted into automated sync if an
-        imported zone file starts publishing the same name.
+        Manual domains stay in the main registry and can later be adopted into automated sync if a
+        collector or cloud DNS source starts publishing the same name.
       </Text>
       <Field
         autoFocus

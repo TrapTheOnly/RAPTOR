@@ -11,10 +11,10 @@ Make RAPTOR safe to run and safe to ingest into. Design the collector (Phase 1) 
 
 ## Current state
 
-- HTTP: `app.run(..., debug=True)` in `backend/main.py`. Init and DNS sync run only when `WERKZEUG_RUN_MAIN=true`.
+- HTTP: `app.run(..., debug=True)` in `backend/main.py`. Init runs only when `WERKZEUG_RUN_MAIN=true`.
 - Compose sets `ENVIRONMENT=development`; Python never reads it. Logs are DEBUG and truncate on start (`FileHandler` mode `w`).
 - Kali `POST /api/command` has no auth and uses `shell=True`.
-- Ingest globs `*_A_Records`, parses A records only, and marks every automated name not in the current batch as `missing`.
+- Ingest is collector POST + cloud DNS pulls. Automated names missing from every enabled source’s latest A batch become `missing`.
 - Findings are JSON on `pentest_data.vulnerabilities`. Dashboard dumps that blob. Pentest list includes `notes`.
 - Service API keys are stored plaintext. MCP is published on the host.
 
@@ -28,7 +28,7 @@ Web traffic runs under gunicorn (`-w 2`). DNS sync runs in a second gunicorn pro
 
 1. Gunicorn runtime, `ENVIRONMENT`, `/healthz`, append logs, fail-closed `SECRET_KEY` / CORS in production.
 2. Kali token auth. Admin toggle `allow_destructive_tools` on `scanner_config`. Safe default tool allowlist.
-3. `dns_sources` + `dns_observations`. Seed `bind_file`. Source-scoped missing. UNIQUE `records.name`.
+3. `dns_sources` + `dns_observations`. Source-scoped missing. UNIQUE `records.name`.
 4. `pentest_findings` dual-write. Scanner findings are `draft`. Strip notes and finding bodies from list APIs. Paginate service-api lists.
 5. Gunicorn worker for `dns_sync` jobs. Hash-only API keys. Unpublish MCP in prod. `audit_events`.
 

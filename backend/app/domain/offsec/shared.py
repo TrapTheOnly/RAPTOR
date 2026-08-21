@@ -153,6 +153,14 @@ def serialize_checklist_template(row):
 
 
 def normalize_report_template_definition(raw_definition):
+    from app.integrations.reporting.report_context import (
+        BLOCK_TYPES,
+        CHART_IDS,
+        DROP_BLOCK_KEYS,
+        SCOPES,
+        lint_template_tokens,
+    )
+
     if not isinstance(raw_definition, dict):
         return None, "Template definition must be a JSON object."
 
@@ -167,11 +175,20 @@ def normalize_report_template_definition(raw_definition):
         block_type = str(block.get("type", "")).strip().lower()
         if not block_type:
             continue
+        if block_type not in BLOCK_TYPES:
+            return None, f"Unknown block type: {block_type}."
         normalized_block = {"type": block_type}
         for key, value in block.items():
-            if key == "type":
+            if key in {"type"} or key in DROP_BLOCK_KEYS:
                 continue
             normalized_block[key] = value
+        if block_type == "chart":
+            chart_id = str(normalized_block.get("chart", "")).strip().lower()
+            if chart_id and chart_id not in CHART_IDS:
+                return None, f"Unknown chart: {chart_id}."
+            if not chart_id:
+                return None, "Chart blocks require a catalog chart id."
+            normalized_block["chart"] = chart_id
         normalized_blocks.append(normalized_block)
 
     if not normalized_blocks:
@@ -180,12 +197,26 @@ def normalize_report_template_definition(raw_definition):
     branding = normalize_report_branding(raw_definition.get("branding", {}))
     placeholders = normalize_report_placeholders(raw_definition.get("placeholders", {}))
 
+    supported_scopes = []
+    raw_scopes = raw_definition.get("supported_scopes")
+    if isinstance(raw_scopes, list):
+        for item in raw_scopes:
+            scope = str(item or "").strip().lower()
+            if scope in SCOPES and scope not in supported_scopes:
+                supported_scopes.append(scope)
+
     normalized = {
         "version": to_int(raw_definition.get("version"), 1),
         "branding": branding,
         "placeholders": placeholders,
         "blocks": normalized_blocks,
     }
+    if supported_scopes:
+        normalized["supported_scopes"] = supported_scopes
+
+    token_error = lint_template_tokens(normalized)
+    if token_error:
+        return None, token_error
     return normalized, None
 
 
@@ -197,9 +228,9 @@ def normalize_report_branding(raw_branding):
     if not company_name:
         company_name = "Security Operations"
 
-    primary_color = str(branding.get("primary_color", "#0B5CAD") or "").strip()
+    primary_color = str(branding.get("primary_color", "#067A8A") or "").strip()
     if not HEX_COLOR_PATTERN.fullmatch(primary_color):
-        primary_color = "#0B5CAD"
+        primary_color = "#067A8A"
 
     accent_color = str(branding.get("accent_color", "#1E293B") or "").strip()
     if not HEX_COLOR_PATTERN.fullmatch(accent_color):
@@ -219,12 +250,20 @@ def normalize_report_branding(raw_branding):
         except (TypeError, ValueError):
             logo_asset_id = None
 
+    def _chrome(key, default=""):
+        text = "" if branding.get(key) is None else str(branding.get(key))
+        text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text).strip()
+        return text[:200] or default
+
     return {
         "company_name": company_name,
         "primary_color": primary_color,
         "accent_color": accent_color,
         "logo_asset_id": logo_asset_id,
         "logo_url": logo_url,
+        "header_text": _chrome("header_text"),
+        "footer_text": _chrome("footer_text"),
+        "classification": _chrome("classification"),
     }
 
 

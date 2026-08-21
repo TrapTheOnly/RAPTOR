@@ -28,6 +28,11 @@ from app.services.offsec import (
     upload_report_template_logo,
     upload_pentest_image,
 )
+from app.services.report_brand_kit_service import (
+    get_report_brand_kit,
+    update_report_brand_kit,
+    upload_report_brand_kit_logo,
+)
 
 
 def register_offsec_routes(app: Flask) -> None:
@@ -97,3 +102,6 @@ def register_offsec_routes(app: Flask) -> None:
         methods=["POST"],
         view_func=reset_report_template_to_canonical,
     )
+    app.add_url_rule("/report-brand-kit", methods=["GET"], view_func=get_report_brand_kit)
+    app.add_url_rule("/report-brand-kit", methods=["PUT"], view_func=update_report_brand_kit)
+    app.add_url_rule("/report-brand-kit/logo-upload", methods=["POST"], view_func=upload_report_brand_kit_logo)

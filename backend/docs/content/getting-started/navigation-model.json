@@ -55,9 +55,19 @@
               "`view_security_dashboard`"
             ],
             [
-              "`/pentest/record/:recordId`",
-              "Detailed pentest execution page.",
+              "`/apps/:id`",
+              "Application pentest workspace (envs, waves, findings).",
               "`view_pentest_page`"
+            ],
+            [
+              "`/pentest/record/:recordId`",
+              "Host notebook (detailed pentest execution page).",
+              "`view_pentest_page` plus owner, collaborator, or override. Viewer is denied."
+            ],
+            [
+              "`/apps/:id/waves/:waveId/scan-live`",
+              "Wave AI scan console: launch, watch, and restart one job that covers every in-scope host on the started wave. Host notebooks link here; they do not launch a single-host scan.",
+              "`view_pentest_page`. Launch and reset require `modify_pentests`."
             ],
             [
               "`/settings`",
@@ -67,7 +77,7 @@
             [
               "`/docs/:sectionSlug/:pageSlug`",
               "Documentation pages.",
-              "Logged-in session"
+              "Logged-in session, then filtered by the per-page docs access matrix. Not every article is visible to every role."
             ]
           ]
         }

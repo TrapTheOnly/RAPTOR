@@ -33,7 +33,7 @@
         "id": "access-control-matrix",
         "title": "Access control matrix",
         "paragraphs": [
-          "Every report file operation is controlled by permission decorators plus record-level assignment enforcement. This protects report material from cross-assignee access by default."
+          "Every report file operation is controlled by permission decorators plus record-level owner, collaborator, or override checks. This protects report material from cross-assignee access by default. Collaborators can generate and download; they cannot delete report files unless they also have override."
         ],
         "table": {
           "columns": [
@@ -47,31 +47,31 @@
               "Download manual report",
               "`GET /pentest/:id/report`",
               "`view_pentest_page`",
-              "`enforce_pentest_record_access`"
+              "`enforce_pentest_record_access` (owner, collaborator, or override)"
             ],
             [
               "Download generated report",
               "`GET /pentest/:id/generated-report`",
               "`export_pentests`",
-              "`enforce_pentest_record_access`"
+              "`enforce_pentest_record_access` (owner, collaborator, or override)"
             ],
             [
               "Generate report",
               "`POST /pentest/:id/generate-report`",
               "`export_pentests`",
-              "`enforce_pentest_record_access`"
+              "`enforce_pentest_record_access` (owner, collaborator, or override)"
             ],
             [
               "Delete manual report",
               "`DELETE /pentest/:id/report`",
               "`modify_pentests`",
-              "`enforce_pentest_record_access`"
+              "Owner or override (`can_delete_reports`). Collaborators cannot delete."
             ],
             [
               "Delete generated report",
               "`DELETE /pentest/:id/generated-report`",
               "`modify_pentests`",
-              "`enforce_pentest_record_access`"
+              "Owner or override (`can_delete_reports`). Collaborators cannot delete."
             ]
           ]
         }

@@ -1,20 +1,8 @@
 import React from 'react';
-import {
-  Alert,
-  Button,
-  Checkbox,
-  FormControl,
-  FormControlLabel,
-  InputLabel,
-  MenuItem,
-  Select,
-  Stack,
-  TextField,
-  Typography
-} from '@mui/material';
-import { AdminPanelSettings as AdminIcon, PersonAdd as PersonAddIcon } from '@mui/icons-material';
+import { Button, Combo, Field, Surface, SwitchRow, Text } from '../../../../design/primitives';
+import { SPACE } from '../../../../design/tokens';
 import { ROLE_OPTIONS } from '../../constants';
-import { getRoleMeta, normalizeOptionalPermissions } from '../../utils';
+import { normalizeOptionalPermissions } from '../../utils';
 import OptionalPermissionControls from '../OptionalPermissionControls';
 import SectionHeader from '../SectionHeader';
 
@@ -34,85 +22,82 @@ const LocalUsersPanel = ({
   onCreateLocalUser
 }) => (
   <>
-    <SectionHeader icon={AdminIcon} title="Add Local Users" />
-
-    <Stack spacing={2}>
-      <TextField
-        label="Username"
-        variant="outlined"
-        fullWidth
-        value={localUsername}
-        onChange={(event) => setLocalUsername(event.target.value)}
-        placeholder="local.user"
-      />
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={localIsServiceAccount}
-            onChange={(event) => setLocalIsServiceAccount(event.target.checked)}
-          />
-        }
-        label="Create as service account (API-only, no password login)"
-      />
-      {!localIsServiceAccount && (
-        <>
-          <TextField
-            label="Full Name"
-            variant="outlined"
-            fullWidth
+    <SectionHeader title="Add Local Users" />
+    <div className="raptor-users-split">
+      <Surface
+        className="raptor-users-pane"
+        style={{ padding: SPACE.x16, gap: SPACE.x16 }}
+      >
+        <Text variant="bodyStrong">Identity</Text>
+        <Field
+          label="Username"
+          value={localUsername}
+          onChange={(event) => setLocalUsername(event.target.value)}
+          placeholder="local.user"
+        />
+        <SwitchRow
+          label="Service account"
+          checked={localIsServiceAccount}
+          onChange={setLocalIsServiceAccount}
+        />
+        {!localIsServiceAccount ? (
+          <Field
+            label="Full name"
             value={localFullName}
             onChange={(event) => setLocalFullName(event.target.value)}
-            placeholder="John Doe (optional)"
+            placeholder="Optional"
           />
-          <FormControl fullWidth size="small">
-            <InputLabel id="local-user-role-label">Role</InputLabel>
-            <Select
-              labelId="local-user-role-label"
-              value={localRole}
-              label="Role"
-              onChange={(event) => onRoleChange(event.target.value)}
-              sx={{
-                backgroundColor: 'background.paper',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {ROLE_OPTIONS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-            {getRoleMeta(localRole).description}
-          </Typography>
-          <OptionalPermissionControls
-            roleKey={localRole}
-            permissions={normalizeOptionalPermissions(localRole, localPermissions)}
-            onToggle={onTogglePermission}
-          />
-        </>
-      )}
-      <Button
-        variant="contained"
-        startIcon={<PersonAddIcon />}
-        onClick={onCreateLocalUser}
-        disabled={loading}
-      >
-        {localIsServiceAccount ? 'Create Service Account' : 'Create Local User'}
-      </Button>
-      <Typography variant="caption" color="text.secondary">
-        {localIsServiceAccount
-          ? 'Service accounts cannot sign in through UI and are intended for API key access only.'
-          : 'Local users will be prompted to reset their password on first login.'}
-      </Typography>
-    </Stack>
+        ) : null}
+        <div className="raptor-users-pane-foot">
+          <Button variant="contained" onClick={onCreateLocalUser} disabled={loading} style={{ width: '100%' }}>
+            {localIsServiceAccount ? 'Create service account' : 'Create local user'}
+          </Button>
+          {!localIsServiceAccount && localTempPassword ? (
+            <div style={{ marginTop: SPACE.x12 }}>
+              <Text as="div" variant="micro" tone="tertiary">
+                Temporary password
+              </Text>
+              <Text as="div" variant="bodyStrong" style={{ marginTop: 4 }}>
+                {localTempPassword}
+              </Text>
+            </div>
+          ) : null}
+        </div>
+      </Surface>
 
-    {!localIsServiceAccount && localTempPassword && (
-      <Alert severity="info" sx={{ mt: 3 }}>
-        Temporary password: <strong>{localTempPassword}</strong>
-      </Alert>
-    )}
+      <Surface
+        className="raptor-users-pane"
+        style={{ padding: SPACE.x16, gap: SPACE.x16 }}
+      >
+        {localIsServiceAccount ? (
+          <Text variant="meta" tone="secondary">
+            API-only. Set privileges and issue a key on the Service accounts tab after create.
+          </Text>
+        ) : (
+          <>
+            <Text variant="bodyStrong">Access</Text>
+            <Combo
+              label="Role"
+              options={ROLE_OPTIONS}
+              value={localRole}
+              onChange={(next) => next && onRoleChange(next)}
+              disableClearable
+            />
+            <OptionalPermissionControls
+              roleKey={localRole}
+              permissions={normalizeOptionalPermissions(localRole, localPermissions)}
+              onToggle={onTogglePermission}
+              compact
+            />
+            <div className="raptor-users-pane-foot">
+              <Text variant="meta" tone="secondary">
+                Password reset is required on first login.
+              </Text>
+            </div>
+          </>
+        )}
+      </Surface>
+    </div>
   </>
 );
 

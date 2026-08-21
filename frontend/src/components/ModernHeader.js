@@ -206,7 +206,12 @@ const ModernHeader = ({
           </Menu>
         </div>
       </header>
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        userRole={userRole}
+        userPermissions={userPermissions}
+      />
     </>
   );
 };

@@ -9,12 +9,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.repositories.service_api_repository import (
     IntegrityError,
     SERVICE_API_SCOPES,
-    create_service_account,
     create_service_account_key,
     get_service_account_by_username,
     get_service_account_with_key,
     list_service_accounts,
     rotate_service_account_key,
+    update_service_account_keycloak_client,
     update_service_account_scopes,
 )
 
@@ -116,7 +116,9 @@ def create_service_account_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any]
         return {"error": "Username must be 3-64 chars and contain only a-z, 0-9, ., _, -."}, 400
 
     try:
-        create_service_account(username)
+        from app.services.keycloak_identity_service import provision_service_account
+
+        provision_service_account(username)
         row = get_service_account_by_username(username)
         if not row:
             return {"error": "Service account created but could not be loaded."}, 500
@@ -124,6 +126,8 @@ def create_service_account_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any]
             "message": f"Service account {username} created successfully.",
             "service_account": _build_service_account_payload(dict(row), include_key=False),
         }, 201
+    except ValueError:
+        return {"error": "Service account username already exists."}, 409
     except IntegrityError:
         return {"error": "Service account username already exists."}, 409
     except Exception as exc:
@@ -163,6 +167,15 @@ def create_service_account_key_service(
     scopes_json = json.dumps(scopes)
 
     try:
+        from app.services.keycloak_identity_service import push_service_account_credentials
+
+        client_uuid = push_service_account_credentials(
+            normalized_username,
+            api_key,
+            scopes,
+            _isoformat(expires_at),
+        )
+        update_service_account_keycloak_client(normalized_username, client_uuid)
         create_service_account_key(
             service_account_id=int(row["service_account_id"]),
             api_key=api_key,
@@ -231,6 +244,14 @@ def rotate_service_account_key_service(
     api_key_fingerprint = _fingerprint_key(api_key)
 
     try:
+        from app.services.keycloak_identity_service import push_service_account_credentials
+
+        push_service_account_credentials(
+            normalized_username,
+            api_key,
+            scopes,
+            _isoformat(expires_at),
+        )
         updated = rotate_service_account_key(
             service_account_id=int(row["service_account_id"]),
             api_key=api_key,
@@ -286,6 +307,9 @@ def update_service_account_scopes_service(
         return {"error": "At least one scope is required."}, 400
 
     try:
+        from app.services.keycloak_identity_service import apply_service_account_scopes
+
+        apply_service_account_scopes(normalized_username, scopes)
         updated = update_service_account_scopes(int(row["service_account_id"]), json.dumps(scopes))
         if updated == 0:
             return {"error": "Service account API key not found."}, 404

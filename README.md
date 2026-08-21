@@ -4,7 +4,7 @@ RAPTOR (Reconnaissance, Assessment, Penetration Testing, Operations, and Reporti
 
 ## What the Project Does
 
-- Ingests DNS from BIND-style zone files (`*_A_Records` compatibility adapter) and from collector agents that POST normalized RR batches.
+- Ingests DNS from collector agents that parse zone files locally and POST normalized RR batches, and from cloud DNS pull connectors.
 - Tracks record lifecycle and change history.
 - Runs role-based pentest workflows (assignment, status, findings, remediation).
 - Supports checklist-based testing templates and report templates.
@@ -16,9 +16,10 @@ RAPTOR (Reconnaissance, Assessment, Penetration Testing, Operations, and Reporti
 - Frontend: React 19 + MUI 6 (`frontend/`)
 - Backend: Flask (`backend/main.py` + `backend/modules/`)
 - Database: PostgreSQL (runtime), with one-time SQLite migration support
-- Auth: Local admin + local users + LDAP/AD users
+- Auth: RAPTOR login form; Keycloak stores users, roles, LDAP federation, and service-account clients
 - File/report storage: FTP service for uploaded/generated report assets
 - MCP integration service: standalone Python MCP server (`mcp/`) over streamable HTTP
+- AI scanner: optional sidecar (`scanner/`) plus Kali and a local-llm manager for the bundled Qwen GGUF
 - DNS collector agent: standalone Python agent (`collector/`) that enrolls and POSTs RR batches
 - Packaging: Multi-stage Docker build with Compose for dev/prod
 
@@ -26,7 +27,7 @@ RAPTOR (Reconnaissance, Assessment, Penetration Testing, Operations, and Reporti
 
 ```text
 backend/
-  main.py                 # Flask app, DB init, routes, periodic zone updates
+  main.py                 # Flask app, DB init, routes
   modules/                # auth, permissions, pentest/report logic, templates
 frontend/
   src/                    # React app (dashboard, records, pentest, admin settings)
@@ -34,7 +35,6 @@ collector/
   cmd/raptor-collector/   # Packaged Go agent (Linux/Windows binaries served by RAPTOR)
 Dockerfile                # Builds frontend, packages with backend
 Dockerfile.collector      # Collector agent image
-Dockerfile.sftp           # SFTP sidecar image
 docker-compose.dev.yml    # Development stack
 docker-compose.prod.yml   # Production stack
 scripts/
@@ -50,7 +50,7 @@ The installer writes `.env`, generates secrets, and starts Compose. Run it from 
 ./scripts/docker_runner.sh
 ```
 
-It asks for deploy mode (dev or prod), core secrets, CORS, FTP, optional LDAP, and whether to start Kali + the AI scanner. Re-runs keep existing `.env` values unless you replace them.
+It asks for deploy mode (dev or prod), core secrets, CORS, FTP, optional LDAP, and whether to start Kali + the AI scanner + local model runtime. Re-runs keep existing `.env` values unless you replace them. LLM API keys are configured in Admin Settings, not required at install time.
 
 Non-interactive examples:
 
@@ -77,20 +77,15 @@ POSTGRES_PASSWORD=replace-with-a-strong-password
 
 # Storage paths used by backend
 DATA_PATH=/appdata/data
-BACKUP_FOLDER=/appdata/backups
-SHARED_PATH=/usr/app/src/shared
 
 # Optional: pin persistent Docker volume names explicitly.
 # Set these when migrating from an older Compose project name so existing data
 # keeps mounting after a rename like web-application-monitoring-software -> raptor.
 DB_AND_BACKUPS_VOLUME_NAME=raptor_db_and_backups_volume
-DNS_ZONEFILES_VOLUME_NAME=raptor_dns_zonefiles_volume
 CERTS_VOLUME_NAME=raptor_certs_volume
 FTP_VOLUME_NAME=raptor_ftp_volume
 POSTGRES_DATA_VOLUME_NAME=raptor_postgres_data_volume
-
-# Zone refresh interval in seconds
-UPDATE_TIME=86400
+LLM_MODELS_VOLUME_NAME=raptor_llm_models_volume
 
 # Session cookie/CORS
 CORS_ORIGINS=*
@@ -102,20 +97,48 @@ RAPTOR_SERVICE_API_KEY=replace-with-a-service-account-api-key
 
 # AI Scanner service
 SCANNER_INTERNAL_TOKEN=replace-with-a-random-scanner-internal-token
-# AWS Bedrock credentials for the scanner container (bearer token auth)
-AWS_BEARER_TOKEN_BEDROCK=replace-with-your-bedrock-bearer-token
+LOCAL_LLM_BASE_URL=http://local-llm:8083
+# Optional Bedrock env fallback if a Bedrock connection has no token in Settings
+AWS_BEARER_TOKEN_BEDROCK=
 AWS_REGION=us-east-1
+# GGUF weights (~17.6 GB) download into llm_models when you Install RAPTOR Local in Settings.
+# GPU: if the host has NVIDIA and Docker can see /dev/nvidia0, llama-server offloads layers.
+# CPU-only is allowed and labeled slow. Weights are never baked into the image.
 RAPTOR_API_BASE_URL=http://app:5000
 MCP_PORT=8081
 RAPTOR_API_TIMEOUT_SECONDS=30
 MCP_ALLOWED_HOSTS=raptor.azercell.com,raptor.azercell.com:443
 MCP_ALLOWED_ORIGINS=https://raptor.azercell.com
 
-# LDAP (required for LDAP auth/admin LDAP search)
+KEYCLOAK_URL=http://keycloak:8080
+KEYCLOAK_REALM=raptor
+KEYCLOAK_ADMIN=admin
+KEYCLOAK_ADMIN_PASSWORD=replace-me
+KEYCLOAK_LOGIN_CLIENT_SECRET=replace-with-a-random-login-client-secret
+KEYCLOAK_BACKEND_CLIENT_SECRET=replace-with-a-random-backend-client-secret
+
+# LDAP (optional; Keycloak user federation + Settings allowlist)
 LDAP_SERVER=ldap.example.com
 LDAP_DOMAIN=example.com
 LDAP_USER=svc_account@example.com
 LDAP_PASS=replace-me
+# Optional LDAP knobs (blank is fine)
+# LDAP_USERS_DN=OU=Users,DC=example,DC=com
+# LDAP_VENDOR=ad
+# LDAP_USE_SSL=false
+# LDAP_START_TLS=false
+# LDAP_TRUSTSTORE=never
+# LDAP_USERNAME_ATTR=sAMAccountName
+
+# Optional OIDC/SAML broker (users must still receive raptor-access in Settings)
+# RAPTOR login stays a password form; password-capable directories (LDAP/AD) can sign in
+# after allowlisting. Broker-only IdP users can be allowlisted once they exist in Keycloak.
+# KEYCLOAK_IDP_ALIAS=corp-oidc
+# KEYCLOAK_IDP_PROVIDER=oidc
+# KEYCLOAK_IDP_DISPLAY_NAME=Corporate SSO
+# KEYCLOAK_IDP_CLIENT_ID=
+# KEYCLOAK_IDP_CLIENT_SECRET=
+# KEYCLOAK_IDP_ISSUER=https://idp.example.com/realms/corp
 
 # FTP (used by pentest report/image storage)
 FTP_USER=raptor_ftp_user
@@ -126,9 +149,7 @@ CERT_FILE=/certs/cert.pem
 KEY_FILE=/certs/key.pem
 
 # Optional hardening knobs
-FAILED_LOGIN_ATTEMPT_LIMIT=5
-LOGIN_LOCKOUT_BASE_MINUTES=1
-LOGIN_LOCKOUT_MAX_MINUTES=0
+# Login brute-force is enforced by Keycloak (5 failures, exponential wait).
 ```
 
 ### 2) Start the stack
@@ -143,7 +164,6 @@ Default dev access:
 
 - URL: `http://localhost:1337`
 - App container port mapping: `1337 -> APP_PORT` (commonly `5000`)
-- SFTP sidecar: `localhost:2222`
 
 ### 2.1) One-time SQLite -> PostgreSQL data migration
 
@@ -275,18 +295,17 @@ Note: the frontend uses relative API paths (for same-origin deployment). If you 
 
 ## Data Ingestion Model
 
-- Backend scans `SHARED_PATH` for files named `*_A_Records`.
-- It parses BIND A-record entries, updates current records, and keeps backups under `BACKUP_FOLDER`.
-- Periodic update interval is controlled by `UPDATE_TIME` (seconds).
-- Admins can trigger an immediate refresh via `POST /manual-update`.
+- Collector agents parse BIND, PowerDNS, or Windows DNS locally and POST RR batches to `POST /collector/v1/ingest`.
+- Cloud DNS connectors (Cloudflare, Route 53, AliDNS, Azure, GCP) pull on the worker.
+- Admins can trigger collectors and cloud sync via `POST /admin/domains/refresh`.
 
 ## Security and Access Control
 
 - Role defaults: `user`, `pentester`, `manager`, `admin`.
 - Optional per-user extra permissions are constrained by role policy.
 - Session controls include idle timeout, extension window, and max active lifetime.
-- Login lockout policy is configurable through env vars.
-- Admin account enforces password-reset flow for bootstrap credentials.
+- Login brute-force protection is handled by Keycloak (allowlist role `raptor-access` is still required).
+- Admin account enforces password-reset flow for bootstrap credentials. The Keycloak console is not the supported admin UI.
 
 ## API Surface (High-Level)
 
@@ -344,8 +363,7 @@ MCP service:
 - App logs: `DATA_PATH/application.log`
 - Runtime database: PostgreSQL (`DATABASE_URL`)
 - Legacy migration source (optional): `DATA_PATH/database.db`
-- Zone-file backups: `BACKUP_FOLDER/<domain>/...`
-- If no assets appear, verify `SHARED_PATH` contains valid `*_A_Records` files and run `POST /manual-update`.
+- If no assets appear, enroll a collector or add a cloud DNS connector and run `POST /admin/domains/refresh`.
 
 MCP token/key rotation runbook:
 
@@ -355,12 +373,19 @@ MCP token/key rotation runbook:
 4. Rotate `MCP_SERVER_TOKEN` secret.
 5. Restart MCP container and update AI client bearer token.
 
+## Third-party notices
+
+Brand marks in Admin Settings, records, and the AI scanner UI come from
+[`@lobehub/icons`](https://github.com/lobehub/lobe-icons) (MIT). The full notice
+and the icon mapping are in [`copyright.md`](copyright.md).
+
 ## Current Focus Areas
 
 - Phase 0 deploy gate: see `docs/phase-0-deploy-gate.md`
 - Phase 1 collector agent: see `docs/phase-1-collector.md`
 - Phase 2a app program (apps, environments, multi-host findings): see `docs/phase-2-app-program.md`
 - Phase 2b waves, export presets, env ACL, zones, shared infra, signed PDFs: see `docs/phase-2b-program.md`
+- Phase 3 cloud DNS connectors (Cloudflare, Route 53, Alibaba, Azure, GCP): see `docs/phase-3-cloud-dns.md`
 - Documentation and onboarding polish
 - Continued hardening of auth/session policies
 - UX refinements in records and pentest workflows

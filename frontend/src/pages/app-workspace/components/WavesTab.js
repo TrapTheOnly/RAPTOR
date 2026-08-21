@@ -21,7 +21,7 @@ const formatDate = (value) => {
   return parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-const WaveRow = ({ wave, environments, canExport, canDelete, onEnd, onDelete, onOpen }) => {
+const WaveRow = ({ wave, environments, canExport, canModify, canDelete, onEnd, onExport, onDelete, onOpen }) => {
   const isOpen = wave.status === 'open';
   const isStarted = Boolean(wave.started_at || wave.started);
   const statusLabel = !isOpen ? 'ended' : isStarted ? 'in progress' : 'not started';
@@ -64,9 +64,14 @@ const WaveRow = ({ wave, environments, canExport, canDelete, onEnd, onDelete, on
       }
       trailing={
         <div style={{ display: 'flex', gap: 8 }} onClick={(event) => event.stopPropagation()}>
-          {canExport && isOpen ? (
-            <Button size="small" variant="contained" onClick={() => onEnd(wave)}>
-              End and export
+          {canExport ? (
+            <Button size="small" variant="contained" onClick={() => onExport(wave)}>
+              Export
+            </Button>
+          ) : null}
+          {canModify && isOpen ? (
+            <Button size="small" onClick={() => onEnd(wave)}>
+              End wave
             </Button>
           ) : null}
           {canDelete ? (
@@ -88,6 +93,7 @@ const WavesTab = ({
   canDelete,
   onCreate,
   onEnd,
+  onExport,
   onDelete,
   onOpen,
   pentestUsers = [],
@@ -96,6 +102,7 @@ const WavesTab = ({
 }) => {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [ending, setEnding] = useState(null);
   const [form, setForm] = useState({ name: '', env_ids: defaultEnvIds, notes: '', members: [] });
 
   const openWaves = waves.filter((wave) => wave.status === 'open');
@@ -120,7 +127,7 @@ const WavesTab = ({
           <Text as="p" variant="meta" tone="secondary" style={{ margin: '4px 0 0', maxWidth: 560 }}>
             {environmentName
               ? `Waves that include ${environmentName}. Start a wave to mark hosts In Progress, file findings, and launch scans.`
-              : 'A wave is the engagement between the customer and the testers. Start it to mark hosts In Progress, file findings, and launch scans. Ending exports the archive and freezes the engagement.'}
+              : 'A wave is the engagement between the customer and the testers. Start it to mark hosts In Progress, file findings, and launch scans. Export a report at any time. Ending freezes the engagement.'}
           </Text>
         </div>
         {canModify ? (
@@ -145,7 +152,7 @@ const WavesTab = ({
           hint={
             environmentName
               ? 'Open a wave that includes this environment. Ended waves that used it stay listed here.'
-              : 'Open a wave against the environments you will test. Findings are filed on the wave. Ending exports the archive and freezes it.'
+              : 'Open a wave against the environments you will test. Findings are filed on the wave. Export a report at any time. Ending freezes the engagement.'
           }
         />
       ) : (
@@ -156,8 +163,10 @@ const WavesTab = ({
               wave={wave}
               environments={environments}
               canExport={canExport}
+              canModify={canModify}
               canDelete={canDelete}
-              onEnd={onEnd}
+              onEnd={setEnding}
+              onExport={onExport}
               onDelete={setDeleting}
               onOpen={onOpen}
             />
@@ -222,6 +231,32 @@ const WavesTab = ({
           value={form.notes}
           onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
         />
+      </Panel>
+
+      <Panel
+        open={Boolean(ending)}
+        onClose={() => setEnding(null)}
+        maxWidth="xs"
+        title={ending ? `End “${ending.name}”?` : 'End wave'}
+        actions={
+          <>
+            <Button onClick={() => setEnding(null)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={async () => {
+                await onEnd(ending);
+                setEnding(null);
+              }}
+            >
+              End wave
+            </Button>
+          </>
+        }
+      >
+        <Text variant="body" tone="secondary">
+          Members, hosts, scans, and findings become read-only. You can still export a report afterwards. The wave
+          cannot be reopened.
+        </Text>
       </Panel>
 
       <Panel

@@ -3,6 +3,7 @@ import { Alert } from '@mui/material';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import {
   Button,
+  Combo,
   EnvTag,
   Field,
   Stepper,
@@ -13,6 +14,7 @@ import {
 import { FONTS, SPACE, TYPE } from '../../../design/tokens';
 import { TRANSITION, disclosureVariants } from '../../../design/motion';
 import { usePalette } from '../../../design/usePalette';
+import { getEnvAcl, putEnvAcl } from '../services';
 
 const emptyForm = {
   display_name: '',
@@ -47,44 +49,108 @@ const Band = ({ eyebrow, hint, children, last = false }) => {
   );
 };
 
-const EnvironmentSettingsTab = ({ env, canManage, globalDestructiveEnabled, onSaveEnvironment }) => {
+const EnvironmentSettingsTab = ({
+  appId,
+  env,
+  canManage,
+  globalDestructiveEnabled,
+  onSaveEnvironment,
+  pentestUsers = []
+}) => {
   const palette = usePalette();
   const [form, setForm] = useState(emptyForm);
   const [dirty, setDirty] = useState(false);
   const [ceilingError, setCeilingError] = useState('');
+  const [aclUsernames, setAclUsernames] = useState([]);
+  const [aclDirty, setAclDirty] = useState(false);
+  const [aclLoaded, setAclLoaded] = useState(false);
+  const [aclVisible, setAclVisible] = useState(false);
+  const [aclError, setAclError] = useState('');
 
   useEffect(() => {
     if (!env) return;
     setForm({
       display_name: env.display_name || '',
-      roe_text: env.roe_text || '',
+      roe_text: canManage ? env.roe_text || '' : '',
       contacts: env.contacts || '',
       data_class: env.data_class || '',
       test_window: env.test_window || '',
-      creds_vault_pointer: env.creds_vault_pointer || '',
+      creds_vault_pointer: canManage ? env.creds_vault_pointer || '' : '',
       include_in_exec_report: Boolean(env.include_in_exec_report),
       allow_destructive: Boolean(env.allow_destructive),
       max_concurrent_scans: Number(env.max_concurrent_scans || 1)
     });
     setDirty(false);
     setCeilingError('');
-  }, [env]);
+  }, [canManage, env]);
+
+  useEffect(() => {
+    if (!env || !appId) {
+      setAclUsernames([]);
+      setAclLoaded(false);
+      setAclVisible(false);
+      setAclDirty(false);
+      setAclError('');
+      return undefined;
+    }
+    let cancelled = false;
+    setAclUsernames([]);
+    setAclLoaded(false);
+    setAclVisible(false);
+    setAclDirty(false);
+    setAclError('');
+    getEnvAcl(appId, env.id)
+      .then((response) => {
+        if (cancelled) return;
+        setAclUsernames(Array.isArray(response.data?.usernames) ? response.data.usernames : []);
+        setAclVisible(true);
+        setAclLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAclUsernames([]);
+        setAclVisible(false);
+        setAclLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [appId, env]);
 
   const update = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setDirty(true);
   };
 
-  const save = () => {
-    const ceiling = Number(form.max_concurrent_scans);
-    if (!Number.isInteger(ceiling) || ceiling < 1 || ceiling > 10) {
-      setCeilingError('Must be a whole number between 1 and 10.');
-      return;
+  const save = async () => {
+    if (dirty) {
+      const ceiling = Number(form.max_concurrent_scans);
+      if (!Number.isInteger(ceiling) || ceiling < 1 || ceiling > 10) {
+        setCeilingError('Must be a whole number between 1 and 10.');
+        return;
+      }
+      setCeilingError('');
+      onSaveEnvironment(form);
+      setDirty(false);
     }
-    setCeilingError('');
-    onSaveEnvironment(form);
-    setDirty(false);
+    if (canManage && aclDirty && appId && env?.id) {
+      try {
+        setAclError('');
+        const response = await putEnvAcl(appId, env.id, { usernames: aclUsernames });
+        setAclUsernames(Array.isArray(response.data?.usernames) ? response.data.usernames : aclUsernames);
+        setAclDirty(false);
+      } catch (error) {
+        setAclError(error?.response?.data?.error || 'Failed to save environment access.');
+      }
+    }
   };
+
+  const aclOpen = aclUsernames.length === 0;
+  const userOptions = [...new Set([...(pentestUsers || []), ...aclUsernames].filter(Boolean))].map((name) => ({
+    value: name,
+    label: name
+  }));
+  const showAclBand = aclLoaded && (canManage || aclVisible);
 
   if (!env) return null;
 
@@ -135,7 +201,7 @@ const EnvironmentSettingsTab = ({ env, canManage, globalDestructiveEnabled, onSa
             }}
           >
             <AnimatePresence initial={false}>
-              {dirty ? (
+              {dirty || aclDirty ? (
                 <motion.span
                   key="dirty-rail"
                   initial={{ opacity: 0, scaleY: 0.4 }}
@@ -178,17 +244,21 @@ const EnvironmentSettingsTab = ({ env, canManage, globalDestructiveEnabled, onSa
 
             {canManage ? (
               <motion.div layout transition={TRANSITION.layout}>
-                <Button variant={dirty ? 'contained' : 'outlined'} disabled={!dirty} onClick={save}>
+                <Button
+                  variant={dirty || aclDirty ? 'contained' : 'outlined'}
+                  disabled={!dirty && !aclDirty}
+                  onClick={save}
+                >
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.span
-                      key={dirty ? 'save' : 'saved'}
+                      key={dirty || aclDirty ? 'save' : 'saved'}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -4 }}
                       transition={TRANSITION.press}
                       style={{ display: 'inline-block' }}
                     >
-                      {dirty ? 'Save changes' : 'Saved'}
+                      {dirty || aclDirty ? 'Save changes' : 'Saved'}
                     </motion.span>
                   </AnimatePresence>
                 </Button>
@@ -196,6 +266,50 @@ const EnvironmentSettingsTab = ({ env, canManage, globalDestructiveEnabled, onSa
             ) : null}
           </div>
 
+          {showAclBand ? (
+            <Band
+              eyebrow="Environment access"
+              hint={
+                canManage
+                  ? 'Empty means open: anyone with pentest view can use this environment. A non-empty list restricts it to those usernames, the app lead, and admins/managers.'
+                  : undefined
+              }
+            >
+              {aclError ? (
+                <Alert severity="error" style={{ marginBottom: SPACE.x12 }}>
+                  {aclError}
+                </Alert>
+              ) : null}
+              {canManage ? (
+                <Combo
+                  label="Allowed testers"
+                  placeholder="Add usernames, or leave empty to keep this environment open"
+                  multiple
+                  freeSolo
+                  mode="enum"
+                  options={userOptions}
+                  value={aclUsernames}
+                  onChange={(value) => {
+                    setAclUsernames(value || []);
+                    setAclDirty(true);
+                  }}
+                  hint={
+                    aclOpen
+                      ? 'Open to anyone with pentest view.'
+                      : `${aclUsernames.length} listed. App lead, admin, and manager still override.`
+                  }
+                />
+              ) : (
+                <Text as="p" variant="meta" tone="secondary" style={{ margin: 0, maxWidth: 560 }}>
+                  {aclOpen
+                    ? 'Open to anyone with pentest view.'
+                    : 'Access is restricted. Listed testers, the app lead, and admins/managers can use this environment.'}
+                </Text>
+              )}
+            </Band>
+          ) : null}
+
+          {canManage ? (
           <Band
             eyebrow="Rules of engagement"
             hint="Standing constraints for this environment. Every wave that includes it inherits this text. Owner packs never include it."
@@ -223,6 +337,7 @@ const EnvironmentSettingsTab = ({ env, canManage, globalDestructiveEnabled, onSa
               }}
             />
           </Band>
+          ) : null}
 
           <Band eyebrow="Facts" last>
             <div className="raptor-env-facts">
@@ -247,6 +362,7 @@ const EnvironmentSettingsTab = ({ env, canManage, globalDestructiveEnabled, onSa
                 disabled={!canManage}
                 onChange={(event) => update('test_window', event.target.value)}
               />
+              {canManage ? (
               <Field
                 label="Credentials vault pointer"
                 placeholder="Path or URL — never paste a secret here"
@@ -254,6 +370,7 @@ const EnvironmentSettingsTab = ({ env, canManage, globalDestructiveEnabled, onSa
                 disabled={!canManage}
                 onChange={(event) => update('creds_vault_pointer', event.target.value)}
               />
+              ) : null}
             </div>
           </Band>
         </div>

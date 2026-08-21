@@ -1,28 +1,25 @@
 import React from 'react';
 import {
-  Box,
   Button,
-  Card,
-  CardContent,
-  Divider,
-  Grid,
-  IconButton,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  Paper,
-  Stack,
-  TextField,
-  Typography
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Save as SaveIcon,
-  Storage as StorageIcon
-} from '@mui/icons-material';
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  Mono,
+  ProviderMark,
+  Surface,
+  Text
+} from '../../../design/primitives';
+import { SPACE } from '../../../design/tokens';
 import SectionHeader from './SectionHeader';
+
+const SOURCE_MARKS = {
+  Cloudflare: 'cloudflare',
+  AWS: 'route53',
+  Azure: 'azure',
+  'Google Cloud': 'gcp',
+  'Alibaba Cloud': 'alidns'
+};
 
 const IpSourcesSection = ({
   loading,
@@ -39,136 +36,106 @@ const IpSourcesSection = ({
   onDeleteIp,
   onSubmitChanges
 }) => (
-  <Card>
-    <CardContent>
-      <SectionHeader icon={StorageIcon} title="IP Sources" />
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Labels are network ownership (Corp, DMZ, partner), not Prod/Dev. Environments live on
-        applications, not here.
-      </Typography>
+  <div>
+    <SectionHeader title="IP Sources" />
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, backgroundColor: 'background.default' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
-              Source Groups
-            </Typography>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(220px, 320px) minmax(0, 1fr)',
+        gap: SPACE.x16,
+        alignItems: 'start'
+      }}
+    >
+      <Surface style={{ padding: SPACE.x16 }}>
+        <Text as="div" variant="bodyStrong" style={{ marginBottom: SPACE.x12 }}>
+          Source groups
+        </Text>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.x12 }}>
+          <Field
+            label="New source name"
+            value={newSourceName}
+            onChange={(event) => setNewSourceName(event.target.value)}
+          />
+          <Button variant="contained" onClick={onAddSourceType} disabled={!newSourceName.trim()}>
+            Add source
+          </Button>
+        </div>
+        <div style={{ marginTop: SPACE.x16 }}>
+          {sourceTypes.length === 0 ? (
+            <Text variant="meta" tone="secondary">
+              No sources yet.
+            </Text>
+          ) : (
+            <DataList>
+              {sourceTypes.map((source) => (
+                <DataRow
+                  key={source}
+                  id={source}
+                  selected={selectedSource === source}
+                  onToggle={() => onSelectSourceType(source)}
+                  leading={
+                    SOURCE_MARKS[source] ? <ProviderMark type={SOURCE_MARKS[source]} size={18} /> : null
+                  }
+                  title={<Text variant="bodyStrong">{source}</Text>}
+                />
+              ))}
+            </DataList>
+          )}
+        </div>
+      </Surface>
 
-            <Stack spacing={1.5}>
-              <TextField
-                size="small"
-                label="New Source Name"
-                value={newSourceName}
-                onChange={(event) => setNewSourceName(event.target.value)}
+      <Surface style={{ padding: SPACE.x16 }}>
+        <Text as="div" variant="bodyStrong" style={{ marginBottom: SPACE.x12 }}>
+          IP addresses
+        </Text>
+        {!selectedSource ? (
+          <Text variant="meta" tone="secondary">
+            Select a source group to manage IPs.
+          </Text>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: SPACE.x8, alignItems: 'flex-end', marginBottom: SPACE.x12 }}>
+              <Field
+                label="Add IP address"
+                value={newIpAddress}
+                onChange={(event) => setNewIpAddress(event.target.value)}
               />
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={onAddSourceType}
-                disabled={!newSourceName.trim()}
-              >
-                Add Source
+              <Button variant="contained" onClick={onAddIp}>
+                Add
               </Button>
-            </Stack>
-
-            <Divider sx={{ my: 2 }} />
-
-            {sourceTypes.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                No sources yet.
-              </Typography>
+            </div>
+            {(ipsBySource[selectedSource] || []).length === 0 ? (
+              <EmptyState title="No IPs for this source yet" />
             ) : (
-              <List dense sx={{ maxHeight: 260, overflow: 'auto' }}>
-                {sourceTypes.map((source) => (
-                  <ListItemButton
-                    key={source}
-                    selected={selectedSource === source}
-                    onClick={() => onSelectSourceType(source)}
-                    sx={{ borderRadius: 1 }}
-                  >
-                    <ListItemText primary={source} />
-                  </ListItemButton>
-                ))}
-              </List>
-            )}
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 2, backgroundColor: 'background.default' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
-              IP Addresses
-            </Typography>
-
-            {!selectedSource ? (
-              <Typography variant="body2" color="text.secondary">
-                Select a source group to manage IPs.
-              </Typography>
-            ) : (
-              <>
-                <Box display="flex" gap={1} mb={2} flexWrap="wrap">
-                  <TextField
-                    size="small"
-                    label="Add IP Address"
-                    value={newIpAddress}
-                    onChange={(event) => setNewIpAddress(event.target.value)}
-                    fullWidth
+              <DataList>
+                {(ipsBySource[selectedSource] || []).map((ip) => (
+                  <DataRow
+                    key={ip}
+                    id={ip}
+                    title={<Mono>{ip}</Mono>}
+                    trailing={
+                      <Button size="small" onClick={() => onDeleteIp(ip)}>
+                        Delete
+                      </Button>
+                    }
                   />
-                  <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={onAddIp}
-                  >
-                    Add
-                  </Button>
-                </Box>
-
-                <Box sx={{ maxHeight: 240, overflow: 'auto' }}>
-                  {(ipsBySource[selectedSource] || []).length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                      No IPs for this source yet.
-                    </Typography>
-                  ) : (
-                    <List dense>
-                      {(ipsBySource[selectedSource] || []).map((ip) => (
-                        <ListItem
-                          key={ip}
-                          secondaryAction={
-                            <IconButton
-                              edge="end"
-                              color="error"
-                              onClick={() => onDeleteIp(ip)}
-                              size="small"
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          }
-                        >
-                          <ListItemText primary={ip} />
-                        </ListItem>
-                      ))}
-                    </List>
-                  )}
-                </Box>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Button
-                  variant="contained"
-                  startIcon={<SaveIcon />}
-                  onClick={onSubmitChanges}
-                  disabled={loading}
-                  fullWidth
-                >
-                  Submit Changes
-                </Button>
-              </>
+                ))}
+              </DataList>
             )}
-          </Paper>
-        </Grid>
-      </Grid>
-    </CardContent>
-  </Card>
+            <Button
+              variant="contained"
+              onClick={onSubmitChanges}
+              disabled={loading}
+              style={{ marginTop: SPACE.x16, width: '100%' }}
+            >
+              Submit changes
+            </Button>
+          </>
+        )}
+      </Surface>
+    </div>
+  </div>
 );
 
 export default IpSourcesSection;

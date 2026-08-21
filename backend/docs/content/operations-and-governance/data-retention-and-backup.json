@@ -24,8 +24,7 @@
         "id": "data-surfaces-and-storage",
         "title": "Data surfaces and storage locations",
         "paragraphs": [
-          "Retention planning must include both relational data and file artifacts. Core metadata and workflow state live in the application database, while report and image artifacts are stored on FTP-backed storage.",
-          "Zone ingestion also creates per-domain backup files with an internal cap, which is separate from full disaster-recovery backups."
+          "Retention planning must include both relational data and file artifacts. Core metadata and workflow state live in the application database, while report and image artifacts are stored on FTP-backed storage."
         ],
         "table": {
           "columns": [
@@ -43,11 +42,6 @@
               "Application log",
               "`DATA_PATH/application.log`",
               "Runtime troubleshooting and event signal log file."
-            ],
-            [
-              "Zone file backups",
-              "`BACKUP_FOLDER/<domain>/*.bak`",
-              "Automatically managed per domain, oldest removed when count exceeds 100."
             ],
             [
               "Report files",
@@ -78,17 +72,12 @@
             [
               "`db_and_backups_volume`",
               "`/appdata`",
-              "Database and zone-file backup root when `DATA_PATH` and `BACKUP_FOLDER` point under `/appdata`."
+              "Database, logs, and other files under `DATA_PATH` when it points under `/appdata`."
             ],
             [
               "`ftp_volume`",
               "`/ftp/reports` and FTP root volume mount",
               "Report artifacts and pentest image files."
-            ],
-            [
-              "`dns_zonefiles_volume`",
-              "`/usr/app/src/shared`",
-              "Input zone files used by ingestion process."
             ]
           ]
         }
@@ -144,8 +133,7 @@
         "orderedList": [
           "Snapshot application database file or configured DB backend with point-in-time safeguards.",
           "Snapshot FTP data store containing report PDFs and pentest images.",
-          "Capture environment configuration for `DATA_PATH`, `BACKUP_FOLDER`, FTP, LDAP, and session policy settings.",
-          "Capture zone backup directory when operational history of source files is required.",
+          "Capture environment configuration for `DATA_PATH`, FTP, LDAP, and session policy settings.",
           "Store backup manifest with timestamp, checksum, and restore instructions."
         ]
       },

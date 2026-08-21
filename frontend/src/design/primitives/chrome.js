@@ -1,7 +1,9 @@
 import React from 'react';
 import { motion } from 'motion/react';
+import { Refresh } from '@mui/icons-material';
 import {
   Button as MuiButton,
+  InputAdornment,
   TextField,
   Dialog,
   DialogTitle,
@@ -93,6 +95,13 @@ export const Button = ({ children, ...rest }) => (
   </MotionButton>
 );
 
+/** View / reload action: outlined grey, same icon everywhere. */
+export const RefreshButton = ({ children = 'Refresh', ...rest }) => (
+  <Button size="small" variant="outlined" startIcon={<Refresh />} {...rest}>
+    {children}
+  </Button>
+);
+
 /**
  * Label sits above the control, never in a field-set notch. Floating labels
  * are what made the old forms look smushed: the caption and the value fought
@@ -105,11 +114,25 @@ export const Field = ({
   helperText,
   fullWidth = true,
   style,
+  trailing,
   ...props
 }) => {
   const palette = usePalette();
-  const { error: errorProp, helperText: helperTextProp, ...inputProps } = props;
+  const { error: errorProp, helperText: helperTextProp, InputProps, slotProps, ...inputProps } = props;
   const message = error || helperText || helperTextProp || hint;
+  const inputSlot = {
+    ...(slotProps?.input || {}),
+    ...InputProps,
+    endAdornment: trailing ? (
+      <>
+        {slotProps?.input?.endAdornment}
+        {InputProps?.endAdornment}
+        <InputAdornment position="end">{trailing}</InputAdornment>
+      </>
+    ) : (
+      slotProps?.input?.endAdornment || InputProps?.endAdornment
+    )
+  };
   return (
     <label
       style={{
@@ -128,9 +151,15 @@ export const Field = ({
         size="small"
         fullWidth={fullWidth}
         {...inputProps}
+        slotProps={{ ...slotProps, input: inputSlot }}
         label={undefined}
         error={Boolean(error) || Boolean(errorProp)}
         helperText={message || undefined}
+        sx={{
+          width: fullWidth ? '100%' : undefined,
+          '& .MuiInputBase-root': { width: '100%', minHeight: 40, boxSizing: 'border-box' },
+          '& .MuiInputBase-input': { minWidth: 0, flex: 1 }
+        }}
       />
     </label>
   );

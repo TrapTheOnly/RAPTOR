@@ -10,6 +10,7 @@ import {
   Page,
   PageHeader,
   Progress,
+  ProviderMark,
   StatusGlyph,
   Surface,
   Tag,
@@ -224,9 +225,10 @@ const Record = ({ userPermissions, userRole }) => {
           {hasConflict ? (
             <Surface style={{ padding: 16, borderColor: palette.severity.critical }}>
               <Text as="p" variant="meta" tone="critical" style={{ margin: 0 }}>
-                This manual domain matches imported DNS data
-                {record.sync_conflict_reason ? ` (${record.sync_conflict_reason})` : ''} and needs admin resolution
-                from the asset inventory.
+                {record.sync_conflict_reason === 'multi_source_a_disagreement'
+                  ? "DNS sources disagree on this host's A record. The pentest IP was left unchanged until an admin picks one."
+                  : 'This manual domain matches imported DNS data and needs admin resolution from the asset inventory.'}
+                {record.sync_conflict_reason ? ` (${record.sync_conflict_reason})` : ''}
               </Text>
             </Surface>
           ) : null}
@@ -306,6 +308,25 @@ const Record = ({ userPermissions, userRole }) => {
                 </Fact>
                 <Fact label="Source">
                   <Text variant="body">{record.source || '—'}</Text>
+                </Fact>
+                <Fact label="Seen by">
+                  {(record.seen_by || []).length ? (
+                    <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+                      {(record.seen_by || []).map((item) => (
+                        <Tag key={`${item.source_id}-${item.ip_address}`}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <ProviderMark type={item.source_type} size={12} />
+                            {item.display_name || item.source_type}
+                            {item.ip_address ? ` · ${item.ip_address}` : ''}
+                          </span>
+                        </Tag>
+                      ))}
+                    </span>
+                  ) : (
+                    <Text variant="body" tone="secondary">
+                      No current DNS source
+                    </Text>
+                  )}
                 </Fact>
                 <Fact label="Created">
                   <Mono tone="secondary">{formatDateTimeFull(record.creation_date)}</Mono>

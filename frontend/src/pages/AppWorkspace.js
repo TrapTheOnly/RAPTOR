@@ -69,7 +69,6 @@ import {
 } from './app-workspace/services';
 import { hasPermission as hasRolePermission } from '../utils/permissions';
 import { peekAppPreview, rememberAppPreview } from './app-workspace/appPreview';
-import { launchAiScan, resetAiScan } from './pentest-record/services';
 
 const PAGE_SIZE = 25;
 const usernamesFrom = (data) => {
@@ -133,7 +132,7 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
 
   const [exportOpen, setExportOpen] = useState(false);
   const [exportPackage, setExportPackage] = useState('owner_delivery');
-  const [endingWave, setEndingWave] = useState(null);
+  const [scopedWave, setScopedWave] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [lastExport, setLastExport] = useState(null);
   const [newFindingOpen, setNewFindingOpen] = useState(false);
@@ -143,7 +142,6 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
   const [attachTarget, setAttachTarget] = useState(null);
   const [waveDetail, setWaveDetail] = useState(null);
   const [hiddenEnvIds, setHiddenEnvIds] = useState([]);
-  const [scanBusyId, setScanBusyId] = useState(null);
   const pendingDeleteRef = useRef(null);
 
   const allEnvironments = useMemo(() => app?.environments || [], [app]);
@@ -388,6 +386,9 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
       const response = await createAppFinding(appId, {
         title: form.title,
         description: form.description,
+        impact: form.impact,
+        evidence: form.evidence,
+        remediation: form.remediation,
         record_id: Number(form.record_id),
         record_ids: (form.record_ids || []).filter((id) => String(id) !== String(form.record_id)),
         auth_context: form.auth_context,
@@ -489,32 +490,14 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
     }
   };
 
-  const handleLaunchScan = async (host) => {
-    setScanBusyId(host.id);
-    try {
-      await launchAiScan(host.id);
-      notify('success', `Scan launched for ${host.name}.`);
-      const livePath = `/pentest/record/${host.id}/scan-live${waveId ? `?wave=${waveId}` : ''}`;
-      navigate(livePath);
-    } catch (error) {
-      failWith(error, 'Failed to launch scan.');
-    } finally {
-      setScanBusyId(null);
-    }
+  const handleLaunchScan = () => {
+    if (!waveId) return;
+    navigate(`/apps/${appId}/waves/${waveId}/scan-live`);
   };
 
-  const handleRestartScan = async (host) => {
-    setScanBusyId(host.id);
-    try {
-      await resetAiScan(host.id);
-      if (waveId) await loadWave();
-      else await loadHosts();
-      notify('success', `Scan reset for ${host.name}.`);
-    } catch (error) {
-      failWith(error, 'Failed to reset scan.');
-    } finally {
-      setScanBusyId(null);
-    }
+  const handleRestartScan = () => {
+    if (!waveId) return;
+    navigate(`/apps/${appId}/waves/${waveId}/scan-live`);
   };
 
   const handleShare = async (consumerAppId) => {
@@ -730,38 +713,50 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
 
   const closeExportSheet = () => {
     setExportOpen(false);
-    setEndingWave(null);
+    setScopedWave(null);
   };
 
   const openExport = (packageKey = 'owner_delivery') => {
-    setEndingWave(null);
+    setScopedWave(null);
     setExportPackage(packageKey);
     setLastExport(null);
     setExportOpen(true);
   };
 
-  const openEndWave = (wave) => {
+  const openExportWave = (wave) => {
     if (!wave) return;
-    setEndingWave(wave);
+    setScopedWave(wave);
     setExportPackage('wave_archive');
     setLastExport(null);
     setExportOpen(true);
   };
 
+  const handleEndWave = async (waveOrId) => {
+    const targetId = typeof waveOrId === 'object' ? waveOrId?.id : waveOrId;
+    if (!targetId) return;
+    try {
+      await closeWave(appId, targetId);
+      await loadProgram();
+      if (waveId) await loadWave();
+      notify('success', 'Wave ended. The engagement is frozen.');
+    } catch (error) {
+      failWith(error, 'Failed to end wave.');
+    }
+  };
+
   const handlePreview = (payload) =>
     previewAppReport(
       appId,
-      endingWave || !envId ? payload : { ...payload, selected_env_ids: [Number(envId)] }
+      envId && !payload?.wave_id ? { ...payload, selected_env_ids: [Number(envId)] } : payload
     );
 
   const handleGenerate = async (payload) => {
-    const waveToEnd = endingWave;
     setGenerating(true);
     try {
       const response =
-        waveToEnd || !envId
-          ? await generateAppReport(appId, payload)
-          : await generateEnvReport(appId, envId, payload);
+        envId && !payload?.wave_id
+          ? await generateEnvReport(appId, envId, payload)
+          : await generateAppReport(appId, payload);
       const exportId = response.data.export_id;
       let verified = null;
       if (exportId) {
@@ -786,18 +781,7 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
         watermark: response.data.watermark,
         verified
       });
-      if (waveToEnd) {
-        try {
-          await closeWave(appId, waveToEnd.id);
-          await loadProgram();
-          if (waveId) await loadWave();
-          notify('success', 'Wave ended. Archive downloaded. The engagement is frozen.');
-        } catch (error) {
-          failWith(error, 'Archive downloaded, but the wave could not be frozen.');
-        }
-      } else {
-        notify('success', 'Export frozen, signed, and downloaded.');
-      }
+      notify('success', 'Export frozen, signed, and downloaded.');
       closeExportSheet();
     } catch (error) {
       failWith(error, 'Failed to generate report.');
@@ -883,7 +867,7 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
         onGenerate={handleGenerate}
         onPreview={handlePreview}
         defaultPackage={exportPackage}
-        lockedWave={endingWave}
+        scopedWave={scopedWave}
         templates={reportTemplates}
         scopeLabel={activeEnv ? `${app.name} · ${activeEnv.display_name}` : app.name}
       />
@@ -938,7 +922,8 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
           canCreateFinding={canModify}
           canDelete={canDeleteWave}
           busyFinding={busyFinding}
-          onEndWave={openEndWave}
+          onEndWave={handleEndWave}
+          onExportWave={openExportWave}
           onStartWave={handleStartWave}
           onDeleteWave={handleDeleteWave}
           onOccurrenceStatusChange={handleOccurrenceStatus}
@@ -955,7 +940,7 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
           canLaunchScan={canModify}
           onLaunchScan={handleLaunchScan}
           onRestartScan={handleRestartScan}
-          scanBusyId={scanBusyId}
+          scanBusy={false}
         />
         {dialogs}
       </>
@@ -1113,8 +1098,10 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
 
       {activeTab === 'env-settings' && (
         <EnvironmentSettingsTab
+          appId={appId}
           env={activeEnv}
           canManage={canManageApps}
+          pentestUsers={pentestUsers}
           onSaveEnvironment={handleSaveEnvironment}
         />
       )}
@@ -1127,7 +1114,8 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
           canExport={canExport}
           canDelete={canDeleteWave}
           onCreate={handleCreateWave}
-          onEnd={openEndWave}
+          onEnd={handleEndWave}
+          onExport={openExportWave}
           onDelete={handleDeleteWave}
           onOpen={(wave) => navigate(`/apps/${appId}/waves/${wave.id}`)}
           pentestUsers={pentestUsers}
