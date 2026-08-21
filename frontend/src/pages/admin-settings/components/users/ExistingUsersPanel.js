@@ -22,31 +22,17 @@ import SectionHeader from '../SectionHeader';
 const PAGE_SIZE = 12;
 
 const iconButtonVars = (palette, tone) => {
-  const ink = palette.text;
-  if (tone === 'delete') {
-    return {
-      '--raptor-users-fill': alpha(ink, 0.1),
-      '--raptor-users-fill-hover': alpha(ink, 0.18),
-      '--raptor-users-fill-press': alpha(ink, 0.28),
-      '--raptor-users-icon': palette.textSecondary,
-      '--raptor-users-icon-hover': palette.text,
-      '--raptor-users-icon-press': palette.text,
-      '--raptor-users-line': palette.line,
-      '--raptor-users-line-hover': palette.lineStrong,
-      '--raptor-users-line-press': palette.lineStrong,
-      '--raptor-users-accent': palette.accent
-    };
-  }
+  const ink = tone === 'delete' ? palette.severity.critical : palette.accent;
   return {
-    '--raptor-users-fill': alpha(ink, 0.04),
-    '--raptor-users-fill-hover': alpha(ink, 0.1),
-    '--raptor-users-fill-press': alpha(ink, 0.18),
-    '--raptor-users-icon': palette.textTertiary,
-    '--raptor-users-icon-hover': palette.textSecondary,
-    '--raptor-users-icon-press': palette.text,
-    '--raptor-users-line': palette.line,
-    '--raptor-users-line-hover': palette.lineStrong,
-    '--raptor-users-line-press': palette.lineStrong,
+    '--raptor-users-fill': alpha(ink, 0.12),
+    '--raptor-users-fill-hover': alpha(ink, 0.2),
+    '--raptor-users-fill-press': alpha(ink, 0.28),
+    '--raptor-users-icon': ink,
+    '--raptor-users-icon-hover': ink,
+    '--raptor-users-icon-press': ink,
+    '--raptor-users-line': alpha(ink, 0.35),
+    '--raptor-users-line-hover': ink,
+    '--raptor-users-line-press': ink,
     '--raptor-users-accent': palette.accent
   };
 };
@@ -294,6 +280,7 @@ const ExistingUsersPanel = ({
             </Button>
             <Button
               variant="contained"
+              color="error"
               onClick={() => {
                 if (!pendingDelete) return;
                 onDeleteUser(pendingDelete.username);

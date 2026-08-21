@@ -6,6 +6,7 @@ import {
   EmptyState,
   Field,
   Mono,
+  Panel,
   Surface,
   SwitchRow,
   Tag,
@@ -37,10 +38,10 @@ const ServiceAccountsPanel = ({
   setSelectedEndDate,
   onCreateKeyForSelectedServiceAccount,
   onSaveSelectedScopes,
-  onViewSelectedKey,
   onRotateSelectedKey,
   visibleApiKey,
-  onCopyVisibleApiKey
+  onCopyVisibleApiKey,
+  onDismissVisibleApiKey
 }) => {
   const selectedAccount =
     serviceAccounts.find((account) => account.username === selectedServiceAccountUsername) || null;
@@ -178,36 +179,43 @@ const ServiceAccountsPanel = ({
                       {selectedAccount.expires_at || 'unknown'}
                     </Text>
                     <div style={{ display: 'flex', gap: SPACE.x8, marginTop: SPACE.x12 }}>
-                      <Button variant="outlined" onClick={onViewSelectedKey} disabled={loading}>
-                        View API key
-                      </Button>
                       <Button variant="contained" onClick={onRotateSelectedKey} disabled={loading}>
                         Rotate key
                       </Button>
                     </div>
+                    <Text as="div" variant="meta" tone="secondary" style={{ marginTop: SPACE.x8 }}>
+                      RAPTOR shows the full key only once, right after you create or rotate it.
+                    </Text>
                   </div>
                 )}
-
-                {visibleApiKey ? (
-                  <div
-                    style={{
-                      marginTop: SPACE.x16,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: SPACE.x12
-                    }}
-                  >
-                    <Mono style={{ wordBreak: 'break-all', flex: 1 }}>{visibleApiKey}</Mono>
-                    <Button size="small" variant="outlined" onClick={onCopyVisibleApiKey}>
-                      Copy
-                    </Button>
-                  </div>
-                ) : null}
               </div>
             </div>
           ) : null}
         </Surface>
       </div>
+
+      <Panel
+        open={Boolean(visibleApiKey)}
+        onClose={onDismissVisibleApiKey}
+        title="Copy this API key"
+        actions={
+          <>
+            <Button variant="outlined" onClick={onCopyVisibleApiKey}>
+              Copy
+            </Button>
+            <Button variant="contained" onClick={onDismissVisibleApiKey}>
+              Done
+            </Button>
+          </>
+        }
+      >
+        <Text variant="body">
+          This is the only time the full key is shown. Copy it now — RAPTOR cannot display it again.
+        </Text>
+        <Mono style={{ display: 'block', marginTop: SPACE.x12, wordBreak: 'break-all' }}>
+          {visibleApiKey}
+        </Mono>
+      </Panel>
     </div>
   );
 };
