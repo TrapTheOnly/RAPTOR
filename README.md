@@ -111,6 +111,8 @@ MCP_ALLOWED_HOSTS=raptor.azercell.com,raptor.azercell.com:443
 MCP_ALLOWED_ORIGINS=https://raptor.azercell.com
 
 KEYCLOAK_URL=http://keycloak:8080
+KEYCLOAK_PUBLIC_URL=http://localhost:8180
+RAPTOR_PUBLIC_URL=http://localhost:1337
 KEYCLOAK_REALM=raptor
 KEYCLOAK_ADMIN=admin
 KEYCLOAK_ADMIN_PASSWORD=replace-me
@@ -131,8 +133,10 @@ LDAP_PASS=replace-me
 # LDAP_USERNAME_ATTR=sAMAccountName
 
 # Optional OIDC/SAML broker (users must still receive raptor-access in Settings)
-# RAPTOR login stays a password form; password-capable directories (LDAP/AD) can sign in
-# after allowlisting. Broker-only IdP users can be allowlisted once they exist in Keycloak.
+# Prefer Settings -> User Management -> Sign-in / SSO. Env vars only seed a provider
+# when that alias does not already exist. RAPTOR login stays a branded form; enabled
+# OIDC/SAML connections appear as Sign in with … buttons (authorization code + kc_idp_hint).
+# Broker-only users must be allowlisted (including before first SSO) in Settings.
 # KEYCLOAK_IDP_ALIAS=corp-oidc
 # KEYCLOAK_IDP_PROVIDER=oidc
 # KEYCLOAK_IDP_DISPLAY_NAME=Corporate SSO
@@ -312,6 +316,9 @@ Note: the frontend uses relative API paths (for same-origin deployment). If you 
 Authentication/session:
 
 - `POST /login`
+- `GET /auth/sso/providers`
+- `GET /auth/sso/{alias}/start`
+- `GET /auth/sso/callback`
 - `GET /session-status`
 - `POST /session/extend`
 - `POST /logout`

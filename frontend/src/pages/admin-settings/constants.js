@@ -35,7 +35,8 @@ export const USER_SUBSECTIONS = [
   { key: 'existing', label: 'Existing Users', tabLabel: 'Existing' },
   { key: 'add-domain', label: 'Add LDAP Users', tabLabel: 'LDAP' },
   { key: 'local', label: 'Add Local Users', tabLabel: 'Local' },
-  { key: 'service-accounts', label: 'Service Accounts', tabLabel: 'Service accounts' }
+  { key: 'service-accounts', label: 'Service Accounts', tabLabel: 'Service accounts' },
+  { key: 'sso', label: 'Sign-in / SSO', tabLabel: 'SSO' }
 ];
 
 export const DOMAIN_SUBSECTIONS = [

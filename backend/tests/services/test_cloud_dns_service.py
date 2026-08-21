@@ -30,3 +30,40 @@ def test_sync_all_pull_sources_skips_bind_agent(monkeypatch):
     result = sync_all_pull_sources(force=False)
     assert result["ok"] is True
     assert synced == [(2, False)]
+
+
+def test_delete_cloud_source_drops_row_and_keeps_hosts(monkeypatch):
+    from app.services import cloud_dns_service
+
+    deleted = []
+    monkeypatch.setattr(
+        cloud_dns_service,
+        "get_dns_source",
+        lambda source_id, **kwargs: {
+            "id": source_id,
+            "type": "cloudflare",
+            "display_name": "Prod CF",
+            "key": "cf-prod",
+        },
+    )
+    monkeypatch.setattr(
+        cloud_dns_service,
+        "delete_dns_source",
+        lambda source_id: deleted.append(source_id) or True,
+    )
+    monkeypatch.setattr(cloud_dns_service, "record_audit_event", lambda **kwargs: None)
+
+    payload, status = cloud_dns_service.delete_cloud_source_service(3, "awadmin")
+    assert status == 200
+    assert deleted == [3]
+    assert payload["ok"] is True
+    assert "kept" in payload["message"].lower()
+
+
+def test_sync_pull_source_skips_deleted_connector(monkeypatch):
+    from app.services import cloud_dns_service
+
+    monkeypatch.setattr(cloud_dns_service, "get_dns_source", lambda *args, **kwargs: None)
+    result = cloud_dns_service.sync_pull_source(9, force=True)
+    assert result["skipped"] is True
+    assert result["reason"] == "deleted"

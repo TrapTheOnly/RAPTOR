@@ -100,6 +100,8 @@ def test_compose_files_include_keycloak_service():
         assert "KEYCLOAK_LOGIN_CLIENT_SECRET" in text
         assert "LDAP_TRUSTSTORE" in text
         assert "KEYCLOAK_IDP_ALIAS" in text
+        assert "KEYCLOAK_PUBLIC_URL" in text
+        assert "RAPTOR_PUBLIC_URL" in text
         assert "raptor-realm.json" in text
         assert "KC_DB_SCHEMA=keycloak" in text
     realm = (root / "deploy/keycloak/raptor-realm.json").read_text(encoding="utf-8")
@@ -107,3 +109,5 @@ def test_compose_files_include_keycloak_service():
     assert "raptor-login" in realm
     assert "raptor-backend" in realm
     assert "raptor-access" in realm
+    assert "standardFlowEnabled" in realm
+    assert "/auth/sso/callback" in realm

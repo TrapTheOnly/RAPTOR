@@ -358,6 +358,33 @@ def provision_ldap_user(
     return user_id
 
 
+def provision_sso_placeholder(
+    username: str,
+    email: str,
+    role: str,
+    permissions: List[str],
+    auth_type: str = "oidc",
+    full_name: Optional[str] = None,
+) -> None:
+    protocol = "saml" if str(auth_type or "").strip().lower() == "saml" else "oidc"
+    client = _client()
+    existing = client.find_user(username)
+    if existing:
+        provision_ldap_user(username, email, role, permissions, full_name=full_name)
+        return
+    sanitized = sanitize_extra_permissions(role, permissions or [])
+    add_allowed_user(
+        username=username,
+        email=email,
+        role=role,
+        auth_type=protocol,
+        permissions_json=json.dumps(sanitized),
+        is_service_account=0,
+        full_name=full_name,
+        keycloak_id=None,
+    )
+
+
 def provision_local_user(
     username: str,
     role: str,
@@ -637,11 +664,18 @@ def migrate_service_account(client: KeycloakClient, row: Dict[str, Any]) -> Opti
     return None
 
 
-def cache_from_login(username: str, role: str, extra_permissions: List[str], keycloak_id: str, auth_type: str) -> None:
+def cache_from_login(
+    username: str,
+    role: str,
+    extra_permissions: List[str],
+    keycloak_id: str,
+    auth_type: str,
+    email: str = "",
+) -> None:
     sanitized = sanitize_extra_permissions(role, extra_permissions)
     upsert_identity_cache(
         username=username,
-        email="",
+        email=email or "",
         role=role,
         auth_type=auth_type if role != "admin" else "local",
         permissions_json=json.dumps(sanitized),
@@ -665,6 +699,7 @@ __all__ = [
     "provision_ldap_user",
     "provision_local_user",
     "provision_service_account",
+    "provision_sso_placeholder",
     "push_service_account_credentials",
     "search_directory_users",
     "set_user_password",

@@ -180,6 +180,64 @@ def update_user_role(username: str, role: str, permissions_json: str, db_path: s
     return rowcount
 
 
+def find_sso_allowlist(
+    username: str,
+    email: str = "",
+    db_path: str = DB_PATH,
+) -> Optional[Dict[str, Any]]:
+    needle_user = str(username or "").strip().lower()
+    needle_email = str(email or "").strip().lower()
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        row = None
+        if needle_user:
+            cursor.execute(
+                """
+                SELECT username, email, role, auth_type, is_service_account, keycloak_id, permissions
+                FROM allowed_users
+                WHERE username = ?
+                """,
+                (needle_user,),
+            )
+            row = cursor.fetchone()
+        if not row and needle_email:
+            cursor.execute(
+                """
+                SELECT username, email, role, auth_type, is_service_account, keycloak_id, permissions
+                FROM allowed_users
+                WHERE lower(email) = ?
+                  AND COALESCE(is_service_account, 0) = 0
+                ORDER BY username
+                LIMIT 1
+                """,
+                (needle_email,),
+            )
+            row = cursor.fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        payload = dict(row)
+    else:
+        payload = {
+            "username": row[0],
+            "email": row[1],
+            "role": row[2],
+            "auth_type": row[3],
+            "is_service_account": row[4],
+            "keycloak_id": row[5],
+            "permissions": row[6],
+        }
+    payload["is_service_account"] = bool(payload.get("is_service_account"))
+    payload["username"] = str(payload.get("username") or "").strip().lower()
+    payload["email"] = str(payload.get("email") or "").strip()
+    payload["role"] = str(payload.get("role") or "user").strip().lower() or "user"
+    payload["auth_type"] = str(payload.get("auth_type") or "").strip().lower()
+    return payload
+
+
 def get_user_role(username: str, db_path: str = DB_PATH) -> Optional[str]:
     conn = get_db_connection(db_path)
     c = conn.cursor()
@@ -259,6 +317,7 @@ def get_user_email(username: str, db_path: str = DB_PATH) -> Optional[str]:
 __all__ = [
     "add_allowed_user",
     "delete_identity",
+    "find_sso_allowlist",
     "get_allowed_user_for_login",
     "get_display_names",
     "get_user_email",

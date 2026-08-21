@@ -3,11 +3,14 @@ from functools import wraps
 from flask import jsonify, session
 
 from app.services.session_policy_service import session_has_expired
+from app.services.sso_auth_service import drop_invalid_identity_session
 
 
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if drop_invalid_identity_session(session):
+            return jsonify({"error": "Session expired"}), 401
         if session_has_expired(update_activity=True):
             session.clear()
             return jsonify({"error": "Session expired"}), 401
@@ -25,6 +28,8 @@ def admin_required(f):
 def admin_or_manager_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if drop_invalid_identity_session(session):
+            return jsonify({"error": "Session expired"}), 401
         if session_has_expired(update_activity=True):
             session.clear()
             return jsonify({"error": "Session expired"}), 401

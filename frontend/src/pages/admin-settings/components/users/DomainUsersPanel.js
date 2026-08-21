@@ -46,8 +46,14 @@ const DomainUsersPanel = ({
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && onSearch()}
+              style={{ flex: 1 }}
             />
-            <Button variant="contained" size="small" onClick={onSearch} disabled={loading}>
+            <Button
+              variant="contained"
+              onClick={onSearch}
+              disabled={loading}
+              style={{ minHeight: 40, height: 40, flexShrink: 0 }}
+            >
               Search
             </Button>
           </div>

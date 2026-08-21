@@ -24,6 +24,7 @@ from app.services.session_policy_service import (
     initialize_session_tracking,
     session_has_expired,
 )
+from app.services.sso_auth_service import attach_grant_tokens, clear_identity_session, drop_invalid_identity_session
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,7 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
         cache_from_login(username, role, extra_permissions, keycloak_id, auth_type)
 
     _establish_session(session_obj, username, role, logged_in=True, reset_required=False)
+    attach_grant_tokens(session_obj, username, grant)
     _audit_login(username)
     return {
         "status": "logged_in",
@@ -133,6 +135,9 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
 
 
 def session_status(session_obj: Any) -> Tuple[Dict[str, Any], int]:
+    if drop_invalid_identity_session(session_obj):
+        return {"status": "logged_out"}, 401
+
     if session_obj.get("logged_in") and session_has_expired(update_activity=False):
         session_obj.clear()
         return {"status": "logged_out"}, 401
@@ -187,6 +192,7 @@ def extend_logged_in_session(session_obj: Any) -> Tuple[Dict[str, Any], int]:
 
 
 def logout(session_obj: Any) -> Tuple[Dict[str, Any], int]:
+    clear_identity_session(session_obj)
     session_obj.clear()
     return {"status": "logged_out"}, 200
 

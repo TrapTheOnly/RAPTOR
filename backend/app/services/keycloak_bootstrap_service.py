@@ -18,6 +18,8 @@ from app.integrations.keycloak.constants import (
     composite_for_role,
     keycloak_base_url,
     login_client_secret,
+    login_redirect_uris,
+    login_web_origins,
 )
 from app.repositories.admin_users_repository import (
     ADMIN_USERNAME,
@@ -35,7 +37,7 @@ _LOGIN_CLIENT_TEMPLATE = {
     "protocol": "openid-connect",
     "publicClient": False,
     "bearerOnly": False,
-    "standardFlowEnabled": False,
+    "standardFlowEnabled": True,
     "implicitFlowEnabled": False,
     "directAccessGrantsEnabled": True,
     "serviceAccountsEnabled": False,
@@ -438,9 +440,22 @@ def _idp_config_from_env() -> Optional[Dict[str, Any]]:
     }
 
 
+def _login_client_representation() -> Dict[str, Any]:
+    return {
+        **_LOGIN_CLIENT_TEMPLATE,
+        "secret": login_client_secret(),
+        "redirectUris": login_redirect_uris(),
+        "webOrigins": login_web_origins(),
+    }
+
+
 def _ensure_identity_provider(client: KeycloakClient) -> None:
     representation = _idp_config_from_env()
     if not representation:
+        return
+    alias = str(representation.get("alias") or "").strip()
+    if client.get_identity_provider(alias):
+        logger.info("Skipping env identity-provider seed; '%s' already exists", alias)
         return
     created = client.ensure_identity_provider(representation)
     logger.info(
@@ -563,7 +578,7 @@ def bootstrap_keycloak() -> None:
                 "ssoSessionMaxLifespan": 28800,
             }
         )
-    login_rep = {**_LOGIN_CLIENT_TEMPLATE, "secret": login_client_secret()}
+    login_rep = _login_client_representation()
     backend_rep = {**_BACKEND_CLIENT_TEMPLATE, "secret": backend_client_secret()}
     login_client = client.ensure_client(login_rep)
     client.ensure_client(backend_rep)

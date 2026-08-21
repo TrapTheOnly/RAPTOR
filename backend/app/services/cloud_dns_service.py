@@ -10,7 +10,7 @@ from app.repositories.dns_sources_repository import (
     CLOUD_SOURCE_TYPES,
     PULL_SOURCE_TYPES,
     create_dns_source,
-    disable_dns_source,
+    delete_dns_source,
     get_dns_source,
     list_dns_sources,
     list_zones_for_source,
@@ -81,7 +81,7 @@ def cursor_from_records(records: List[Any]) -> str:
 def sync_pull_source(source_id: int, *, force: bool = True) -> Dict[str, Any]:
     source = get_dns_source(source_id, decrypt=True, mask=False)
     if not source:
-        raise RuntimeError("DNS source not found.")
+        return {"ok": True, "skipped": True, "reason": "deleted"}
     if source.get("type") not in PULL_SOURCE_TYPES:
         raise RuntimeError("This DNS source is push-only.")
     if not source.get("enabled"):
@@ -323,16 +323,21 @@ def delete_cloud_source_service(source_id: int, actor_username: str) -> Tuple[Di
         return {"error": "DNS source not found."}, 404
     if existing.get("type") not in CLOUD_SOURCE_TYPES:
         return {"error": "This source is managed elsewhere."}, 400
-    disable_dns_source(source_id)
+    deleted = delete_dns_source(source_id)
+    if not deleted:
+        return {"error": "DNS source not found."}, 404
     record_audit_event(
         actor=actor_username or "admin",
         actor_type="user",
-        action="dns_source.disable",
+        action="dns_source.delete",
         entity_type="dns_source",
         entity_id=str(source_id),
-        metadata={},
+        metadata={"type": existing.get("type"), "display_name": existing.get("display_name")},
     )
-    return {"ok": True}, 200
+    return {
+        "ok": True,
+        "message": "Connector deleted. Hosts and observations were kept.",
+    }, 200
 
 
 def list_source_zones_service(source_id: int) -> Tuple[Dict[str, Any], int]:

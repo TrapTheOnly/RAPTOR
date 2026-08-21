@@ -3,6 +3,7 @@ import { Alert, IconButton } from '@mui/material';
 import { Brightness4, Brightness7, Visibility, VisibilityOff } from '@mui/icons-material';
 import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button, Field, Text } from '../design/primitives';
 import { panelVariants } from '../design/motion';
 import { alpha, FONTS, SPACE, TYPE } from '../design/tokens';
@@ -21,6 +22,14 @@ const COMMON_PASSWORDS = new Set([
 
 const CARD_RADIUS = 18;
 
+const SSO_ERROR_MESSAGES = {
+  not_allowlisted: 'This account is not allowed to sign in to RAPTOR.',
+  invalid_state: 'Sign-in could not be completed. Try again.',
+  idp_unavailable: 'The identity provider is unavailable.',
+  access_denied: 'Sign-in was cancelled or denied.',
+  unsupported: 'That sign-in method is not supported.'
+};
+
 const ModernLogin = ({
   setLoggedIn,
   setGlobalUsername,
@@ -35,10 +44,12 @@ const ModernLogin = ({
   setDarkMode
 }) => {
   const palette = usePalette();
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
   const [resetMode, setResetMode] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -49,6 +60,28 @@ const ModernLogin = ({
   useEffect(() => {
     setResetMode(passwordResetRequired);
   }, [passwordResetRequired]);
+
+  useEffect(() => {
+    const code = searchParams.get('sso_error');
+    if (code) {
+      setError(SSO_ERROR_MESSAGES[code] || 'Sign-in failed. Try again.');
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get('/auth/sso/providers')
+      .then((response) => {
+        if (!cancelled) setSsoProviders(response.data?.providers || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSsoProviders([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (resetMode && resetUsername) {
@@ -298,6 +331,27 @@ const ModernLogin = ({
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
+            {ssoProviders.length > 0 ? (
+              <>
+                <Text as="p" variant="micro" tone="tertiary" style={{ margin: `${SPACE.x8}px 0 0`, textAlign: 'center' }}>
+                  or
+                </Text>
+                {ssoProviders.map((provider) => (
+                  <Button
+                    key={provider.alias}
+                    type="button"
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => {
+                      window.location.assign(`/auth/sso/${encodeURIComponent(provider.alias)}/start`);
+                    }}
+                    style={{ minHeight: 44, borderRadius: 12 }}
+                  >
+                    Sign in with {provider.display_name || provider.alias}
+                  </Button>
+                ))}
+              </>
+            ) : null}
           </form>
         )}
       </motion.div>

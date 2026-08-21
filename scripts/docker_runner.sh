@@ -233,6 +233,8 @@ apply_fixed_defaults() {
   export KALI_CLIENT_PATH="${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}"
   export ADMIN_USERNAME="${ADMIN_USERNAME:-awadmin}"
   export KEYCLOAK_URL="${KEYCLOAK_URL:-http://keycloak:8080}"
+  export KEYCLOAK_PUBLIC_URL="${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}"
+  export RAPTOR_PUBLIC_URL="${RAPTOR_PUBLIC_URL:-http://localhost:1337}"
   export KEYCLOAK_REALM="${KEYCLOAK_REALM:-raptor}"
   export KEYCLOAK_ADMIN="${KEYCLOAK_ADMIN:-admin}"
   export KEYCLOAK_LOGIN_CLIENT_ID="${KEYCLOAK_LOGIN_CLIENT_ID:-raptor-login}"
@@ -348,6 +350,9 @@ run_wizard() {
     [[ "$cors_default" == "*" ]] && cors_default=""
     CORS_ORIGINS="$(ask "Public origin allowlist (comma-separated, no *)" "$cors_default")"
     [[ -n "$CORS_ORIGINS" && "$CORS_ORIGINS" != "*" ]] || fail "Production requires an explicit CORS_ORIGINS allowlist."
+    RAPTOR_PUBLIC_URL="$(ask "Public RAPTOR URL (SSO callback origin)" "${RAPTOR_PUBLIC_URL:-${CORS_ORIGINS%%,*}}")"
+    KEYCLOAK_PUBLIC_URL="$(ask "Public Keycloak URL (browser SSO redirects)" "${KEYCLOAK_PUBLIC_URL:-}")"
+    export RAPTOR_PUBLIC_URL KEYCLOAK_PUBLIC_URL
     if ask_yes "Terminate TLS inside the app container? (usually no — reverse proxy does TLS)" "n"; then
       APP_USE_TLS="true"
       CERT_FILE="$(ask "CERT_FILE path in container" "${CERT_FILE:-/certs/cert.pem}")"
@@ -534,6 +539,8 @@ write_env() {
     KEYCLOAK_IDP_ENTITY_ID \
     KEYCLOAK_IDP_SSO_URL \
     KEYCLOAK_URL \
+    KEYCLOAK_PUBLIC_URL \
+    RAPTOR_PUBLIC_URL \
     KEYCLOAK_REALM \
     KEYCLOAK_ADMIN \
     KEYCLOAK_ADMIN_PASSWORD \

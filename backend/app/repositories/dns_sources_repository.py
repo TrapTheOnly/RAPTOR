@@ -138,6 +138,15 @@ def disable_dns_source(source_id: int, db_path: str = DB_PATH) -> bool:
     return bool(updated)
 
 
+def delete_dns_source(source_id: int, db_path: str = DB_PATH) -> bool:
+    with get_db_connection(db_path) as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM dns_sources WHERE id = ?", (source_id,))
+        deleted = c.rowcount
+        conn.commit()
+    return bool(deleted)
+
+
 def record_observations(
     source_id: int,
     records: List[Dict[str, Any]],
@@ -320,6 +329,7 @@ __all__ = [
     "CLOUD_SOURCE_TYPES",
     "PULL_SOURCE_TYPES",
     "create_dns_source",
+    "delete_dns_source",
     "disable_dns_source",
     "get_dns_source",
     "latest_a_observations_for_fqdn",
