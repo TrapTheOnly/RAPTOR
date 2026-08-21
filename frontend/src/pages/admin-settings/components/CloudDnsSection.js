@@ -58,6 +58,7 @@ const CloudDnsSection = ({ showMessage }) => {
   const [form, setForm] = useState(emptyForm);
   const [zones, setZones] = useState([]);
   const [zonesFor, setZonesFor] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -165,8 +166,15 @@ const CloudDnsSection = ({ showMessage }) => {
   };
 
   const toggleEnabled = async (source) => {
+    const enabling = !source.enabled;
     try {
-      await axios.patch(`/admin/dns-sources/${source.id}`, { enabled: !source.enabled });
+      await axios.patch(`/admin/dns-sources/${source.id}`, { enabled: enabling });
+      showMessage?.(
+        'success',
+        enabling
+          ? `${source.display_name} enabled.`
+          : `${source.display_name} disabled. Hosts and observations were kept.`
+      );
       load();
     } catch (error) {
       showMessage?.('error', error.response?.data?.error || 'Failed to update connector.');
@@ -175,11 +183,15 @@ const CloudDnsSection = ({ showMessage }) => {
 
   const remove = async (source) => {
     try {
-      await axios.delete(`/admin/dns-sources/${source.id}`);
-      showMessage?.('success', 'Connector disabled. Observations and hosts were kept.');
+      const response = await axios.delete(`/admin/dns-sources/${source.id}`);
+      showMessage?.(
+        'success',
+        response.data?.message || `${source.display_name} deleted. Hosts and observations were kept.`
+      );
+      setPendingDelete(null);
       load();
     } catch (error) {
-      showMessage?.('error', error.response?.data?.error || 'Failed to disable connector.');
+      showMessage?.('error', error.response?.data?.error || 'Failed to delete connector.');
     }
   };
 
@@ -231,20 +243,26 @@ const CloudDnsSection = ({ showMessage }) => {
                   <Tag>{source.type_label || source.type}</Tag>
                   <Tag>{source.enabled ? 'Enabled' : 'Disabled'}</Tag>
                   <Tag>{`${source.zone_count || 0} zones`}</Tag>
-                  <Button size="small" onClick={() => syncNow(source)}>
+                  <Button size="small" variant="contained" onClick={() => syncNow(source)}>
                     Sync now
                   </Button>
-                  <Button size="small" onClick={() => loadZones(source)}>
+                  <Button size="small" variant="outlined" onClick={() => loadZones(source)}>
                     Zones
                   </Button>
-                  <Button size="small" onClick={() => openEdit(source)}>
+                  <Button size="small" variant="outlined" color="primary" onClick={() => openEdit(source)}>
                     Edit
                   </Button>
-                  <Button size="small" onClick={() => toggleEnabled(source)}>
-                    {source.enabled ? 'Disable' : 'Enable'}
-                  </Button>
-                  <Button size="small" onClick={() => remove(source)}>
-                    Disable
+                  {source.enabled ? (
+                    <Button size="small" variant="outlined" onClick={() => toggleEnabled(source)}>
+                      Disable
+                    </Button>
+                  ) : (
+                    <Button size="small" variant="contained" onClick={() => toggleEnabled(source)}>
+                      Enable
+                    </Button>
+                  )}
+                  <Button size="small" variant="outlined" color="error" onClick={() => setPendingDelete(source)}>
+                    Delete
                   </Button>
                 </div>
               }
@@ -415,6 +433,27 @@ const CloudDnsSection = ({ showMessage }) => {
             </div>
           ))
         )}
+      </Panel>
+
+      <Panel
+        open={Boolean(pendingDelete)}
+        onClose={() => setPendingDelete(null)}
+        title="Delete connector"
+        actions={
+          <>
+            <Button onClick={() => setPendingDelete(null)} variant="outlined">
+              Cancel
+            </Button>
+            <Button variant="contained" color="error" onClick={() => pendingDelete && remove(pendingDelete)}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <Text variant="body">
+          Delete {pendingDelete?.display_name}? RAPTOR will drop this connector and its secrets. Hosts
+          and DNS observations stay.
+        </Text>
       </Panel>
     </div>
   );

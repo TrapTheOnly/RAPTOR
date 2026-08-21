@@ -75,7 +75,7 @@ Admin/manager (admin-only in this slice, matching collectors):
 |--------|------|--------|
 | GET/POST | `/admin/dns-sources` | List/create cloud connectors. Secrets write-only. |
 | PATCH | `/admin/dns-sources/<id>` | Rename, enable, rotate token, zone filters. |
-| DELETE | `/admin/dns-sources/<id>` | Disables the source. Does not delete observations or hosts. |
+| DELETE | `/admin/dns-sources/<id>` | Deletes the connector and its secrets. Observations keep their history (`source_id` is nulled). Hosts are not deleted. |
 | GET | `/admin/dns-sources/<id>/zones` | Last-seen hosted zones from observations. |
 | POST | `/admin/dns-sources/<id>/sync-now` | Enqueues `dns_sync` with `{ source_id }`. |
 | POST | `/admin/domains/refresh` | Collect-now + enqueue enabled cloud pulls. |
