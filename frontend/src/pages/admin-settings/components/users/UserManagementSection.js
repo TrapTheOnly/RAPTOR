@@ -8,7 +8,8 @@ const UserManagementSection = ({
   existingPanel,
   domainPanel,
   localPanel,
-  serviceAccountsPanel
+  serviceAccountsPanel,
+  ssoPanel
 }) => (
   <>
     <style>{`
@@ -132,6 +133,7 @@ const UserManagementSection = ({
     {userManagementPage === 'add-domain' && domainPanel}
     {userManagementPage === 'local' && localPanel}
     {userManagementPage === 'service-accounts' && serviceAccountsPanel}
+    {userManagementPage === 'sso' && ssoPanel}
   </>
 );
 

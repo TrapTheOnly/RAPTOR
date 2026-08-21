@@ -25,7 +25,8 @@ const RESTYLED = [
   './components/users/ExistingUsersPanel.js',
   './components/users/DomainUsersPanel.js',
   './components/users/LocalUsersPanel.js',
-  './components/users/ServiceAccountsPanel.js'
+  './components/users/ServiceAccountsPanel.js',
+  './components/users/SsoConnectionsPanel.js'
 ];
 
 test('restyled settings files use Operator Console primitives', () => {
@@ -53,6 +54,9 @@ test('settings shell uses Page chrome with in-page nav and tabs', () => {
   expect(page).toContain("'/existing-users'");
   expect(page).toContain("'/change-password'");
   expect(page).toContain("'/ip-sources'");
+  expect(page).toContain('onDismissVisibleApiKey');
+  expect(page).toContain('it will not be shown again');
+  expect(page).not.toContain('onViewSelectedKey');
   expect(readSource('./components/CollectorsSection.js')).toContain("'/admin/collectors'");
 });
 
@@ -62,6 +66,8 @@ test('user and domain subpages exist in both nested nav and right-side tabs', ()
   expect(constants).toContain("key: 'add-domain'");
   expect(constants).toContain("key: 'local'");
   expect(constants).toContain("key: 'service-accounts'");
+  expect(constants).toContain("key: 'sso'");
+  expect(constants).toContain("label: 'Sign-in / SSO'");
   expect(constants).toContain("key: 'collectors'");
   expect(constants).toContain("key: 'cloud'");
   expect(constants).toContain("key: 'ip-sources'");
@@ -81,6 +87,9 @@ test('user and domain subpages exist in both nested nav and right-side tabs', ()
   expect(users).toContain('align-items: stretch');
   expect(users).toContain('raptor-users-pane');
   expect(users).toContain('raptor-users-cards');
+  expect(users).toContain('serviceAccountsPanel');
+  expect(users).toContain('ssoPanel');
+  expect(users).toContain("userManagementPage === 'sso'");
 
   const existing = readSource('./components/users/ExistingUsersPanel.js');
   expect(existing).toContain('raptor-users-cards');
@@ -89,6 +98,8 @@ test('user and domain subpages exist in both nested nav and right-side tabs', ()
   expect(existing).toContain('DeleteOutline');
   expect(existing).toContain('PAGE_SIZE');
   expect(existing).toContain('variant="outlined"');
+  expect(existing).toContain('palette.accent');
+  expect(existing).toContain('palette.severity.critical');
   expect(existing).toContain('placeholder="Name, username, role"');
   expect(existing).not.toContain('roleMeta.description');
   expect(existing).not.toContain('>Edit<');
@@ -105,6 +116,19 @@ test('user and domain subpages exist in both nested nav and right-side tabs', ()
   const service = readSource('./components/users/ServiceAccountsPanel.js');
   expect(service).toContain('raptor-users-split');
   expect(service).toContain('Create one on the left.');
+  expect(service).toContain('Copy this API key');
+  expect(service).not.toContain('View API key');
+
+  const sso = readSource('./components/users/SsoConnectionsPanel.js');
+  expect(sso).toContain('Sign-in / SSO');
+  expect(sso).toContain("'/sso/connections'");
+  expect(sso).toContain("'/sso/allowlist'");
+  expect(sso).toContain('OIDC and SAML only');
+  expect(sso).not.toContain('<Select');
+
+  const domainUsers = readSource('./components/users/DomainUsersPanel.js');
+  expect(domainUsers).toContain('minHeight: 40');
+  expect(domainUsers).toContain('Add LDAP Users');
 
   const collectors = readSource('./components/CollectorsSection.js');
   expect(collectors).toContain('OsMark');
@@ -127,6 +151,13 @@ test('user and domain subpages exist in both nested nav and right-side tabs', ()
   expect(cloudDns).toContain('ProviderMark');
   expect(cloudDns).toContain('leading={<ProviderMark type={source.type} size={20} />}');
   expect(cloudDns).toContain("from '../../../design/primitives'");
+  expect(cloudDns).toContain('variant="contained"');
+  expect(cloudDns).toContain('color="primary"');
+  expect(cloudDns).toContain('{source.enabled ? (');
+  expect(cloudDns).toContain('Hosts and observations were kept.');
+  expect(cloudDns).toContain('setPendingDelete');
+  expect(cloudDns).toContain('Delete connector');
+  expect(cloudDns).not.toContain('onClick={() => remove(source)}');
   expect(cloudDns).not.toContain('Pull connectors for Cloudflare');
   expect(cloudDns).not.toContain('Zone.DNS Read');
 

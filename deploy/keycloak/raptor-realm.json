@@ -33,21 +33,25 @@
     {
       "clientId": "raptor-login",
       "name": "RAPTOR login",
-      "description": "Confidential client used by the RAPTOR app for direct-grant login.",
+      "description": "Confidential client used by the RAPTOR app for direct-grant and SSO login.",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "changeme-login",
       "protocol": "openid-connect",
       "publicClient": false,
       "bearerOnly": false,
-      "standardFlowEnabled": false,
+      "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "fullScopeAllowed": true,
-      "redirectUris": [],
-      "webOrigins": [],
+      "redirectUris": [
+        "http://localhost:1337/auth/sso/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:1337"
+      ],
       "attributes": {
         "access.token.lifespan": "3600"
       }

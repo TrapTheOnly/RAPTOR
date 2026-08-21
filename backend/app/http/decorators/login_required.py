@@ -4,6 +4,7 @@ from functools import wraps
 from flask import jsonify, redirect, session
 
 from app.services.session_policy_service import session_has_expired
+from app.services.sso_auth_service import drop_invalid_identity_session
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,8 @@ logger = logging.getLogger(__name__)
 def login_required_json(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
+        if drop_invalid_identity_session(session):
+            return jsonify({"error": "Session expired"}), 401
         if not session.get("logged_in"):
             logger.warning("Unauthorized access attempt to JSON route")
             return jsonify({"error": "Unauthorized"}), 403
@@ -25,6 +28,8 @@ def login_required_json(f):
 def login_required_html(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
+        if drop_invalid_identity_session(session):
+            return redirect("/login")
         if not session.get("logged_in"):
             logger.warning("Unauthorized access attempt to HTML route")
             return redirect("/login")

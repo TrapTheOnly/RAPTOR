@@ -54,6 +54,7 @@ import DomainUsersPanel from './admin-settings/components/users/DomainUsersPanel
 import ExistingUsersPanel from './admin-settings/components/users/ExistingUsersPanel';
 import LocalUsersPanel from './admin-settings/components/users/LocalUsersPanel';
 import ServiceAccountsPanel from './admin-settings/components/users/ServiceAccountsPanel';
+import SsoConnectionsPanel from './admin-settings/components/users/SsoConnectionsPanel';
 import UserManagementSection from './admin-settings/components/users/UserManagementSection';
 import EmailSettingsPanel from './admin-settings/components/EmailSettingsPanel';
 import AiScannerSection from './admin-settings/components/AiScannerSection';
@@ -427,13 +428,18 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     if (!selectedServiceAccount) {
       setSelectedServiceAccountScopes([]);
       setSelectedServiceAccountEndDate('');
-      setVisibleServiceApiKey('');
       return;
     }
     setSelectedServiceAccountScopes(selectedServiceAccount.scopes || []);
     setSelectedServiceAccountEndDate('');
-    setVisibleServiceApiKey('');
   }, [selectedServiceAccount]);
+
+  const handleSelectServiceAccount = (username) => {
+    if (username !== selectedServiceAccountUsername) {
+      setVisibleServiceApiKey('');
+    }
+    setSelectedServiceAccountUsername(username);
+  };
 
   const handleAddSourceType = () => {
     const trimmedName = newSourceName.trim();
@@ -1288,13 +1294,17 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
           end_date: createServiceAccountEndDate || undefined
         });
         if (keyResponse.status === 201 || keyResponse.status === 200) {
-          const account = keyResponse.data?.service_account;
-          setVisibleServiceApiKey(account?.api_key || '');
+          const issuedKey = keyResponse.data?.service_account?.api_key || '';
           setCreateServiceAccountUsername('');
           setCreateServiceAccountEndDate('');
           setCreateServiceAccountScopes(['records.read']);
           setSelectedServiceAccountUsername(username);
-          showMessage('success', 'Service account and API key created.');
+          setVisibleServiceApiKey(issuedKey);
+          if (issuedKey) {
+            showMessage('success', 'Service account created. Copy the API key now — it will not be shown again.');
+          } else {
+            showMessage('error', 'Service account created, but the API key was not returned.');
+          }
           fetchExistingUsers();
           fetchServiceAccounts();
         }
@@ -1328,36 +1338,20 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         }
       );
       if (response.status === 201 || response.status === 200) {
-        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
+        const issuedKey = response.data?.service_account?.api_key || '';
         setSelectedServiceAccountEndDate('');
-        showMessage('success', 'API key created successfully.');
+        setVisibleServiceApiKey(issuedKey);
+        if (issuedKey) {
+          showMessage('success', 'API key created. Copy it now — it will not be shown again.');
+        } else {
+          showMessage('error', 'API key created, but it was not returned.');
+        }
         fetchServiceAccounts();
       }
     } catch (error) {
       showMessage(
         'error',
         error.response?.data?.error || 'Failed to create API key.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleViewSelectedApiKey = async () => {
-    if (!selectedServiceAccountUsername) return;
-    setLoading(true);
-    try {
-      const response = await axios.get(
-        `/service-accounts/${selectedServiceAccountUsername}/api-key`
-      );
-      if (response.status === 200) {
-        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
-        showMessage('success', 'API key loaded.');
-      }
-    } catch (error) {
-      showMessage(
-        'error',
-        error.response?.data?.error || 'Failed to fetch API key.'
       );
     } finally {
       setLoading(false);
@@ -1375,8 +1369,13 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         `/service-accounts/${selectedServiceAccountUsername}/api-key/rotate`
       );
       if (response.status === 200) {
-        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
-        showMessage('success', 'API key rotated successfully.');
+        const issuedKey = response.data?.service_account?.api_key || '';
+        setVisibleServiceApiKey(issuedKey);
+        if (issuedKey) {
+          showMessage('success', 'API key rotated. Copy the new key now — it will not be shown again.');
+        } else {
+          showMessage('error', 'API key rotated, but the new key was not returned.');
+        }
         fetchServiceAccounts();
       }
     } catch (error) {
@@ -1489,7 +1488,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
                 loading={loading}
                 serviceAccounts={serviceAccounts}
                 selectedServiceAccountUsername={selectedServiceAccountUsername}
-                onSelectServiceAccount={setSelectedServiceAccountUsername}
+                onSelectServiceAccount={handleSelectServiceAccount}
                 createUsername={createServiceAccountUsername}
                 setCreateUsername={setCreateServiceAccountUsername}
                 createScopes={createServiceAccountScopes}
@@ -1503,12 +1502,13 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
                 setSelectedEndDate={setSelectedServiceAccountEndDate}
                 onCreateKeyForSelectedServiceAccount={handleCreateKeyForSelectedServiceAccount}
                 onSaveSelectedScopes={handleSaveSelectedServiceScopes}
-                onViewSelectedKey={handleViewSelectedApiKey}
                 onRotateSelectedKey={handleRotateSelectedApiKey}
                 visibleApiKey={visibleServiceApiKey}
                 onCopyVisibleApiKey={handleCopyVisibleApiKey}
+                onDismissVisibleApiKey={() => setVisibleServiceApiKey('')}
               />
             }
+            ssoPanel={<SsoConnectionsPanel showMessage={showMessage} />}
           />
         );
       case 'security':

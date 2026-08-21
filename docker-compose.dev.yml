@@ -63,6 +63,8 @@ services:
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
       - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}
       - KEYCLOAK_URL=${KEYCLOAK_URL:-http://keycloak:8080}
+      - KEYCLOAK_PUBLIC_URL=${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}
+      - RAPTOR_PUBLIC_URL=${RAPTOR_PUBLIC_URL:-http://localhost:1337}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-raptor}
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD must be set}
@@ -278,6 +280,7 @@ services:
       - KC_HEALTH_ENABLED=true
       - KC_HTTP_MANAGEMENT_HEALTH_ENABLED=true
       - KC_HOSTNAME_STRICT=false
+      - KC_HOSTNAME=${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}
     volumes:
       - ./deploy/keycloak/raptor-realm.json:/opt/keycloak/data/import/raptor-realm.json:ro
     networks:

@@ -67,6 +67,49 @@ def _client_roles_from_claims(claims: Dict[str, Any], client_id: str) -> List[st
     return [str(item) for item in roles if item]
 
 
+def _token_success_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    token = str(payload.get("access_token") or "")
+    claims = decode_access_token(token)
+    expires_in = 0
+    try:
+        expires_in = int(payload.get("expires_in") or 0)
+    except (TypeError, ValueError):
+        expires_in = 0
+    if expires_in <= 0:
+        exp = claims.get("exp")
+        if isinstance(exp, (int, float)):
+            expires_in = max(1, int(exp - time.time()))
+        else:
+            expires_in = 3600
+    return {
+        "status": "ok",
+        "access_token": token,
+        "refresh_token": str(payload.get("refresh_token") or ""),
+        "expires_in": expires_in,
+        "claims": claims,
+        "realm_roles": _realm_roles_from_claims(claims),
+        "client_roles": _client_roles_from_claims(claims, LOGIN_CLIENT_ID),
+    }
+
+
+def _parse_token_error(response: httpx.Response) -> Dict[str, Any]:
+    body: Dict[str, Any] = {}
+    try:
+        parsed = response.json()
+        if isinstance(parsed, dict):
+            body = parsed
+    except ValueError:
+        body = {}
+    description = str(body.get("error_description") or body.get("error") or "")
+    lowered = description.lower()
+    if response.status_code in {400, 401} and "not fully set up" in lowered:
+        return {"status": "reset_required", "error": description}
+    if response.status_code in {400, 401}:
+        return {"status": "invalid", "error": description or "Invalid credentials"}
+    logger.error("Keycloak token request unexpected status %s: %s", response.status_code, description)
+    return {"status": "error", "error": description or "identity provider error"}
+
+
 def password_grant(username: str, password: str, timeout: float = 15.0) -> Dict[str, Any]:
     """Resource-owner password grant against raptor-login. Does not raise on 4xx."""
     token_url = f"{keycloak_base_url()}/realms/{REALM}/protocol/openid-connect/token"
@@ -89,32 +132,78 @@ def password_grant(username: str, password: str, timeout: float = 15.0) -> Dict[
         return {"status": "error", "error": "identity provider unavailable"}
 
     if response.status_code == 200:
-        payload = response.json()
-        token = str(payload.get("access_token") or "")
-        claims = decode_access_token(token)
-        return {
-            "status": "ok",
-            "access_token": token,
-            "claims": claims,
-            "realm_roles": _realm_roles_from_claims(claims),
-            "client_roles": _client_roles_from_claims(claims, LOGIN_CLIENT_ID),
-        }
+        return _token_success_payload(response.json())
+    return _parse_token_error(response)
 
-    body: Dict[str, Any] = {}
+
+def authorization_code_grant(
+    code: str,
+    redirect_uri: str,
+    code_verifier: str,
+    timeout: float = 15.0,
+) -> Dict[str, Any]:
+    token_url = f"{keycloak_base_url()}/realms/{REALM}/protocol/openid-connect/token"
     try:
-        parsed = response.json()
-        if isinstance(parsed, dict):
-            body = parsed
-    except ValueError:
-        body = {}
-    description = str(body.get("error_description") or body.get("error") or "")
-    lowered = description.lower()
-    if response.status_code in {400, 401} and "not fully set up" in lowered:
-        return {"status": "reset_required", "error": description}
-    if response.status_code in {400, 401}:
-        return {"status": "invalid", "error": description or "Invalid credentials"}
-    logger.error("Keycloak password grant unexpected status %s: %s", response.status_code, description)
-    return {"status": "error", "error": description or "identity provider error"}
+        response = httpx.post(
+            token_url,
+            data={
+                "grant_type": "authorization_code",
+                "client_id": LOGIN_CLIENT_ID,
+                "client_secret": login_client_secret(),
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "code_verifier": code_verifier,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=timeout,
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Keycloak authorization-code grant failed: %s", exc)
+        return {"status": "error", "error": "identity provider unavailable"}
+    if response.status_code == 200:
+        return _token_success_payload(response.json())
+    return _parse_token_error(response)
+
+
+def refresh_token_grant(refresh_token: str, timeout: float = 15.0) -> Dict[str, Any]:
+    token_url = f"{keycloak_base_url()}/realms/{REALM}/protocol/openid-connect/token"
+    try:
+        response = httpx.post(
+            token_url,
+            data={
+                "grant_type": "refresh_token",
+                "client_id": LOGIN_CLIENT_ID,
+                "client_secret": login_client_secret(),
+                "refresh_token": refresh_token,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=timeout,
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Keycloak refresh grant failed: %s", exc)
+        return {"status": "error", "error": "identity provider unavailable"}
+    if response.status_code == 200:
+        return _token_success_payload(response.json())
+    return _parse_token_error(response)
+
+
+def end_session(refresh_token: str, timeout: float = 15.0) -> None:
+    if not refresh_token:
+        return
+    logout_url = f"{keycloak_base_url()}/realms/{REALM}/protocol/openid-connect/logout"
+    try:
+        httpx.post(
+            logout_url,
+            data={
+                "client_id": LOGIN_CLIENT_ID,
+                "client_secret": login_client_secret(),
+                "refresh_token": refresh_token,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=timeout,
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("Keycloak end-session failed: %s", exc)
 
 
 def client_credentials_grant(
@@ -648,6 +737,9 @@ class KeycloakClient:
             raise KeycloakAdminError(f"Identity provider {alias} was not created")
         return created
 
+    def delete_identity_provider(self, alias: str) -> None:
+        self.request("DELETE", f"/identity-provider/instances/{alias}", expected=(204, 404))
+
     def get_federated_identities(self, user_id: str) -> List[Dict[str, Any]]:
         rows = self.json("GET", f"/users/{user_id}/federated-identity") or []
         return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
@@ -839,7 +931,10 @@ __all__ = [
     "KeycloakAdminError",
     "KeycloakClient",
     "admin_client",
+    "authorization_code_grant",
     "client_credentials_grant",
     "decode_access_token",
+    "end_session",
     "password_grant",
+    "refresh_token_grant",
 ]

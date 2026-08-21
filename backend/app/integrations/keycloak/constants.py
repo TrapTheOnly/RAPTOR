@@ -1,4 +1,6 @@
 import os
+from typing import List
+from urllib.parse import urlparse
 
 from app.domain.auth.permissions import PERMISSIONS, ROLE_DEFAULTS, ROLE_OPTIONAL
 
@@ -33,10 +35,59 @@ BACKEND_MANAGEMENT_ROLES = (
 DIRECT_GRANT_FLOW = "raptor direct grant"
 LDAP_COMPONENT_NAME = "raptor-ldap"
 MASTER_REALM = "master"
+SSO_CALLBACK_PATH = "/auth/sso/callback"
+SSO_PROVIDER_IDS = frozenset({"oidc", "keycloak-oidc", "saml"})
 
 
 def keycloak_base_url() -> str:
     return str(os.getenv("KEYCLOAK_URL") or "http://keycloak:8080").rstrip("/")
+
+
+def keycloak_public_url() -> str:
+    explicit = str(os.getenv("KEYCLOAK_PUBLIC_URL") or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    internal = keycloak_base_url()
+    host = (urlparse(internal).hostname or "").lower()
+    if host in {"keycloak", "raptor-keycloak-dev", "raptor-keycloak-prod"}:
+        return "http://localhost:8180"
+    return internal
+
+
+def raptor_public_url() -> str:
+    explicit = str(os.getenv("RAPTOR_PUBLIC_URL") or os.getenv("PUBLIC_APP_URL") or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    for origin in str(os.getenv("CORS_ORIGINS") or "").split(","):
+        candidate = origin.strip().rstrip("/")
+        if candidate and candidate != "*":
+            return candidate
+    return "http://localhost:1337"
+
+
+def sso_callback_url() -> str:
+    return f"{raptor_public_url()}{SSO_CALLBACK_PATH}"
+
+
+def login_redirect_uris() -> List[str]:
+    uris = {sso_callback_url(), f"http://localhost:1337{SSO_CALLBACK_PATH}"}
+    return sorted(uris)
+
+
+def login_web_origins() -> List[str]:
+    origins = {raptor_public_url(), "http://localhost:1337"}
+    return sorted(origins)
+
+
+def sso_protocol(provider_id: str) -> str:
+    value = str(provider_id or "").strip().lower()
+    if value == "saml":
+        return "saml"
+    return "oidc"
+
+
+def is_supported_sso_provider(provider_id: str) -> bool:
+    return str(provider_id or "").strip().lower() in SSO_PROVIDER_IDS
 
 
 def login_client_secret() -> str:
@@ -95,14 +146,23 @@ __all__ = [
     "ROLE_COMPOSITES",
     "SERVICE_CLIENT_PREFIX",
     "SERVICE_SCOPE_ROLES",
+    "SSO_CALLBACK_PATH",
+    "SSO_PROVIDER_IDS",
     "backend_client_secret",
     "composite_for_role",
     "default_permission_names",
+    "is_supported_sso_provider",
     "keycloak_base_url",
+    "keycloak_public_url",
     "login_client_secret",
+    "login_redirect_uris",
+    "login_web_origins",
     "master_admin_password",
     "master_admin_username",
     "optional_permission_names",
+    "raptor_public_url",
     "role_from_realm_roles",
     "service_client_id",
+    "sso_callback_url",
+    "sso_protocol",
 ]

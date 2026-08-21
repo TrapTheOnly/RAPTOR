@@ -25,7 +25,7 @@
         "id": "authentication-contract",
         "title": "Authentication contract",
         "paragraphs": [
-          "Authentication and authorization are enforced separately. The RAPTOR login form posts to `/login`; Flask validates credentials with Keycloak (direct grant) and then establishes a server-side session. Route visibility and actions still use role plus effective permissions from the identity cache.",
+          "Authentication and authorization are enforced separately. The RAPTOR login form posts to `/login`; Flask validates credentials with Keycloak (direct grant) and then establishes a server-side session. Enabled OIDC/SAML connections add Sign in with … buttons that start `/auth/sso/{alias}/start` and return through `/auth/sso/callback`. The browser keeps the HttpOnly Flask cookie; Keycloak access and refresh tokens stay on the server. Route visibility and actions still use role plus effective permissions from the identity cache.",
           "After login, RAPTOR loads session status and applies capability checks before rendering module navigation and page actions."
         ]
       },

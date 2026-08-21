@@ -15,6 +15,7 @@ from app.services.keycloak_identity_service import (
     provision_ldap_user,
     provision_local_user,
     provision_service_account,
+    provision_sso_placeholder,
     search_directory_users,
     update_optional_permissions,
     update_role,
@@ -83,6 +84,50 @@ def add_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     except Exception as exc:
         logger.error("Error adding user %s: %s", username, exc)
         return {"error": "Failed to add user."}, 500
+
+
+def preprovision_sso_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    username = str(data.get("username") or "").strip().lower()
+    email = str(data.get("email") or "").strip().lower()
+    role = str(data.get("role") or "user").strip().lower()
+    permissions = data.get("permissions") or []
+    auth_type = str(data.get("auth_type") or data.get("protocol") or "oidc").strip().lower()
+    full_name = str(data.get("full_name") or "").strip() or None
+
+    if not username:
+        return {"error": "Username is required."}, 400
+    if username == ADMIN_USERNAME:
+        return {"error": "Username is reserved."}, 400
+    if not email or "@" not in email:
+        return {"error": "A valid email is required."}, 400
+    if role not in ["user", "pentester", "manager"]:
+        return {"error": "Invalid role specified."}, 400
+    if not isinstance(permissions, list):
+        return {"error": "Permissions must be a list."}, 400
+    if auth_type not in {"oidc", "saml"}:
+        return {"error": "Auth type must be oidc or saml."}, 400
+
+    try:
+        provision_sso_placeholder(
+            username,
+            email,
+            role,
+            permissions,
+            auth_type=auth_type,
+            full_name=full_name,
+        )
+        return {
+            "message": f"Allowlisted {username} for {auth_type.upper()} sign-in.",
+            "username": username,
+            "auth_type": auth_type,
+        }, 200
+    except IntegrityError:
+        return {"error": f"User {username} already exists in the system."}, 409
+    except LookupError as exc:
+        return {"error": str(exc)}, 404
+    except Exception as exc:
+        logger.error("Error pre-provisioning SSO user %s: %s", username, exc)
+        return {"error": "Failed to allowlist SSO user."}, 500
 
 
 def add_local_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:

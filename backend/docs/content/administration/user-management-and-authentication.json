@@ -8,6 +8,7 @@
   "coverage": [
     "Create, edit, disable, and reset user access",
     "Domain user onboarding and sync considerations",
+    "OIDC/SAML SSO connections and pre-provision allowlisting",
     "Auth type behavior and constraints",
     "Role assignment governance"
   ],
@@ -24,9 +25,9 @@
         "id": "identity-model-and-storage",
         "title": "Identity model and credential storage",
         "paragraphs": [
-          "RAPTOR keeps the existing login page. The backend validates username and password against Keycloak using a confidential direct-grant client (`raptor-login`). Passwords are not stored in Postgres.",
+          "RAPTOR keeps the existing login page. The backend validates username and password against Keycloak using a confidential client (`raptor-login`) via direct grant. Enabled OIDC or SAML connections also appear as Sign in with … buttons; those use authorization code with `kc_idp_hint` and still establish the same Flask session. Passwords are not stored in Postgres. The browser never holds Keycloak tokens; Flask stores them server-side and refreshes them while the HttpOnly session cookie is the browser credential.",
           "Keycloak is the identity source of truth: realm role `raptor-access` is the allowlist, composite realm roles map to RAPTOR `user` / `pentester` / `manager` / `admin`, and optional permissions are client roles on `raptor-login`. Postgres `allowed_users` is a write-through cache used for collaborators, audit, and request-path authorization.",
-          "Directory users can exist in Keycloak via LDAP/AD user federation or another Keycloak identity provider, but they cannot sign in until an admin adds them in Settings (which assigns `raptor-access`). The Keycloak admin console is not the supported operator UI. RAPTOR login remains a username/password form (Keycloak direct grant), so password-capable federations such as LDAP/AD work after allowlisting. Broker-only OIDC/SAML users can be allowlisted once they exist in Keycloak; they cannot use the RAPTOR password form unless that identity also has a password Keycloak can validate."
+          "Configure OIDC and SAML from `User Management -> Sign-in / SSO`. Other Keycloak identity-provider types (social brokers, Kerberos, custom SPIs) are not supported in RAPTOR Settings and do not appear as login buttons. Directory users can exist in Keycloak via LDAP/AD user federation or an OIDC/SAML broker, but they cannot sign in until an admin allowlists them in Settings (which assigns `raptor-access`). Admins can allowlist by username and email before the IdP user exists in Keycloak; first successful SSO links that row. The Keycloak admin console is an escape hatch for platform engineers, not the supported operator UI. Password-capable federations such as LDAP/AD still use the RAPTOR password form after allowlisting."
         ],
         "table": {
           "columns": [
@@ -52,7 +53,7 @@
               "OIDC / SAML broker user",
               "Keycloak user linked to an identity provider + `allowed_users` cache",
               "`auth_type` is `oidc`, `saml`, or `federated`",
-              "Allowlist works after the user exists in Keycloak. RAPTOR password login only works if Keycloak can validate a password for that account."
+              "Allowlist works after Settings add, including before first SSO. Sign in with the SSO button, not the password form."
             ],
             [
               "Local non-admin user",
@@ -69,7 +70,7 @@
         "paragraphs": [
           "Directory onboarding is handled from `User Management -> Add LDAP Users`. Admins search Keycloak (LDAP user federation plus any other user-storage providers and already-imported identity-provider users). Results can be supplemented from a direct LDAP search when `LDAP_SERVER` is set. Staging selected identities, assigning role and optional permissions, and submitting in batch assigns `raptor-access` so a password-capable federated user can sign in.",
           "Add does not create a second local Keycloak password user. Exact username lookup imports the LDAP account into Keycloak when federation is connected. If the identity is not in Keycloak yet, add fails until federation or the identity provider has imported them.",
-          "Set `LDAP_SERVER`, `LDAP_DOMAIN`, `LDAP_USER`, and `LDAP_PASS` on the app environment so bootstrap can register the `raptor-ldap` user-storage provider. Optional knobs: `LDAP_USERS_DN`, `LDAP_VENDOR`, `LDAP_USE_SSL`, `LDAP_START_TLS`, `LDAP_TRUSTSTORE` (default `never` for private CAs). Optional OIDC/SAML broker: `KEYCLOAK_IDP_ALIAS` plus `KEYCLOAK_IDP_PROVIDER` and the matching issuer or SAML URLs. Additional providers can be added in Keycloak; RAPTOR search and allowlisting still apply.",
+          "Set `LDAP_SERVER`, `LDAP_DOMAIN`, `LDAP_USER`, and `LDAP_PASS` on the app environment so bootstrap can register the `raptor-ldap` user-storage provider. Optional knobs: `LDAP_USERS_DN`, `LDAP_VENDOR`, `LDAP_USE_SSL`, `LDAP_START_TLS`, `LDAP_TRUSTSTORE` (default `never` for private CAs). Configure OIDC/SAML from Settings (`User Management -> Sign-in / SSO`). Optional env seed: `KEYCLOAK_IDP_ALIAS` plus `KEYCLOAK_IDP_PROVIDER` and the matching issuer or SAML URLs, used only when that alias does not already exist. Browser SSO needs `KEYCLOAK_PUBLIC_URL` and `RAPTOR_PUBLIC_URL`. Additional Keycloak provider types are ignored by RAPTOR.",
           "The backend normalizes usernames to lowercase and validates role and permission payloads before insert. Duplicate identity insert attempts fail at the database uniqueness layer."
         ],
         "orderedList": [
