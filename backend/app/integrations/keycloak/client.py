@@ -12,6 +12,9 @@ from app.integrations.keycloak.constants import (
     BACKEND_CLIENT_ID,
     BACKEND_MANAGEMENT_ROLES,
     DIRECT_GRANT_FLOW,
+    FIRST_BROKER_AUTO_LINK,
+    FIRST_BROKER_DETECT_EXISTING,
+    FIRST_BROKER_FLOW,
     LDAP_COMPONENT_NAME,
     LOGIN_CLIENT_ID,
     MASTER_REALM,
@@ -81,12 +84,15 @@ def _token_success_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
             expires_in = max(1, int(exp - time.time()))
         else:
             expires_in = 3600
+    id_token = str(payload.get("id_token") or "")
     return {
         "status": "ok",
         "access_token": token,
+        "id_token": id_token,
         "refresh_token": str(payload.get("refresh_token") or ""),
         "expires_in": expires_in,
         "claims": claims,
+        "id_claims": decode_access_token(id_token) if id_token else {},
         "realm_roles": _realm_roles_from_claims(claims),
         "client_roles": _client_roles_from_claims(claims, LOGIN_CLIENT_ID),
     }
@@ -887,6 +893,138 @@ class KeycloakClient:
                 self.update_realm(realm)
             except KeycloakAdminError as exc:
                 logger.warning("Could not restore built-in direct grant flow: %s", exc)
+
+    def _set_flow_execution_requirement(
+        self,
+        flow_alias: str,
+        execution: Dict[str, Any],
+        requirement: str,
+    ) -> None:
+        body = dict(execution)
+        body["requirement"] = requirement
+        self.request(
+            "PUT",
+            f"/authentication/flows/{flow_alias}/executions",
+            json=body,
+            expected=(202, 204, 400),
+        )
+
+    def _add_flow_execution(self, flow_alias: str, provider: str) -> None:
+        self.request(
+            "POST",
+            f"/authentication/flows/{flow_alias}/executions/execution",
+            json={"provider": provider},
+            expected=(201, 204, 409),
+        )
+
+    def _authentication_flows(self) -> List[Dict[str, Any]]:
+        rows = self.json("GET", "/authentication/flows") or []
+        return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+    def _first_broker_executions(self) -> List[Dict[str, Any]]:
+        rows = self.json("GET", f"/authentication/flows/{FIRST_BROKER_FLOW}/executions") or []
+        return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+    def _top_level_enabled_executions(self, executions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        enabled = [
+            row
+            for row in executions
+            if int(row.get("level") or 0) == 0 and str(row.get("requirement") or "") != "DISABLED"
+        ]
+        return sorted(enabled, key=lambda row: int(row.get("index") or 0))
+
+    def _is_clean_auto_link_flow(self) -> bool:
+        enabled = self._top_level_enabled_executions(self._first_broker_executions())
+        providers = [str(row.get("providerId") or "") for row in enabled]
+        requirements = [str(row.get("requirement") or "") for row in enabled]
+        return providers == [FIRST_BROKER_DETECT_EXISTING, FIRST_BROKER_AUTO_LINK] and requirements == [
+            "REQUIRED",
+            "REQUIRED",
+        ]
+
+    def _create_first_broker_flow(self) -> None:
+        self.request(
+            "POST",
+            "/authentication/flows",
+            json={
+                "alias": FIRST_BROKER_FLOW,
+                "description": "Link corporate SSO only to allowlisted RAPTOR users",
+                "providerId": "basic-flow",
+                "topLevel": True,
+                "builtIn": False,
+            },
+            expected=(201, 204, 409),
+        )
+
+    def _set_idp_first_broker_flow(self, alias: str, flow_alias: str) -> None:
+        existing = self.get_identity_provider(alias)
+        if not existing:
+            return
+        if str(existing.get("firstBrokerLoginFlowAlias") or "") == flow_alias:
+            return
+        existing["firstBrokerLoginFlowAlias"] = flow_alias
+        self.request("PUT", f"/identity-provider/instances/{alias}", json=existing, expected=(204,))
+
+    def _replace_first_broker_flow(self) -> None:
+        """Drop a copied first-broker flow. ALTERNATIVE auto-link is ignored next to REQUIRED steps."""
+        built_in = "first broker login"
+        for idp in self.list_identity_providers():
+            alias = str(idp.get("alias") or "").strip()
+            if alias and str(idp.get("firstBrokerLoginFlowAlias") or "") == FIRST_BROKER_FLOW:
+                self._set_idp_first_broker_flow(alias, built_in)
+        for flow in self._authentication_flows():
+            if str(flow.get("alias") or "") != FIRST_BROKER_FLOW:
+                continue
+            flow_id = str(flow.get("id") or "").strip()
+            if flow_id:
+                self.request("DELETE", f"/authentication/flows/{flow_id}", expected=(204, 404))
+            break
+        self._create_first_broker_flow()
+
+    def _install_auto_link_executions(self) -> None:
+        executions = self._first_broker_executions()
+        have = {
+            str(row.get("providerId") or "")
+            for row in executions
+            if int(row.get("level") or 0) == 0
+        }
+        for provider in (FIRST_BROKER_DETECT_EXISTING, FIRST_BROKER_AUTO_LINK):
+            if provider not in have:
+                self._add_flow_execution(FIRST_BROKER_FLOW, provider)
+        for row in self._first_broker_executions():
+            if int(row.get("level") or 0) != 0:
+                continue
+            if str(row.get("providerId") or "") not in {FIRST_BROKER_DETECT_EXISTING, FIRST_BROKER_AUTO_LINK}:
+                continue
+            if str(row.get("requirement") or "") != "REQUIRED":
+                self._set_flow_execution_requirement(FIRST_BROKER_FLOW, row, "REQUIRED")
+
+    def ensure_raptor_first_broker_flow(self) -> Optional[str]:
+        """Auto-link allowlisted users only. Do not JIT-create broker users.
+
+        Returns the flow alias when detect + auto-link are in place; otherwise None so
+        callers keep Keycloak's built-in first-broker flow.
+        """
+        aliases = {str(flow.get("alias") or "") for flow in self._authentication_flows()}
+        try:
+            if FIRST_BROKER_FLOW in aliases and self._is_clean_auto_link_flow():
+                return FIRST_BROKER_FLOW
+            if FIRST_BROKER_FLOW in aliases:
+                self._replace_first_broker_flow()
+            else:
+                self._create_first_broker_flow()
+            self._install_auto_link_executions()
+        except KeycloakAdminError as exc:
+            logger.warning("Could not ensure RAPTOR first-broker flow: %s", exc)
+            return None
+        if not self._is_clean_auto_link_flow():
+            logger.warning("First-broker detect/auto-link flow is incomplete; leaving built-in flow")
+            return None
+        for idp in self.list_identity_providers():
+            alias = str(idp.get("alias") or "").strip()
+            if alias:
+                self._set_idp_first_broker_flow(alias, FIRST_BROKER_FLOW)
+        return FIRST_BROKER_FLOW
 
     def ensure_service_scope_roles(self, client_uuid: str) -> Dict[str, Dict[str, Any]]:
         mapping = {}

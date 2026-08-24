@@ -96,6 +96,27 @@ def _split_full_name(full_name: Optional[str]) -> Tuple[str, str]:
     return first, last
 
 
+def _sso_placeholder_profile(username: str, full_name: Optional[str] = None) -> Dict[str, str]:
+    """Satisfy required Keycloak user attributes without using the IdP email.
+
+    Auto-link must match username only. A real invite email on the Keycloak
+    user would let a different IdP account claim the placeholder by email.
+    """
+    first_name, last_name = _split_full_name(full_name)
+    handle = str(username or "").strip() or "sso"
+    if not first_name:
+        first_name = handle.split("@", 1)[0] or handle
+    if not last_name:
+        last_name = "SSO"
+    email_local = handle.replace("@", ".")
+    return {
+        "firstName": first_name,
+        "lastName": last_name,
+        "email": f"{email_local}@sso.invalid",
+        "emailVerified": False,
+    }
+
+
 def _source_label(auth_type: str) -> str:
     return {
         "ldap": "LDAP",
@@ -369,20 +390,83 @@ def provision_sso_placeholder(
     protocol = "saml" if str(auth_type or "").strip().lower() == "saml" else "oidc"
     client = _client()
     existing = client.find_user(username)
-    if existing:
-        provision_ldap_user(username, email, role, permissions, full_name=full_name)
-        return
     sanitized = sanitize_extra_permissions(role, permissions or [])
-    add_allowed_user(
-        username=username,
-        email=email,
-        role=role,
-        auth_type=protocol,
-        permissions_json=json.dumps(sanitized),
-        is_service_account=0,
-        full_name=full_name,
-        keycloak_id=None,
-    )
+    first_name, last_name = _split_full_name(full_name)
+    created_new = False
+    if existing:
+        user_id = str(existing["id"])
+        if existing.get("federationLink"):
+            provision_ldap_user(username, email, role, permissions, full_name=full_name)
+            return
+    else:
+        profile = _sso_placeholder_profile(username, full_name)
+        if first_name:
+            profile["firstName"] = first_name
+        if last_name:
+            profile["lastName"] = last_name
+        user_id = client.create_user(
+            {
+                "username": username,
+                "enabled": True,
+                **profile,
+            }
+        )
+        created_new = True
+    try:
+        assign_raptor_roles(client, user_id, role, permissions)
+        add_allowed_user(
+            username=username,
+            email=email,
+            role=role,
+            auth_type=protocol,
+            permissions_json=json.dumps(sanitized),
+            is_service_account=0,
+            full_name=full_name,
+            keycloak_id=user_id,
+        )
+    except Exception:
+        if created_new:
+            try:
+                client.delete_user(user_id)
+            except Exception as exc:
+                logger.error("Could not roll back SSO placeholder %s: %s", username, exc)
+        raise
+
+
+def revoke_unallowlisted_broker_user(keycloak_id: str, username: str = "") -> None:
+    """Delete JIT Keycloak users that have no raptor-access after an SSO deny."""
+    client = _client()
+    user = None
+    if str(keycloak_id or "").strip():
+        user = client.get_user(str(keycloak_id).strip())
+    if not user and username:
+        user = client.find_user(username)
+    if not user:
+        return
+    user_id = str(user.get("id") or "")
+    if not user_id:
+        return
+    if str(user.get("federationLink") or "").strip():
+        logger.info("SSO deny left LDAP user %s untouched", username or user_id)
+        return
+    role_names = {str(row.get("name") or "") for row in client.get_user_realm_roles(user_id)}
+    if ACCESS_ROLE in role_names:
+        logger.warning(
+            "SSO deny for %s who already has raptor-access; leaving Keycloak user",
+            username or user_id,
+        )
+        return
+    try:
+        client.delete_user(user_id)
+        logger.info("Deleted Keycloak user %s after SSO deny (no raptor-access)", username or user_id)
+        return
+    except Exception as exc:
+        logger.error("Could not delete denied broker user %s: %s", username or user_id, exc)
+    try:
+        client.update_user(user_id, {"enabled": False})
+        logger.info("Disabled Keycloak user %s after SSO deny", username or user_id)
+    except Exception as exc:
+        logger.error("Could not disable denied broker user %s: %s", username or user_id, exc)
 
 
 def provision_local_user(
@@ -701,6 +785,7 @@ __all__ = [
     "provision_service_account",
     "provision_sso_placeholder",
     "push_service_account_credentials",
+    "revoke_unallowlisted_broker_user",
     "search_directory_users",
     "set_user_password",
     "update_optional_permissions",

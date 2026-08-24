@@ -2,6 +2,7 @@ import hashlib
 import logging
 import json
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlencode
@@ -10,6 +11,7 @@ from uuid import uuid4
 from app.http.request_utils import normalize_auth_key
 from app.integrations.keycloak.client import (
     authorization_code_grant,
+    decode_access_token,
     end_session,
     refresh_token_grant,
 )
@@ -18,6 +20,7 @@ from app.integrations.keycloak.constants import (
     LOGIN_CLIENT_ID,
     REALM,
     is_supported_sso_provider,
+    keycloak_base_url,
     keycloak_public_url,
     role_from_realm_roles,
     sso_callback_url,
@@ -29,22 +32,134 @@ from app.repositories.sso_token_repository import (
     upsert_session_tokens,
 )
 from app.repositories.users_repository import find_sso_allowlist
-from app.services.keycloak_identity_service import assign_raptor_roles, cache_from_login
+from app.services.keycloak_identity_service import assign_raptor_roles, cache_from_login, revoke_unallowlisted_broker_user
 from app.services.session_policy_service import initialize_session_tracking
 
 logger = logging.getLogger(__name__)
 
+_PUBLIC_SSO_ERROR = "failed"
+_JWKS_CACHE: Dict[str, Any] = {"fetched_at": 0.0, "keys": []}
+_JWKS_TTL_SECONDS = 300
+
 _LOGIN_ERROR_MESSAGES = {
-    "not_allowlisted": "This account is not allowed to sign in to RAPTOR.",
-    "invalid_state": "Sign-in could not be completed. Try again.",
-    "idp_unavailable": "The identity provider is unavailable.",
-    "access_denied": "Sign-in was cancelled or denied.",
-    "unsupported": "That sign-in method is not supported.",
+    "failed": "Sign-in failed. Try again.",
+    "not_allowlisted": "Sign-in failed. Try again.",
+    "invalid_state": "Sign-in failed. Try again.",
+    "idp_unavailable": "Sign-in failed. Try again.",
+    "access_denied": "Sign-in failed. Try again.",
+    "unsupported": "Sign-in failed. Try again.",
 }
 
 
 def login_error_message(code: str) -> str:
     return _LOGIN_ERROR_MESSAGES.get(str(code or "").strip(), "Sign-in failed. Try again.")
+
+
+def public_sso_error(_code: Optional[str] = None) -> str:
+    """Never put allowlist or internal reasons in the login URL."""
+    return _PUBLIC_SSO_ERROR
+
+
+def _b64url_decode(data: str) -> bytes:
+    import base64
+
+    padded = str(data or "") + "=" * (-len(str(data or "")) % 4)
+    return base64.urlsafe_b64decode(padded.encode("ascii"))
+
+
+def _expected_issuers() -> Tuple[str, ...]:
+    return (
+        f"{keycloak_public_url()}/realms/{REALM}",
+        f"{keycloak_base_url()}/realms/{REALM}",
+    )
+
+
+def _id_token_claims_valid(claims: Dict[str, Any], expected_nonce: str) -> bool:
+    if not isinstance(claims, dict) or not claims:
+        return False
+    if not expected_nonce or str(claims.get("nonce") or "") != expected_nonce:
+        return False
+    issuer = str(claims.get("iss") or "").rstrip("/")
+    if issuer not in {item.rstrip("/") for item in _expected_issuers()}:
+        return False
+    audience = claims.get("aud")
+    if isinstance(audience, str):
+        audience = [audience]
+    if not isinstance(audience, list) or LOGIN_CLIENT_ID not in {str(item) for item in audience}:
+        return False
+    exp = claims.get("exp")
+    if not isinstance(exp, (int, float)) or float(exp) <= time.time() - 30:
+        return False
+    return True
+
+
+def _fetch_jwks_keys() -> list:
+    now = time.time()
+    cached_keys = _JWKS_CACHE.get("keys") or []
+    if cached_keys and now - float(_JWKS_CACHE.get("fetched_at") or 0) < _JWKS_TTL_SECONDS:
+        return list(cached_keys)
+    import httpx
+
+    url = f"{keycloak_base_url()}/realms/{REALM}/protocol/openid-connect/certs"
+    try:
+        response = httpx.get(url, timeout=10.0)
+        payload = response.json() if response.status_code == 200 else {}
+    except Exception as exc:
+        logger.warning("Could not fetch Keycloak JWKS: %s", exc)
+        return list(cached_keys)
+    keys = payload.get("keys") if isinstance(payload, dict) else None
+    if not isinstance(keys, list):
+        return list(cached_keys)
+    _JWKS_CACHE["keys"] = keys
+    _JWKS_CACHE["fetched_at"] = now
+    return list(keys)
+
+
+def _id_token_signature_valid(id_token: str) -> bool:
+    parts = str(id_token or "").split(".")
+    if len(parts) != 3:
+        return False
+    try:
+        header = json.loads(_b64url_decode(parts[0]).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    if str(header.get("alg") or "") != "RS256":
+        return False
+    kid = str(header.get("kid") or "")
+    keys = _fetch_jwks_keys()
+    jwk = next((row for row in keys if isinstance(row, dict) and str(row.get("kid") or "") == kid), None)
+    if not jwk and len(keys) == 1 and isinstance(keys[0], dict):
+        jwk = keys[0]
+    if not jwk:
+        return False
+    try:
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+
+        n = int.from_bytes(_b64url_decode(str(jwk.get("n") or "")), "big")
+        e = int.from_bytes(_b64url_decode(str(jwk.get("e") or "")), "big")
+        public_key = RSAPublicNumbers(e, n).public_key(default_backend())
+        public_key.verify(
+            _b64url_decode(parts[2]),
+            f"{parts[0]}.{parts[1]}".encode("ascii"),
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+        return True
+    except Exception as exc:
+        logger.warning("SSO id_token signature check failed: %s", exc)
+        return False
+
+
+def verify_oidc_id_token(id_token: str, expected_nonce: str) -> bool:
+    claims = decode_access_token(id_token)
+    if not _id_token_claims_valid(claims, expected_nonce):
+        return False
+    if not _id_token_signature_valid(id_token):
+        return False
+    return True
 
 
 def _pkce_challenge(verifier: str) -> str:
@@ -139,12 +254,12 @@ def identity_session_valid(session_obj: Any) -> bool:
         return True
     session_key = str(session_obj.get("kc_session_key") or "").strip()
     if not session_key:
-        return True
+        return False
     try:
         row = get_session_tokens(session_key)
     except Exception as exc:
         logger.warning("Could not read Keycloak session tokens: %s", exc)
-        return True
+        return False
     if not row:
         return False
     expires_at = row.get("access_expires_at")
@@ -212,17 +327,34 @@ def _establish(session_obj: Any, username: str, role: str, grant: Dict[str, Any]
         cache_from_login(username, role, extra, keycloak_id, auth_type, email=email)
 
 
+def _deny_sso(
+    reason: str,
+    *,
+    username: str = "",
+    keycloak_id: str = "",
+    revoke: bool = False,
+) -> Tuple[str, str]:
+    logger.warning("SSO denied (%s) user=%s sub=%s", reason, username or "-", keycloak_id or "-")
+    if revoke:
+        try:
+            revoke_unallowlisted_broker_user(keycloak_id, username)
+        except Exception as exc:
+            logger.error("Could not revoke denied broker user %s: %s", username or keycloak_id, exc)
+    return "/login", reason
+
+
 def complete_sso_callback(session_obj: Any, args: Dict[str, Any]) -> Tuple[str, Optional[str]]:
     if args.get("error"):
-        return "/login", "access_denied"
+        return _deny_sso("access_denied")
     expected_state = str(session_obj.get("sso_state") or "")
+    expected_nonce = str(session_obj.get("sso_nonce") or "")
     state = str(args.get("state") or "")
     code = str(args.get("code") or "")
     verifier = str(session_obj.get("sso_code_verifier") or "")
     alias = str(session_obj.get("sso_alias") or "")
     redirect_uri = str(session_obj.get("sso_redirect_uri") or sso_callback_url())
     if not expected_state or not state or state != expected_state or not code or not verifier:
-        return "/login", "invalid_state"
+        return _deny_sso("invalid_state")
     grant = authorization_code_grant(code, redirect_uri, verifier)
     session_obj.pop("sso_state", None)
     session_obj.pop("sso_nonce", None)
@@ -230,17 +362,21 @@ def complete_sso_callback(session_obj: Any, args: Dict[str, Any]) -> Tuple[str, 
     session_obj.pop("sso_alias", None)
     session_obj.pop("sso_redirect_uri", None)
     if grant.get("status") != "ok":
-        return "/login", "idp_unavailable"
-    claims = grant.get("claims") or {}
-    preferred = normalize_auth_key(claims.get("preferred_username") or claims.get("username"))
-    email = str(claims.get("email") or "").strip().lower()
+        return _deny_sso("idp_unavailable")
+    id_token = str(grant.get("id_token") or "")
+    if not verify_oidc_id_token(id_token, expected_nonce):
+        return _deny_sso("invalid_state")
+    claims = grant.get("id_claims") or grant.get("claims") or {}
+    preferred = normalize_auth_key(
+        claims.get("preferred_username") or claims.get("username") or claims.get("email")
+    )
     keycloak_id = str(claims.get("sub") or "")
-    allowlist = find_sso_allowlist(preferred, email)
+    allowlist = find_sso_allowlist(preferred, keycloak_id=keycloak_id)
     if not allowlist or allowlist.get("is_service_account"):
-        return "/login", "not_allowlisted"
+        return _deny_sso("not_allowlisted", username=preferred, keycloak_id=keycloak_id, revoke=True)
     username = allowlist["username"]
     if username == ADMIN_USERNAME:
-        return "/login", "not_allowlisted"
+        return _deny_sso("not_allowlisted", username=username, keycloak_id=keycloak_id, revoke=True)
     realm_roles = list(grant.get("realm_roles") or [])
     if ACCESS_ROLE not in realm_roles or not allowlist.get("keycloak_id"):
         try:
@@ -250,7 +386,7 @@ def complete_sso_callback(session_obj: Any, args: Dict[str, Any]) -> Tuple[str, 
             client = KeycloakClient()
             user = client.get_user(keycloak_id) if keycloak_id else client.find_user(preferred or username)
             if not user:
-                return "/login", "not_allowlisted"
+                return _deny_sso("not_allowlisted", username=username, keycloak_id=keycloak_id, revoke=True)
             if ACCESS_ROLE not in realm_roles:
                 assign_raptor_roles(
                     client,
@@ -263,7 +399,7 @@ def complete_sso_callback(session_obj: Any, args: Dict[str, Any]) -> Tuple[str, 
         except Exception as exc:
             logger.error("Could not link pre-provisioned SSO user %s: %s", username, exc)
             if ACCESS_ROLE not in realm_roles:
-                return "/login", "not_allowlisted"
+                return _deny_sso("not_allowlisted", username=username, keycloak_id=keycloak_id)
     role = allowlist.get("role") or role_from_realm_roles(realm_roles)
     auth_type = allowlist.get("auth_type") or "oidc"
     if auth_type in {"local", "ldap", "service"}:
@@ -290,4 +426,6 @@ __all__ = [
     "drop_invalid_identity_session",
     "identity_session_valid",
     "login_error_message",
+    "public_sso_error",
+    "verify_oidc_id_token",
 ]

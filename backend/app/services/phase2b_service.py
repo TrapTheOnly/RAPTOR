@@ -52,6 +52,18 @@ def _hidden_env_error(
     return None
 
 
+def _wave_accessible_error(
+    app_id: int, wave: Dict[str, Any], username: str, role: str
+) -> Optional[Tuple[Dict[str, Any], int]]:
+    """Deny only when the caller cannot see any environment on the wave."""
+    if not username:
+        return None
+    allowed = visible_env_ids(app_id, username, role)
+    if _filter_wave_to_acl(wave, allowed) is None:
+        return {"error": "Environment is not visible to this user."}, 403
+    return None
+
+
 def _filter_wave_to_acl(wave: Dict[str, Any], allowed: Optional[List[int]]) -> Optional[Dict[str, Any]]:
     if allowed is None:
         return wave
@@ -272,7 +284,7 @@ def set_wave_host_scope(
     blocked = reject_if_closed(wave)
     if blocked:
         return blocked
-    hidden = _hidden_env_error(app_id, wave_env_ids(wave), username, role)
+    hidden = _wave_accessible_error(app_id, wave, username, role)
     if hidden:
         return hidden
     try:
@@ -281,10 +293,19 @@ def set_wave_host_scope(
         return {"error": "record_ids must be integers."}, 400
     if "in_scope" not in (data or {}):
         return {"error": "in_scope is required."}, 400
-    live = {int(item["id"]) for item in phase2b_repository.list_live_wave_hosts(wave)}
+    live_hosts = phase2b_repository.list_live_wave_hosts(wave)
+    live = {int(item["id"]) for item in live_hosts}
     ids = [item for item in record_ids if item in live]
     if not ids:
         return {"error": "Pick hosts that belong to this wave's environments."}, 400
+    scoped_env_ids = [
+        int(item["environment_id"])
+        for item in live_hosts
+        if int(item["id"]) in ids and item.get("environment_id") not in (None, "")
+    ]
+    hidden_hosts = _hidden_env_error(app_id, scoped_env_ids, username, role)
+    if hidden_hosts:
+        return hidden_hosts
     updated = phase2b_repository.set_wave_host_scope(wave_id, ids, bool(data.get("in_scope")))
     return {"updated": updated, "in_scope": bool(data.get("in_scope"))}, 200
 
@@ -307,7 +328,7 @@ def put_wave_members(
     blocked = reject_if_closed(wave)
     if blocked:
         return blocked
-    hidden = _hidden_env_error(app_id, wave_env_ids(wave), username, role)
+    hidden = _wave_accessible_error(app_id, wave, username, role)
     if hidden:
         return hidden
     names = data.get("usernames") if isinstance(data, dict) else None
@@ -331,7 +352,7 @@ def claim_wave_hosts(
     blocked = reject_if_closed(wave)
     if blocked:
         return blocked
-    hidden = _hidden_env_error(app_id, wave_env_ids(wave), username, role)
+    hidden = _wave_accessible_error(app_id, wave, username, role)
     if hidden:
         return hidden
     actor = str(username or "").strip()
@@ -356,7 +377,7 @@ def start_wave(app_id: int, wave_id: int, username: str = "", role: str = "") ->
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
-    hidden = _hidden_env_error(app_id, wave_env_ids(wave), username, role)
+    hidden = _wave_accessible_error(app_id, wave, username, role)
     if hidden:
         return hidden
     if str(wave.get("status") or "") != "open":
@@ -373,7 +394,7 @@ def close_wave(app_id: int, wave_id: int, username: str = "", role: str = "") ->
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found or already closed."}, 404
-    hidden = _hidden_env_error(app_id, wave_env_ids(wave), username, role)
+    hidden = _wave_accessible_error(app_id, wave, username, role)
     if hidden:
         return hidden
     wave = phase2b_repository.close_wave(wave_id, app_id)

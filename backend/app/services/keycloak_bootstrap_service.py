@@ -10,6 +10,7 @@ from app.integrations.keycloak.client import KeycloakAdminError, KeycloakClient
 from app.integrations.keycloak.constants import (
     ACCESS_ROLE,
     BACKEND_CLIENT_ID,
+    FIRST_BROKER_FLOW,
     LDAP_COMPONENT_NAME,
     LOGIN_CLIENT_ID,
     REALM,
@@ -20,6 +21,8 @@ from app.integrations.keycloak.constants import (
     login_client_secret,
     login_redirect_uris,
     login_web_origins,
+    raptor_public_url,
+    realm_issuer_url,
 )
 from app.repositories.admin_users_repository import (
     ADMIN_USERNAME,
@@ -411,7 +414,8 @@ def _idp_config_from_env() -> Optional[Dict[str, Any]]:
             return None
         config.update(
             {
-                "entityId": entity_id,
+                "entityId": realm_issuer_url(),
+                "idpEntityId": entity_id,
                 "singleSignOnServiceUrl": sso_url,
                 "nameIDPolicyFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
                 "principalType": "SUBJECT",
@@ -435,24 +439,36 @@ def _idp_config_from_env() -> Optional[Dict[str, Any]]:
         "trustEmail": True,
         "storeToken": False,
         "linkOnly": False,
-        "firstBrokerLoginFlowAlias": "first broker login",
+        "firstBrokerLoginFlowAlias": FIRST_BROKER_FLOW,
         "config": config,
     }
 
 
 def _login_client_representation() -> Dict[str, Any]:
+    public = raptor_public_url()
     return {
         **_LOGIN_CLIENT_TEMPLATE,
         "secret": login_client_secret(),
         "redirectUris": login_redirect_uris(),
         "webOrigins": login_web_origins(),
+        "rootUrl": public,
+        "baseUrl": f"{public}/login",
     }
 
 
 def _ensure_identity_provider(client: KeycloakClient) -> None:
+    flow_alias = "first broker login"
+    try:
+        ensured = client.ensure_raptor_first_broker_flow()
+        if ensured:
+            flow_alias = ensured
+            logger.info("Using first-broker flow '%s'", flow_alias)
+    except Exception as exc:
+        logger.warning("Could not ensure RAPTOR first-broker flow: %s", exc)
     representation = _idp_config_from_env()
     if not representation:
         return
+    representation["firstBrokerLoginFlowAlias"] = flow_alias
     alias = str(representation.get("alias") or "").strip()
     if client.get_identity_provider(alias):
         logger.info("Skipping env identity-provider seed; '%s' already exists", alias)
@@ -592,6 +608,12 @@ def bootstrap_keycloak() -> None:
         client.ensure_direct_grant_allowlist_flow()
     except KeycloakAdminError as exc:
         logger.warning("Direct-grant allowlist flow setup failed; Flask still enforces raptor-access: %s", exc)
+    try:
+        flow_alias = client.ensure_raptor_first_broker_flow()
+        if flow_alias:
+            logger.info("RAPTOR first-broker flow ready: %s", flow_alias)
+    except Exception as exc:
+        logger.warning("First-broker flow setup failed; RAPTOR still deletes unallowlisted JIT users: %s", exc)
     try:
         _ensure_admin_user(client)
     except KeycloakAdminError as exc:

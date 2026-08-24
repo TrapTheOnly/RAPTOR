@@ -49,4 +49,18 @@ def test_sso_start_redirects_on_error(monkeypatch):
     client = app.test_client()
     response = client.get("/auth/sso/google/start", follow_redirects=False)
     assert response.status_code in {302, 303}
-    assert "sso_error=unsupported" in response.headers["Location"]
+    assert "sso_error=failed" in response.headers["Location"]
+    assert "unsupported" not in response.headers["Location"]
+
+
+def test_sso_callback_hides_allowlist_reason(monkeypatch):
+    monkeypatch.setattr(
+        "app.routes.auth.complete_sso_callback",
+        lambda session_obj, args: ("/login", "not_allowlisted"),
+    )
+    app = make_app()
+    client = app.test_client()
+    response = client.get("/auth/sso/callback?code=x&state=y", follow_redirects=False)
+    assert response.status_code in {302, 303}
+    assert "sso_error=failed" in response.headers["Location"]
+    assert "not_allowlisted" not in response.headers["Location"]
