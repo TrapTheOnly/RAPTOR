@@ -33,9 +33,13 @@ BACKEND_MANAGEMENT_ROLES = (
     "view-identity-providers",
 )
 DIRECT_GRANT_FLOW = "raptor direct grant"
+FIRST_BROKER_FLOW = "raptor first broker"
+FIRST_BROKER_DETECT_EXISTING = "idp-detect-existing-broker-user"
+FIRST_BROKER_AUTO_LINK = "idp-auto-link"
 LDAP_COMPONENT_NAME = "raptor-ldap"
 MASTER_REALM = "master"
 SSO_CALLBACK_PATH = "/auth/sso/callback"
+SSO_START_PATH_TEMPLATE = "/auth/sso/{alias}/start"
 SSO_PROVIDER_IDS = frozenset({"oidc", "keycloak-oidc", "saml"})
 
 
@@ -67,6 +71,29 @@ def raptor_public_url() -> str:
 
 def sso_callback_url() -> str:
     return f"{raptor_public_url()}{SSO_CALLBACK_PATH}"
+
+
+def realm_issuer_url() -> str:
+    return f"{keycloak_public_url()}/realms/{REALM}"
+
+
+def broker_endpoint_url(alias: str) -> str:
+    cleaned = str(alias or "").strip()
+    if not cleaned:
+        return ""
+    return f"{keycloak_public_url()}/realms/{REALM}/broker/{cleaned}/endpoint"
+
+
+def broker_sp_metadata_url(alias: str) -> str:
+    endpoint = broker_endpoint_url(alias)
+    return f"{endpoint}/descriptor" if endpoint else ""
+
+
+def sso_start_url(alias: str) -> str:
+    cleaned = str(alias or "").strip()
+    if not cleaned:
+        return ""
+    return f"{raptor_public_url()}{SSO_START_PATH_TEMPLATE.format(alias=cleaned)}"
 
 
 def login_redirect_uris() -> List[str]:
@@ -138,6 +165,9 @@ __all__ = [
     "BACKEND_MANAGEMENT_ROLES",
     "COMPOSITE_TO_ROLE",
     "DIRECT_GRANT_FLOW",
+    "FIRST_BROKER_AUTO_LINK",
+    "FIRST_BROKER_DETECT_EXISTING",
+    "FIRST_BROKER_FLOW",
     "LDAP_COMPONENT_NAME",
     "LOGIN_CLIENT_ID",
     "MASTER_REALM",
@@ -149,6 +179,8 @@ __all__ = [
     "SSO_CALLBACK_PATH",
     "SSO_PROVIDER_IDS",
     "backend_client_secret",
+    "broker_endpoint_url",
+    "broker_sp_metadata_url",
     "composite_for_role",
     "default_permission_names",
     "is_supported_sso_provider",
@@ -161,8 +193,10 @@ __all__ = [
     "master_admin_username",
     "optional_permission_names",
     "raptor_public_url",
+    "realm_issuer_url",
     "role_from_realm_roles",
     "service_client_id",
     "sso_callback_url",
     "sso_protocol",
+    "sso_start_url",
 ]

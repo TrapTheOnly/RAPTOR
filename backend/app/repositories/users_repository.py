@@ -183,15 +183,29 @@ def update_user_role(username: str, role: str, permissions_json: str, db_path: s
 def find_sso_allowlist(
     username: str,
     email: str = "",
+    keycloak_id: str = "",
     db_path: str = DB_PATH,
 ) -> Optional[Dict[str, Any]]:
+    """Match allowlist by username or stored Keycloak subject. Never by email."""
+    del email
     needle_user = str(username or "").strip().lower()
-    needle_email = str(email or "").strip().lower()
+    needle_id = str(keycloak_id or "").strip()
     conn = get_db_connection(db_path)
     try:
         cursor = conn.cursor()
         row = None
-        if needle_user:
+        if needle_id:
+            cursor.execute(
+                """
+                SELECT username, email, role, auth_type, is_service_account, keycloak_id, permissions
+                FROM allowed_users
+                WHERE keycloak_id = ?
+                  AND COALESCE(is_service_account, 0) = 0
+                """,
+                (needle_id,),
+            )
+            row = cursor.fetchone()
+        if not row and needle_user:
             cursor.execute(
                 """
                 SELECT username, email, role, auth_type, is_service_account, keycloak_id, permissions
@@ -199,19 +213,6 @@ def find_sso_allowlist(
                 WHERE username = ?
                 """,
                 (needle_user,),
-            )
-            row = cursor.fetchone()
-        if not row and needle_email:
-            cursor.execute(
-                """
-                SELECT username, email, role, auth_type, is_service_account, keycloak_id, permissions
-                FROM allowed_users
-                WHERE lower(email) = ?
-                  AND COALESCE(is_service_account, 0) = 0
-                ORDER BY username
-                LIMIT 1
-                """,
-                (needle_email,),
             )
             row = cursor.fetchone()
     finally:

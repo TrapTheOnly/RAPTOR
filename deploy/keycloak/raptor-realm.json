@@ -46,6 +46,8 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "fullScopeAllowed": true,
+      "rootUrl": "http://localhost:1337",
+      "baseUrl": "http://localhost:1337/login",
       "redirectUris": [
         "http://localhost:1337/auth/sso/callback"
       ],

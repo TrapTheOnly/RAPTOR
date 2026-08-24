@@ -1,0 +1,45 @@
+name: corp-idp
+
+# Standalone corporate IdP for RAPTOR SSO testing.
+# Not part of docker-compose.dev.yml and not on raptor_app_network.
+
+services:
+  corp-idp:
+    image: quay.io/keycloak/keycloak:26.3.3
+    container_name: corp-idp
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "8280:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: corp-admin
+      KC_HOSTNAME: http://localhost:8280
+      KC_HOSTNAME_STRICT: false
+      KC_HTTP_ENABLED: true
+      KC_HEALTH_ENABLED: true
+      KC_HTTP_MANAGEMENT_HEALTH_ENABLED: true
+    volumes:
+      - ./realm-corp.json:/opt/keycloak/data/import/realm-corp.json:ro
+      - corp_idp_data:/opt/keycloak/data
+    networks:
+      - default
+      - raptor_app_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000; echo -e \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; timeout 5 cat <&3 | grep -q UP'",
+        ]
+      interval: 10s
+      timeout: 8s
+      retries: 30
+      start_period: 90s
+    restart: unless-stopped
+
+volumes:
+  corp_idp_data:
+
+networks:
+  raptor_app_network:
+    external: true
+    name: raptor_app_network

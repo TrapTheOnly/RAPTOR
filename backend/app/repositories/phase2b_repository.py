@@ -537,7 +537,9 @@ def allowed_environment_ids(
     db_path: str = DB_PATH,
 ) -> Optional[List[int]]:
     """None means unrestricted. List means only those env ids."""
-    if is_override or (app_lead and username == app_lead):
+    actor = str(username or "").strip().lower()
+    lead = str(app_lead or "").strip().lower()
+    if is_override or (lead and actor == lead):
         return None
     with get_db_connection(db_path) as conn:
         conn.row_factory = ROW_AS_DICT
@@ -553,13 +555,14 @@ def allowed_environment_ids(
                 "SELECT username FROM environment_acl WHERE environment_id = ?",
                 (env_id,),
             )
-            names = [
-                row["username"] if isinstance(row, dict) else row[0]
+            names = {
+                str(row["username"] if isinstance(row, dict) else row[0] or "").strip().lower()
                 for row in c.fetchall() or []
-            ]
+            }
+            names.discard("")
             if not names:
                 open_envs.append(env_id)
-            elif username in names:
+            elif actor in names:
                 restricted.append(env_id)
         allowed = sorted(set(open_envs + restricted))
         if set(allowed) == set(env_ids):

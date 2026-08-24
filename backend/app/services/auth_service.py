@@ -81,6 +81,8 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
         auth_type = cached[2] if len(cached) > 2 else "ldap"
         if is_service or auth_type == "service":
             return _invalid_credentials_response(username)
+        if str(auth_type or "").strip().lower() in {"oidc", "saml"}:
+            return _invalid_credentials_response(username)
 
     grant = password_grant(username, password)
     status = grant.get("status")

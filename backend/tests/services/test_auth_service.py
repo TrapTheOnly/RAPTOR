@@ -125,6 +125,22 @@ def test_login_rejects_service_accounts(monkeypatch):
     assert called == []
 
 
+def test_login_rejects_sso_allowlisted_password(monkeypatch):
+    cached = ("alice", "user", "oidc", 0, "kc-1")
+    monkeypatch.setattr(auth_service, "get_allowed_user_for_login", lambda username: cached)
+    called = []
+    monkeypatch.setattr(
+        auth_service,
+        "password_grant",
+        lambda username, password: called.append(username) or {"status": "ok"},
+    )
+
+    payload, status = auth_service.login({"username": "alice", "password": "secret"}, FakeSession())
+    assert status == 401
+    assert payload == {"error": "Invalid credentials"}
+    assert called == []
+
+
 def test_session_status_logged_out_by_default():
     payload, status = auth_service.session_status(FakeSession())
     assert status == 401

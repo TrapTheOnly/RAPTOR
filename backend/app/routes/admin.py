@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, session, request
+from flask import Blueprint, jsonify, session, request, Response
 
 from app.http.request_utils import parse_json_object
 from app.services import offsec_admin_service, service_account_service, sso_settings_service, user_admin_service
@@ -105,6 +105,21 @@ def delete_sso_connection(alias: str):
 def test_sso_connection(alias: str):
     payload, status_code = sso_settings_service.test_connection(alias)
     return jsonify(payload), status_code
+
+
+@admin_bp.route("/sso/connections/<string:alias>/sp-metadata", methods=["GET"])
+@admin_required
+def download_sso_sp_metadata(alias: str):
+    body, status_code, content_type = sso_settings_service.fetch_sp_metadata(alias)
+    if status_code != 200:
+        return jsonify(body), status_code
+    filename = f"{alias}-sp-metadata.xml"
+    return Response(
+        body,
+        status=200,
+        mimetype=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @admin_bp.route("/sso/allowlist", methods=["POST"])

@@ -1,0 +1,130 @@
+{
+  "realm": "corp",
+  "enabled": true,
+  "displayName": "Corp SSO Lab",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "verifyEmail": false,
+  "bruteForceProtected": false,
+  "passwordPolicy": "length(8)",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "internationalizationEnabled": false,
+  "clients": [
+    {
+      "clientId": "raptor-sso",
+      "name": "RAPTOR",
+      "description": "Confidential OIDC client for the RAPTOR Keycloak broker.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "corp-raptor-sso-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8180/*",
+        "http://host.docker.internal:8180/*"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access"]
+    },
+    {
+      "clientId": "http://localhost:8180/realms/raptor",
+      "name": "RAPTOR SAML",
+      "description": "SAML SP client for the RAPTOR Keycloak broker. clientId is RAPTOR's SP entity ID.",
+      "enabled": true,
+      "protocol": "saml",
+      "publicClient": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://localhost:8180/realms/raptor/broker/*"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "saml.assertion.signature": "true",
+        "saml.force.post.binding": "true",
+        "saml.multivalued.roles": "false",
+        "saml.encrypt": "false",
+        "saml.server.signature": "true",
+        "saml.client.signature": "true",
+        "saml.authnstatement": "true",
+        "saml_force_name_id_format": "true",
+        "saml_name_id_format": "username",
+        "saml.allow.ecp.flow": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "username-nameid",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-nameid-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "mapper.nameid.format": "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "jsmith",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Jane",
+      "lastName": "Smith",
+      "email": "jsmith@corp.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CorpSSO123!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "ava.chen",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Ava",
+      "lastName": "Chen",
+      "email": "ava.chen@corp.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CorpSSO123!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "tom.nguyen",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Tom",
+      "lastName": "Nguyen",
+      "email": "tom.nguyen@corp.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "CorpSSO123!",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

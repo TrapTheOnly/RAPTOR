@@ -254,3 +254,129 @@ def test_provision_ldap_user_missing_identity_raises(monkeypatch):
         assert False, "expected LookupError"
     except LookupError as exc:
         assert "missing" in str(exc)
+
+
+def test_provision_sso_placeholder_creates_keycloak_user_without_email(monkeypatch):
+    created = []
+    assigned = []
+    cached = {}
+
+    class FakeClient:
+        def find_user(self, username):
+            return None
+
+        def create_user(self, representation):
+            created.append(representation)
+            return "kc-sso-1"
+
+        def get_realm_role(self, name):
+            return {"name": name}
+
+        def get_client_by_client_id(self, client_id):
+            return {"id": "login-uuid", "clientId": client_id}
+
+        def ensure_client_role(self, login_uuid, name):
+            return {"name": name}
+
+        def replace_user_raptor_realm_roles(self, user_id, roles):
+            assigned.append(("realm", user_id, [row["name"] for row in roles]))
+
+        def replace_user_client_roles(self, user_id, login_uuid, roles):
+            return None
+
+    monkeypatch.setattr(identity, "_client", lambda: FakeClient())
+    monkeypatch.setattr(identity, "add_allowed_user", lambda **kwargs: cached.update(kwargs))
+    identity.provision_sso_placeholder("jsmith", "jsmith@example.com", "user", [], auth_type="oidc")
+    assert created[0]["username"] == "jsmith"
+    assert created[0]["email"] == "jsmith@sso.invalid"
+    assert created[0]["firstName"] == "jsmith"
+    assert created[0]["lastName"] == "SSO"
+    assert cached["email"] == "jsmith@example.com"
+    assert cached["keycloak_id"] == "kc-sso-1"
+    assert cached["auth_type"] == "oidc"
+    assert assigned[0][0] == "realm"
+
+
+def test_sso_placeholder_email_username_stays_valid(monkeypatch):
+    created = []
+
+    class FakeClient:
+        def find_user(self, username):
+            return None
+
+        def create_user(self, representation):
+            created.append(representation)
+            return "kc-google-1"
+
+        def get_realm_role(self, name):
+            return {"name": name}
+
+        def get_client_by_client_id(self, client_id):
+            return {"id": "login-uuid", "clientId": client_id}
+
+        def ensure_client_role(self, login_uuid, name):
+            return {"name": name}
+
+        def replace_user_raptor_realm_roles(self, user_id, roles):
+            return None
+
+        def replace_user_client_roles(self, user_id, login_uuid, roles):
+            return None
+
+    monkeypatch.setattr(identity, "_client", lambda: FakeClient())
+    monkeypatch.setattr(identity, "add_allowed_user", lambda **kwargs: None)
+    identity.provision_sso_placeholder(
+        "ismail.eyyub@gmail.com",
+        "ismail.eyyub@gmail.com",
+        "pentester",
+        [],
+        auth_type="oidc",
+    )
+    assert created[0]["username"] == "ismail.eyyub@gmail.com"
+    assert created[0]["email"] == "ismail.eyyub.gmail.com@sso.invalid"
+    assert created[0]["email"].count("@") == 1
+
+
+def test_revoke_unallowlisted_broker_user_deletes_without_access(monkeypatch):
+    deleted = []
+
+    class FakeClient:
+        def get_user(self, user_id):
+            return {"id": user_id, "username": "mallory"}
+
+        def find_user(self, username):
+            return None
+
+        def get_user_realm_roles(self, user_id):
+            return [{"name": "default-roles-raptor"}]
+
+        def delete_user(self, user_id):
+            deleted.append(user_id)
+
+        def update_user(self, user_id, representation):
+            raise AssertionError("should delete rather than disable")
+
+    monkeypatch.setattr(identity, "_client", lambda: FakeClient())
+    identity.revoke_unallowlisted_broker_user("kc-evil", "mallory")
+    assert deleted == ["kc-evil"]
+
+
+def test_revoke_unallowlisted_broker_user_leaves_ldap_and_access(monkeypatch):
+    deleted = []
+
+    class FakeClient:
+        def get_user(self, user_id):
+            if user_id == "ldap-1":
+                return {"id": user_id, "username": "jane", "federationLink": "ldap"}
+            return {"id": user_id, "username": "alice"}
+
+        def get_user_realm_roles(self, user_id):
+            return [{"name": "raptor-access"}]
+
+        def delete_user(self, user_id):
+            deleted.append(user_id)
+
+    monkeypatch.setattr(identity, "_client", lambda: FakeClient())
+    identity.revoke_unallowlisted_broker_user("ldap-1", "jane")
+    identity.revoke_unallowlisted_broker_user("kc-alice", "alice")
+    assert deleted == []

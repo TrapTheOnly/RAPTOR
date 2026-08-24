@@ -402,7 +402,7 @@ def test_patch_finding_allows_unassigned_finding(monkeypatch):
     assert payload["finding"]["title"] == "kept"
 
 
-def test_create_finding_denies_unassigned_tester(monkeypatch):
+def test_create_finding_allows_unassigned_tester_when_env_open(monkeypatch):
     monkeypatch.setattr(
         app_program_service.applications_repository,
         "fetch_application",
@@ -418,11 +418,28 @@ def test_create_finding_denies_unassigned_tester(monkeypatch):
         "enforce_pentest_record_access",
         lambda *_a, **_k: (False, "You are not allowed to create a finding on this pentest."),
     )
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda *_a, **_k: None)
+    monkeypatch.setattr(app_program_service.phase2b_repository, "find_open_wave_for_env", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "insert_finding",
+        lambda *_a, **_k: "f-new",
+    )
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "replace_finding_collaborators",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {"id": "f-new", "title": "CORS"},
+    )
     payload, status = app_program_service.create_finding(
         1, {"record_id": 11, "title": "CORS"}, "alice", role="pentester"
     )
-    assert status == 403
-    assert "not allowed" in payload["error"]
+    assert status == 201
+    assert payload["finding"]["id"] == "f-new"
 
 
 def test_create_finding_denies_assigned_tester_outside_acl(monkeypatch):
@@ -449,7 +466,29 @@ def test_create_finding_denies_assigned_tester_outside_acl(monkeypatch):
     assert "not visible" in payload["error"]
 
 
-def test_get_finding_denies_viewer(monkeypatch):
+def test_get_finding_allows_unassigned_when_env_open(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {"id": "f1", "record_id": 11, "application_id": 1},
+    )
+    monkeypatch.setattr(
+        app_program_service,
+        "fetch_record_by_id",
+        lambda *_a, **_k: {"id": 11, "application_id": 1, "environment_id": 9, "name": "api.example"},
+    )
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        app_program_service.environments_repository,
+        "fetch_environment",
+        lambda *_a, **_k: {"id": 9, "slug": "prod"},
+    )
+    payload, status = app_program_service.get_finding("f1", username="alice", role="pentester")
+    assert status == 200
+    assert payload["finding"]["id"] == "f1"
+
+
+def test_get_finding_denies_when_env_hidden(monkeypatch):
     monkeypatch.setattr(
         app_program_service.pentest_findings_repository,
         "get_finding",
@@ -457,11 +496,13 @@ def test_get_finding_denies_viewer(monkeypatch):
     )
     monkeypatch.setattr(
         app_program_service,
-        "enforce_pentest_record_access",
-        lambda *_a, **_k: (False, "You are not allowed to view this pentest."),
+        "fetch_record_by_id",
+        lambda *_a, **_k: {"id": 11, "application_id": 1, "environment_id": 9},
     )
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda *_a, **_k: [10])
     payload, status = app_program_service.get_finding("f1", username="alice", role="pentester")
     assert status == 403
+    assert "not visible" in payload["error"]
 
 
 def test_assign_tester_self_claim_allowed(monkeypatch):
