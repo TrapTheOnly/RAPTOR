@@ -6,7 +6,7 @@ import { Brightness4, Brightness7, HelpOutline, Logout } from '@mui/icons-materi
 import { LayoutGroup, motion } from 'motion/react';
 import { hasPermission as hasRolePermission } from '../utils/permissions';
 import NotificationBell from './NotificationBell';
-import { CommandPalette, Mono, Tag, Text } from '../design/primitives';
+import { CommandPalette, RaptorMark, Tag, Text } from '../design/primitives';
 import { LAYOUT, FONTS, SPACE } from '../design/tokens';
 import { LAYOUT_ID, TRANSITION } from '../design/motion';
 import { usePalette } from '../design/usePalette';
@@ -97,15 +97,22 @@ const ModernHeader = ({
         <button
           type="button"
           onClick={() => navigate(getDefaultRoute())}
+          aria-label="RAPTOR home"
           style={{
             background: 'transparent',
             border: 0,
             padding: 0,
             cursor: 'pointer',
-            color: palette.text
+            color: palette.text,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            minHeight: 0,
+            overflow: 'hidden'
           }}
         >
-          <Mono style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.14em' }}>RAPTOR</Mono>
+          <RaptorMark variant="mark" decorative />
+          <RaptorMark variant="wordmark" alt="RAPTOR" />
         </button>
 
         <LayoutGroup>

@@ -4,9 +4,9 @@ import { Brightness4, Brightness7, Visibility, VisibilityOff } from '@mui/icons-
 import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Field, Text } from '../design/primitives';
+import { Button, Field, RaptorMark, Text } from '../design/primitives';
 import { panelVariants } from '../design/motion';
-import { alpha, FONTS, SPACE, TYPE } from '../design/tokens';
+import { alpha, SPACE } from '../design/tokens';
 import { usePalette } from '../design/usePalette';
 import Starfield from './login/Starfield';
 
@@ -252,21 +252,15 @@ const ModernLogin = ({
           WebkitBackdropFilter: 'blur(16px)'
         }}
       >
-        <Text
-          as="h1"
+        <div
           style={{
-            ...TYPE.h1,
-            fontFamily: FONTS.sans,
-            fontWeight: 700,
-            fontSize: 28,
-            letterSpacing: '0.18em',
-            color: palette.text,
-            textAlign: 'center',
+            display: 'flex',
+            justifyContent: 'center',
             margin: `0 0 ${SPACE.x32}px`
           }}
         >
-          RAPTOR
-        </Text>
+          <RaptorMark variant="lockup" height={192} alt="RAPTOR" style={{ maxWidth: '100%' }} />
+        </div>
 
         {resetMode ? (
           <form onSubmit={handleResetSubmit} style={{ display: 'flex', flexDirection: 'column', gap: SPACE.x16 }}>

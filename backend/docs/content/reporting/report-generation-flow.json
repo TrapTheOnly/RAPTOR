@@ -81,7 +81,7 @@
         "title": "How report content is assembled",
         "paragraphs": [
           "The builder produces a typed `ReportContext`: scope, package, application, environments, optional wave, hosts, findings with occurrence rows, and metrics. Occurrence-status counts use open-like and closed vocabularies. Findings never stringify hosts into the description field.",
-          "The renderer lints tokens, draws named cover / header / footer regions, and walks template blocks in order. Empty host-only blocks omit. Footer chrome is company name and date. Brand kit print ink and logo override template hex wells at generate time. Severity and occurrence charts stay together on the page after overview, snapshot, and table of contents."
+          "The renderer lints tokens, draws named cover / header / footer regions, and walks template blocks in order. Empty host-only blocks omit. Footer chrome is the RAPTOR lockup at the bottom-left, then company name and date. Brand kit print ink and logo override template hex wells at generate time. Severity and occurrence charts stay together on the page after overview, snapshot, and table of contents."
         ],
         "table": {
           "columns": [
@@ -133,7 +133,7 @@
           "Save pentest or finding edits so the database holds the latest state.",
           "Host track: choose a template under Generated Report, then Generate Report.",
           "Sheet track: open Export sheet, choose package (`owner_delivery`, `wave_archive`, `retest_pack`, or `internal_draft`), environments or wave, and a template whose `supported_scopes` match.",
-          "Confirm the export scope, generate, then download. Classification lives on the cover; the footer is company name and date.",
+          "Confirm the export scope, generate, then download. Classification lives on the cover; the footer is the RAPTOR lockup, company name, and date.",
           "If output is stale, save again and regenerate. Generation always reads persisted state."
         ],
         "tip": {

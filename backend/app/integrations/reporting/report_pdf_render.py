@@ -605,7 +605,7 @@ def render_pentest_report_pdf(
         leftMargin=16 * mm,
         rightMargin=16 * mm,
         topMargin=18 * mm,
-        bottomMargin=16 * mm,
+        bottomMargin=26 * mm,
         title=str(resolve("{{placeholders.report_title}}") or "Pentest Report"),
         author=company_name,
     )

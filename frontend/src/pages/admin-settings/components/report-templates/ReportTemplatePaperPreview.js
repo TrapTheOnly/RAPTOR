@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { STATUS_VOCABULARY, getPalette } from '../../../../design/tokens';
+import { RAPTOR_BRAND } from '../../../../design/RaptorMark';
 import { flattenContext, resolvePreviewText, sampleReportContext } from '../../report-preview-sample';
 
 const PAPER = {
@@ -448,13 +449,14 @@ const ReportTemplatePaperPreview = ({ templateForm, previewKind, brandKit }) => 
   return (
     <div
       style={{
+        position: 'relative',
         background: PAPER.page,
         color: PAPER.ink,
         border: `1px solid ${PAPER.line}`,
         aspectRatio: '1 / 1.414',
         width: '100%',
         overflow: 'auto',
-        padding: 16,
+        padding: '16px 16px 64px',
         boxSizing: 'border-box'
       }}
     >
@@ -476,7 +478,28 @@ const ReportTemplatePaperPreview = ({ templateForm, previewKind, brandKit }) => 
           />
         ))}
       </div>
-      <div style={{ marginTop: 16, borderTop: `1px solid ${PAPER.line}`, paddingTop: 8, fontSize: 8, color: PAPER.muted }}>
+      <div
+        style={{
+          position: 'absolute',
+          left: 12,
+          bottom: 10,
+          display: 'flex',
+          alignItems: 'flex-end'
+        }}
+      >
+        <img src={RAPTOR_BRAND.lockupLight} alt="RAPTOR" style={{ height: 40, display: 'block' }} />
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          right: 16,
+          bottom: 16,
+          fontSize: 8,
+          color: PAPER.muted,
+          maxWidth: '55%',
+          textAlign: 'right'
+        }}
+      >
         {footer}
       </div>
     </div>

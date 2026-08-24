@@ -12,6 +12,9 @@ test('login is a starlight scene without the RAPTOR acronym', () => {
   expect(login).toContain('Sign in');
   expect(login).toContain('/auth/sso/providers');
   expect(login).toContain('Sign in with');
+  expect(login).toContain('RaptorMark');
+  expect(login).toContain('variant="lockup"');
+  expect(login).toContain('height={192}');
   expect(login).not.toContain('Reconnaissance, Assessment, Penetration Testing');
   expect(login).not.toContain('raptorLoginGlow');
   expect(stars).toContain('raptorStarTwinkle');
