@@ -11,10 +11,12 @@ test('login is a starlight scene without the RAPTOR acronym', () => {
   expect(login).toContain('from \'motion/react\'');
   expect(login).toContain('Sign in');
   expect(login).toContain('/auth/sso/providers');
-  expect(login).toContain('Sign in with');
+  expect(login).toContain('Sign in with RAPTOR');
   expect(login).toContain('RaptorMark');
   expect(login).toContain('variant="lockup"');
   expect(login).toContain('height={192}');
+  expect(login).toContain('Sign-in failed. Try again.');
+  expect(login).not.toContain('not_allowlisted');
   expect(login).not.toContain('Reconnaissance, Assessment, Penetration Testing');
   expect(login).not.toContain('raptorLoginGlow');
   expect(stars).toContain('raptorStarTwinkle');

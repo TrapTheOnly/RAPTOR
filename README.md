@@ -132,10 +132,13 @@ LDAP_PASS=replace-me
 # LDAP_TRUSTSTORE=never
 # LDAP_USERNAME_ATTR=sAMAccountName
 
-# Optional OIDC/SAML broker (users must still receive raptor-access in Settings)
+# Optional OIDC/SAML broker (users must still be allowlisted in Settings)
 # Prefer Settings -> User Management -> Sign-in / SSO. Env vars only seed a provider
 # when that alias does not already exist. RAPTOR login stays a branded form; enabled
 # OIDC/SAML connections appear as Sign in with … buttons (authorization code + kc_idp_hint).
+# Allowlist matches username (or stored Keycloak subject), never email.
+# After create, paste Keycloak broker ACS / Sign-in redirect URI into Okta or Entra —
+# not RAPTOR /auth/sso/callback. App tiles must use /auth/sso/{alias}/start.
 # Broker-only users must be allowlisted (including before first SSO) in Settings.
 # KEYCLOAK_IDP_ALIAS=corp-oidc
 # KEYCLOAK_IDP_PROVIDER=oidc
@@ -317,8 +320,8 @@ Authentication/session:
 
 - `POST /login`
 - `GET /auth/sso/providers`
-- `GET /auth/sso/{alias}/start`
-- `GET /auth/sso/callback`
+- `GET /auth/sso/{alias}/start` (SP-initiated; use this URL in Okta/Entra tiles)
+- `GET /auth/sso/callback` (RAPTOR↔Keycloak OIDC only — not the corporate IdP ACS)
 - `GET /session-status`
 - `POST /session/extend`
 - `POST /logout`

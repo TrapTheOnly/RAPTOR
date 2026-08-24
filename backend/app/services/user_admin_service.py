@@ -1,5 +1,6 @@
 import logging
 import os
+from html import escape
 from typing import Any, Dict, Tuple
 
 from app.http.request_utils import normalize_auth_key
@@ -43,6 +44,40 @@ def add_user_to_system(
         provision_local_user(username, role, permissions or [], full_name=full_name)
         return
     provision_ldap_user(username, email, role, permissions or [], full_name=full_name)
+
+
+def _maybe_send_sso_invite(email: str, username: str, start_urls: list) -> bool:
+    if not email or not start_urls:
+        return False
+    try:
+        from app.integrations.email.client import send_email
+        from app.repositories.email_config_repository import get_email_config
+
+        config = get_email_config()
+    except Exception as exc:
+        logger.debug("SSO invite email skipped: %s", exc)
+        return False
+    if not config or not config.get("enabled"):
+        return False
+    links = []
+    for row in start_urls:
+        url = escape(str(row.get("url") or ""))
+        label = escape(str(row.get("display_name") or row.get("alias") or "RAPTOR SSO"))
+        if not url:
+            continue
+        links.append(f"<p><strong>{label}</strong><br/><a href=\"{url}\">{url}</a></p>")
+    if not links:
+        return False
+    body = (
+        f"<p>You can sign in to RAPTOR with SSO as <strong>{escape(username)}</strong>.</p>"
+        f"{''.join(links)}"
+        "<p>This is a sign-in link, not a password. Bookmark it or use the RAPTOR login page.</p>"
+    )
+    try:
+        return bool(send_email(email, "Your RAPTOR SSO sign-in link", body, config))
+    except Exception as exc:
+        logger.warning("Could not send SSO invite email to %s: %s", email, exc)
+        return False
 
 
 def ldap_search(query: str) -> Tuple[Dict[str, Any], int]:
@@ -116,10 +151,20 @@ def preprovision_sso_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             auth_type=auth_type,
             full_name=full_name,
         )
+        start_urls = []
+        try:
+            from app.services.sso_settings_service import start_urls_for_protocol
+
+            start_urls = start_urls_for_protocol(auth_type)
+        except Exception as exc:
+            logger.warning("Could not load SSO start URLs after allowlisting %s: %s", username, exc)
+        email_sent = _maybe_send_sso_invite(email, username, start_urls)
         return {
             "message": f"Allowlisted {username} for {auth_type.upper()} sign-in.",
             "username": username,
             "auth_type": auth_type,
+            "start_urls": start_urls,
+            "email_sent": email_sent,
         }, 200
     except IntegrityError:
         return {"error": f"User {username} already exists in the system."}, 409

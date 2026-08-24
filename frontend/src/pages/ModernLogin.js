@@ -22,14 +22,6 @@ const COMMON_PASSWORDS = new Set([
 
 const CARD_RADIUS = 18;
 
-const SSO_ERROR_MESSAGES = {
-  not_allowlisted: 'This account is not allowed to sign in to RAPTOR.',
-  invalid_state: 'Sign-in could not be completed. Try again.',
-  idp_unavailable: 'The identity provider is unavailable.',
-  access_denied: 'Sign-in was cancelled or denied.',
-  unsupported: 'That sign-in method is not supported.'
-};
-
 const ModernLogin = ({
   setLoggedIn,
   setGlobalUsername,
@@ -51,6 +43,7 @@ const ModernLogin = ({
   const [loading, setLoading] = useState(false);
   const [ssoProviders, setSsoProviders] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [resetMode, setResetMode] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -62,9 +55,8 @@ const ModernLogin = ({
   }, [passwordResetRequired]);
 
   useEffect(() => {
-    const code = searchParams.get('sso_error');
-    if (code) {
-      setError(SSO_ERROR_MESSAGES[code] || 'Sign-in failed. Try again.');
+    if (searchParams.get('sso_error')) {
+      setError('Sign-in failed. Try again.');
     }
   }, [searchParams]);
 
@@ -299,42 +291,24 @@ const ModernLogin = ({
         ) : (
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: SPACE.x16 }}>
             {error ? <Alert severity="error">{error}</Alert> : null}
-            <Field
-              label="Username"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              required
-              autoComplete="username"
-              autoFocus
-            />
-            <Field
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              autoComplete="current-password"
-              trailing={eye}
-            />
-            <Button
-              type="submit"
-              variant="contained"
-              fullWidth
-              disabled={loading || !username || !password}
-              style={{ minHeight: 44, borderRadius: 12 }}
-            >
-              {loading ? 'Signing in…' : 'Sign in'}
-            </Button>
             {ssoProviders.length > 0 ? (
               <>
-                <Text as="p" variant="micro" tone="tertiary" style={{ margin: `${SPACE.x8}px 0 0`, textAlign: 'center' }}>
-                  or
-                </Text>
+                {showPasswordForm ? null : (
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => setShowPasswordForm(true)}
+                    style={{ minHeight: 44, borderRadius: 12 }}
+                  >
+                    Sign in with RAPTOR
+                  </Button>
+                )}
                 {ssoProviders.map((provider) => (
                   <Button
                     key={provider.alias}
                     type="button"
-                    variant="outlined"
+                    variant="contained"
                     fullWidth
                     onClick={() => {
                       window.location.assign(`/auth/sso/${encodeURIComponent(provider.alias)}/start`);
@@ -344,6 +318,36 @@ const ModernLogin = ({
                     Sign in with {provider.display_name || provider.alias}
                   </Button>
                 ))}
+              </>
+            ) : null}
+            {ssoProviders.length === 0 || showPasswordForm ? (
+              <>
+                <Field
+                  label="Username"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  required
+                  autoComplete="username"
+                  autoFocus
+                />
+                <Field
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  autoComplete="current-password"
+                  trailing={eye}
+                />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  fullWidth
+                  disabled={loading || !username || !password}
+                  style={{ minHeight: 44, borderRadius: 12 }}
+                >
+                  {loading ? 'Signing in…' : 'Sign in'}
+                </Button>
               </>
             ) : null}
           </form>

@@ -765,6 +765,42 @@ def test_scanner_rejects_without_open_started_wave(monkeypatch):
     assert "open, started wave" in payload["error"].lower()
 
 
+def test_wave_members_and_scope_allowed_when_wave_partially_visible(monkeypatch):
+    wave = {
+        "id": 4,
+        "application_id": 1,
+        "status": "open",
+        "env_ids": [9, 10],
+        "opened_by": "lead",
+        "members": ["lead"],
+    }
+    monkeypatch.setattr(svc.phase2b_repository, "get_wave", lambda _id: wave)
+    monkeypatch.setattr(svc, "visible_env_ids", lambda *_a, **_k: [9])
+    monkeypatch.setattr(
+        svc.phase2b_repository,
+        "replace_wave_members",
+        lambda *_a, **_k: ["lead", "alice"],
+    )
+    monkeypatch.setattr(svc.phase2b_repository, "sync_wave_host_collaborators", lambda *_a, **_k: None)
+    members, member_status = svc.put_wave_members(
+        1, 4, {"usernames": ["alice"]}, username="alice", role="pentester"
+    )
+    assert member_status == 200
+    assert "alice" in members["members"]
+
+    monkeypatch.setattr(
+        svc.phase2b_repository,
+        "list_live_wave_hosts",
+        lambda _wave: [{"id": 11, "environment_id": 9}],
+    )
+    monkeypatch.setattr(svc.phase2b_repository, "set_wave_host_scope", lambda *_a, **_k: 1)
+    scope, scope_status = svc.set_wave_host_scope(
+        1, 4, {"record_ids": [11], "in_scope": False}, username="alice", role="pentester"
+    )
+    assert scope_status == 200
+    assert scope["updated"] == 1
+
+
 def test_create_wave_rejects_hidden_env(monkeypatch):
     monkeypatch.setattr(svc.applications_repository, "fetch_application", lambda _id: {"id": 1})
     monkeypatch.setattr(

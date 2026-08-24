@@ -262,7 +262,7 @@
         "title": "Record-level pentest access constraints",
         "paragraphs": [
           "Permission keys are not enough. RAPTOR also assigns a record access role: owner (`tested_by`), collaborator, manager or admin override (`modify_others_pentests_admin`), or viewer.",
-          "Writes (lifecycle, notes, images, reports, and Phase 2 finding mutations) require owner, collaborator, or override. GET host notebooks require `view_pentest_page` plus that same assignment set; a viewer is denied. Collaborators are a first-class role and can work findings and reports without being `tested_by`.",
+          "Writes (lifecycle, notes, images, reports) on a host notebook require owner, collaborator, or override. GET host notebooks and Phase 2 finding reads/writes allow that assignment set or environment ACL visibility for the host's environment. Empty env ACL is open; a viewer who is not assigned and is outside a non-empty ACL is denied. Collaborators are a first-class role and can work findings and reports without being `tested_by`.",
           "Environment ACL is a second boundary on Phase 2 finding reads/writes, host search, waves, and report generation for requested env ids. An empty ACL is open to anyone who already has the relevant pentest permission. A non-empty ACL limits access to listed usernames plus `app_lead` and admin/manager override."
         ],
         "table": {
@@ -288,8 +288,8 @@
               "List returns all pentest rows."
             ],
             [
-              "GET notebook as viewer (unassigned, not collaborator, no override)",
-              "Denied. `view_security_dashboard` on the board is not sufficient."
+              "GET notebook as viewer (unassigned, not collaborator, no override, env ACL excludes them)",
+              "Denied. An open env ACL (empty) is enough to read the notebook."
             ],
             [
               "Phase 2 finding create/patch/merge/promote/`get_finding`",

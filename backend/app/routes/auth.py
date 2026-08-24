@@ -1,10 +1,13 @@
+import logging
+
 from flask import Blueprint, jsonify, redirect, request, session
 
 from app.http.request_utils import parse_json_object
 from app.services import auth_service
-from app.services.sso_auth_service import authorization_url, complete_sso_callback
+from app.services.sso_auth_service import authorization_url, complete_sso_callback, public_sso_error
 from app.services.sso_settings_service import list_login_providers
 
+logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__)
 
 
@@ -42,7 +45,8 @@ def sso_login_providers():
 def sso_start(alias: str):
     url, error = authorization_url(alias, session)
     if error or not url:
-        return redirect(f"/login?sso_error={error or 'unsupported'}")
+        logger.warning("SSO start failed for alias=%s reason=%s", alias, error or "unsupported")
+        return redirect(f"/login?sso_error={public_sso_error(error)}")
     return redirect(url)
 
 
@@ -50,7 +54,8 @@ def sso_start(alias: str):
 def sso_callback():
     target, error = complete_sso_callback(session, request.args)
     if error:
-        return redirect(f"/login?sso_error={error}")
+        logger.warning("SSO callback failed: %s", error)
+        return redirect(f"/login?sso_error={public_sso_error(error)}")
     return redirect(target)
 
 

@@ -35,7 +35,18 @@ def _host_access_error(
     role: str,
     action_verb: str = "modify",
 ) -> Optional[Tuple[Dict[str, Any], int]]:
+    """Allow assigned testers, or anyone who can already see the host's environment.
+
+    Empty env ACL is open. A non-empty ACL is an additional deny even for the assignee.
+    """
     if not username:
+        return None
+    record = fetch_record_by_id(record_id)
+    if record:
+        app_id = record.get("application_id")
+        env_id = record.get("environment_id")
+        if app_id and env_id and _deny_env(_acl_env_ids(int(app_id), username, role), int(env_id)):
+            return {"error": "Environment is not visible to this user."}, 403
         return None
     allowed, error = enforce_pentest_record_access(
         record_id,
@@ -43,16 +54,9 @@ def _host_access_error(
         username=username,
         role=role,
     )
-    if not allowed:
-        return {"error": error}, 403
-    record = fetch_record_by_id(record_id)
-    if not record:
+    if allowed:
         return None
-    app_id = record.get("application_id")
-    env_id = record.get("environment_id")
-    if app_id and env_id and _deny_env(_acl_env_ids(int(app_id), username, role), int(env_id)):
-        return {"error": "Environment is not visible to this user."}, 403
-    return None
+    return {"error": error}, 403
 
 
 def _finding_host_access_error(

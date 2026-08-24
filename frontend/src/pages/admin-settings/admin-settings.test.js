@@ -123,7 +123,20 @@ test('user and domain subpages exist in both nested nav and right-side tabs', ()
   expect(sso).toContain('Sign-in / SSO');
   expect(sso).toContain("'/sso/connections'");
   expect(sso).toContain("'/sso/allowlist'");
-  expect(sso).toContain('OIDC and SAML only');
+  expect(sso).toContain('Connect Okta or Entra so people can sign in to RAPTOR.');
+  expect(sso).toContain('Create connection');
+  expect(sso).toContain('Paste these into');
+  expect(sso).toContain('Admit one person');
+  expect(sso).toContain('Assertion Consumer Service / Reply URL / Single sign-on URL');
+  expect(sso).toContain('Audience URI / Identifier (SP Entity ID)');
+  expect(sso).toContain('IdP Entity ID');
+  expect(sso).toContain('IdP SSO URL');
+  expect(sso).toContain('IdP metadata URL');
+  expect(sso).toContain('Download SP metadata XML');
+  expect(sso).toContain("mode === 'empty'");
+  expect(sso).not.toContain('raptor-users-split');
+  expect(sso).not.toContain('OIDC and SAML only');
+  expect(sso).not.toContain('selected?.acs_url || redirectUri');
   expect(sso).not.toContain('<Select');
 
   const domainUsers = readSource('./components/users/DomainUsersPanel.js');
