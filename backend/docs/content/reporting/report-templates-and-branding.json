@@ -204,7 +204,7 @@
         "title": "Placeholders, tokens, and brand kit",
         "paragraphs": [
           "Variable tokens from application, wave, package, host, pentest, metrics, export, and placeholder groups can be embedded in titles, subtitles, chrome, and text block content. The token registry is closed: unknown `{{paths}}` raise at normalize and render.",
-          "The org brand kit supplies company name, print ink (default `#067A8A`), and logo. Table headers, section titles, and the cover company name use print ink. Running footer is company name and date; it does not print package, hash, or HMAC."
+          "The org brand kit supplies company name, print ink (default `#067A8A`), and logo. Table headers, section titles, and the cover company name use print ink. Running footer is company name and date plus the RAPTOR lockup at the bottom-left of every page; it does not print package, hash, or HMAC."
         ],
         "tip": {
           "variant": "tip",

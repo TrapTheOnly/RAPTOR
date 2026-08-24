@@ -30,6 +30,8 @@ import ScanLive from './pages/ScanLive';
 import DocumentationPortal from './pages/DocumentationPortal';
 import Error from './pages/Error';
 import { hasPermission as hasRolePermission } from './utils/permissions';
+import { RaptorMark } from './design/primitives';
+import { getPalette } from './design/tokens';
 
 const SESSION_HEARTBEAT_MS = 5000;
 const SESSION_WARNING_SECONDS = 60;
@@ -184,10 +186,21 @@ const App = () => {
   }, [darkMode]);
 
   if (loading) {
+    const loadingPalette = getPalette(darkMode ? 'dark' : 'light');
     return (
       <ThemeProvider theme={globalTheme}>
         <CssBaseline />
-        <div>Loading...</div>
+        <div
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: loadingPalette.canvas
+          }}
+        >
+          <RaptorMark variant="lockup" height={120} alt="RAPTOR" />
+        </div>
       </ThemeProvider>
     );
   }

@@ -35,3 +35,4 @@ export { Combo } from './combo';
 export { CommandPalette } from './CommandPalette';
 export { LineChart } from './charts';
 export { OsMark, ProviderMark } from './brands';
+export { RaptorMark, RAPTOR_BRAND, raptorBrandSrc } from '../RaptorMark';

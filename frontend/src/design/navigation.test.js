@@ -55,4 +55,7 @@ test('command palette filters nav by permission and jumps to waves, not host not
   expect(palette).not.toContain("to: `/pentest/record/${host.id}`");
   expect(header).toContain('userRole={userRole}');
   expect(header).toContain('userPermissions={userPermissions}');
+  expect(header).toContain('RaptorMark');
+  expect(header).toContain('variant="mark"');
+  expect(header).toContain('variant="wordmark"');
 });

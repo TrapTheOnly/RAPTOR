@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _FENCE_RE = re.compile(r"^```([a-zA-Z0-9_+-]*)\s*$")
@@ -6,6 +7,40 @@ _UL_RE = re.compile(r"^(\s*)([-*+])\s+(?:\[([ xX])\]\s+)?(.*)$")
 _OL_RE = re.compile(r"^(\s*)(\d+)[.)]\s+(?:\[([ xX])\]\s+)?(.*)$")
 _BLOCKQUOTE_RE = re.compile(r"^>\s?(.*)$")
 _TABLE_SEP_RE = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
+
+RAPTOR_LOCKUP_HEIGHT_MM = 15
+RAPTOR_LOCKUP_LEFT_MM = 12
+RAPTOR_LOCKUP_BOTTOM_MM = 7
+
+
+def raptor_lockup_path():
+    return Path(__file__).resolve().parents[2] / "assets" / "brand" / "raptor-lockup-light.png"
+
+
+def draw_raptor_footer_lockup(canvas, mm):
+    """Stamp the RAPTOR icon+wordmark lockup at the bottom-left of a page."""
+    path = raptor_lockup_path()
+    if not path.is_file():
+        return RAPTOR_LOCKUP_LEFT_MM * mm
+    from reportlab.lib.utils import ImageReader
+
+    image = ImageReader(str(path))
+    intrinsic_width, intrinsic_height = image.getSize()
+    height = RAPTOR_LOCKUP_HEIGHT_MM * mm
+    width = height * (float(intrinsic_width) / max(float(intrinsic_height), 1.0))
+    left = RAPTOR_LOCKUP_LEFT_MM * mm
+    bottom = RAPTOR_LOCKUP_BOTTOM_MM * mm
+    canvas.drawImage(
+        image,
+        left,
+        bottom,
+        width=width,
+        height=height,
+        mask="auto",
+        preserveAspectRatio=True,
+        anchor="sw",
+    )
+    return left + width + (3.5 * mm)
 
 
 def safe_color(value, fallback, colors):
@@ -539,12 +574,14 @@ def make_draw_cover_page(a4, mm, primary, accent, company_name, colors, context=
         canvas.line(0, page_height - (8 * mm), page_width, page_height - (8 * mm))
         canvas.setStrokeColor(accent)
         canvas.setLineWidth(0.6)
-        canvas.line(0, 10 * mm, page_width, 10 * mm)
+        rule_y = (RAPTOR_LOCKUP_BOTTOM_MM + RAPTOR_LOCKUP_HEIGHT_MM + 3) * mm
+        canvas.line(0, rule_y, page_width, rule_y)
+        text_x = draw_raptor_footer_lockup(canvas, mm)
         _, _, footer = _chrome_header_footer(branding, company_name, lambda _token: "", context)
         if footer:
             canvas.setFont("Helvetica", 7.5)
             canvas.setFillColor(colors.HexColor("#64748B"))
-            canvas.drawCentredString(page_width / 2, 4 * mm, footer)
+            canvas.drawString(text_x, (RAPTOR_LOCKUP_BOTTOM_MM + 5) * mm, footer)
         canvas.restoreState()
 
     return draw_cover_page
@@ -562,8 +599,10 @@ def make_draw_body_page(a4, mm, surface_light, border_color, muted, resolve, con
         header_left, header_right, footer = _chrome_header_footer(branding, company_name, resolve, context)
         canvas.drawString(14 * mm, page_height - (9 * mm), header_left)
         canvas.drawRightString(page_width - (14 * mm), page_height - (9 * mm), header_right)
-        canvas.drawString(14 * mm, 8 * mm, footer)
-        canvas.drawRightString(page_width - (14 * mm), 8 * mm, f"Page {doc.page}")
+        text_x = draw_raptor_footer_lockup(canvas, mm)
+        footer_y = (RAPTOR_LOCKUP_BOTTOM_MM + 5) * mm
+        canvas.drawString(text_x, footer_y, footer)
+        canvas.drawRightString(page_width - (14 * mm), footer_y, f"Page {doc.page}")
         canvas.restoreState()
 
     return draw_body_page
@@ -577,6 +616,8 @@ __all__ = [
     "make_draw_cover_page",
     "markdown_to_flowables",
     "metric_tiles",
+    "draw_raptor_footer_lockup",
+    "raptor_lockup_path",
     "safe_color",
     "section_title",
     "table_with_style",

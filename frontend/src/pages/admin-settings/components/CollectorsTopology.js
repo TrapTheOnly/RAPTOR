@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Button, Mono, Text } from '../../../design/primitives';
+import { raptorBrandSrc } from '../../../design/RaptorMark';
 import { FONTS, RADIUS, SPACE } from '../../../design/tokens';
 import { usePalette } from '../../../design/usePalette';
 
@@ -95,26 +96,22 @@ const CollectorsTopology = ({ agents, page, pageCount, onPageChange }) => {
             fill={palette.raised}
             stroke={palette.lineStrong}
           />
+          <image
+            href={raptorBrandSrc('mark', palette.mode)}
+            x={HUB_X + HUB_W / 2 - 36}
+            y={hubY + 8}
+            width={72}
+            height={56}
+          />
           <text
             x={HUB_X + HUB_W / 2}
-            y={hubY + 38}
-            textAnchor="middle"
-            fill={palette.text}
-            fontSize="14"
-            fontWeight="600"
-            fontFamily={FONTS.sans}
-          >
-            RAPTOR
-          </text>
-          <text
-            x={HUB_X + HUB_W / 2}
-            y={hubY + 58}
+            y={hubY + 72}
             textAnchor="middle"
             fill={palette.textSecondary}
             fontSize="11"
             fontFamily={FONTS.mono}
           >
-            ingest hub
+            RAPTOR hub
           </text>
           {layout.map(({ agent, y }) => (
             <g key={`node-${agent.id}`}>
