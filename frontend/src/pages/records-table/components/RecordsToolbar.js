@@ -40,7 +40,7 @@ const RecordsToolbar = ({
       </Button>
     ) : null}
     {canManageApps ? (
-      <Button size="small" variant="outlined" startIcon={<AccountTree />} onClick={onOpenAppsDialog}>
+      <Button size="small" variant="contained" startIcon={<AccountTree />} onClick={onOpenAppsDialog}>
         Manage apps
       </Button>
     ) : null}

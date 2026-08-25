@@ -97,13 +97,13 @@
             ],
             [
               "Pentest actions blocked with assignment message",
-              "User is not current assignee and lacks override permission.",
-              "Assign record to caller or use override-capable account."
+              "User is not owner or collaborator and lacks override, or env ACL excludes them.",
+              "Assign the record, add the caller as collaborator, use override, or adjust env ACL. Empty env ACL is open."
             ],
             [
               "Generated report missing after expected creation",
-              "Template disabled, not selected, or generation failed.",
-              "Check template enabled state and rerun generation after save."
+              "Template disabled without `manage_report_templates`/admin, not selected, or generation failed.",
+              "Use an enabled template, or generate the disabled template as admin/`manage_report_templates`, then rerun after save."
             ],
             [
               "IP source update does not appear in record views",

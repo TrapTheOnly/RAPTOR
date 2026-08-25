@@ -1,34 +1,30 @@
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
-import bcrypt
-
-from app.http.request_utils import normalize_auth_key, normalize_password_hash
-from app.repositories.auth_lockout_repository import (
-    clear_login_lockout_state,
-    get_login_lockout_status,
-    register_failed_login_attempt,
-)
-from app.repositories.users_repository import (
-    get_allowed_user_for_login,
-    get_user_password,
-    update_local_user_password,
-)
+from app.http.request_utils import normalize_auth_key
+from app.integrations.keycloak.client import password_grant
+from app.integrations.keycloak.constants import ACCESS_ROLE, role_from_realm_roles
+from app.repositories.users_repository import get_allowed_user_for_login
 from app.services.admin_auth_service import (
     ADMIN_USERNAME,
-    admin_login,
-    admin_requires_password_reset,
     reset_admin_password,
     validate_password_nist,
 )
 from app.services.authorization_service import get_user_permissions
+from app.services.keycloak_identity_service import (
+    auth_type_for_username,
+    cache_from_login,
+    prepare_user_for_raptor_login,
+    set_user_password,
+    user_has_required_action,
+)
 from app.services.session_policy_service import (
     extend_session,
     get_session_timing,
     initialize_session_tracking,
     session_has_expired,
 )
-from app.integrations.ldap.client import ldap_authenticate
+from app.services.sso_auth_service import attach_grant_tokens, clear_identity_session, drop_invalid_identity_session
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +42,27 @@ def _audit_login(username: str) -> None:
     )
 
 
-def _invalid_credentials_response(username: str) -> Tuple[Dict[str, Any], int]:
-    lockout = register_failed_login_attempt(username)
-    if lockout.get("locked"):
-        return {
-            "error": "Too many failed login attempts. Try again later.",
-            "retry_after_seconds": int(lockout.get("retry_after_seconds") or 0),
-        }, 429
+def _invalid_credentials_response(_username: str) -> Tuple[Dict[str, Any], int]:
     return {"error": "Invalid credentials"}, 401
+
+
+def _role_from_grant(username: str, realm_roles) -> str:
+    if username == ADMIN_USERNAME:
+        return "admin"
+    return role_from_realm_roles(realm_roles)
+
+
+def _establish_session(session_obj: Any, username: str, role: str, logged_in: bool, reset_required: bool) -> None:
+    session_obj.clear()
+    session_obj.permanent = True
+    session_obj["username"] = username
+    session_obj["user_type"] = role
+    session_obj["logged_in"] = logged_in
+    if reset_required:
+        session_obj["reset_required"] = True
+    else:
+        session_obj.pop("reset_required", None)
+        initialize_session_tracking()
 
 
 def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
@@ -66,109 +75,71 @@ def login(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[str, Any], int]:
     if not username or not password:
         return {"error": "Username and password required"}, 400
 
-    lockout = get_login_lockout_status(username)
-    if lockout.get("locked"):
-        return {
-            "error": "Too many failed login attempts. Try again later.",
-            "retry_after_seconds": int(lockout.get("retry_after_seconds") or 0),
-        }, 429
-
-    user = get_allowed_user_for_login(username)
-
-    if username == ADMIN_USERNAME:
-        if admin_login(username, password):
-            clear_login_lockout_state(username)
-            session_obj.clear()
-            session_obj.permanent = True
-            session_obj["username"] = username
-            session_obj["user_type"] = "admin"
-
-            if admin_requires_password_reset(username):
-                session_obj["reset_required"] = True
-                session_obj["logged_in"] = False
-                return {
-                    "status": "password_reset_required",
-                    "username": username,
-                    "user_type": "admin",
-                    "permissions": list(get_user_permissions(username, "admin")),
-                }, 200
-
-            session_obj["logged_in"] = True
-            session_obj.pop("reset_required", None)
-            initialize_session_tracking()
-            _audit_login(username)
-            return {
-                "status": "logged_in",
-                "username": username,
-                "user_type": "admin",
-                "permissions": list(get_user_permissions(username, "admin")),
-            }, 200
-        return _invalid_credentials_response(username)
-
-    if user:
-        user_role = user[1] if user[1] else "user"
-        auth_type = user[2] if user[2] else "ldap"
-        password_hash = normalize_password_hash(user[3])
-        must_reset = bool(user[4])
-        is_service_account = bool(user[5]) if len(user) > 5 else False
-
-        if is_service_account or auth_type == "service":
+    cached = get_allowed_user_for_login(username)
+    if cached:
+        is_service = bool(cached[3]) if len(cached) > 3 else False
+        auth_type = cached[2] if len(cached) > 2 else "ldap"
+        if is_service or auth_type == "service":
+            return _invalid_credentials_response(username)
+        if str(auth_type or "").strip().lower() in {"oidc", "saml"}:
             return _invalid_credentials_response(username)
 
-        if auth_type == "local":
-            if not password_hash or not bcrypt.checkpw(password.encode(), password_hash):
-                return _invalid_credentials_response(username)
+    grant = password_grant(username, password)
+    status = grant.get("status")
 
-            clear_login_lockout_state(username)
-            session_obj.clear()
-            session_obj.permanent = True
-            session_obj["username"] = user[0]
-            session_obj["user_type"] = user_role
+    if status == "reset_required" and not user_has_required_action(username, "UPDATE_PASSWORD"):
+        try:
+            prepare_user_for_raptor_login(username)
+            grant = password_grant(username, password)
+            status = grant.get("status")
+        except Exception as exc:
+            logger.warning("Could not complete Keycloak profile for %s: %s", username, exc)
 
-            if must_reset:
-                session_obj["reset_required"] = True
-                session_obj["logged_in"] = False
-                return {
-                    "status": "password_reset_required",
-                    "username": username,
-                    "user_type": user_role,
-                    "permissions": list(get_user_permissions(username, user_role)),
-                }, 200
+    if status == "reset_required":
+        if not user_has_required_action(username, "UPDATE_PASSWORD"):
+            return _invalid_credentials_response(username)
+        role = "admin" if username == ADMIN_USERNAME else (cached[1] if cached else "user")
+        _establish_session(session_obj, username, role, logged_in=False, reset_required=True)
+        return {
+            "status": "password_reset_required",
+            "username": username,
+            "user_type": role,
+            "permissions": list(get_user_permissions(username, role)),
+        }, 200
 
-            session_obj["logged_in"] = True
-            session_obj.pop("reset_required", None)
-            initialize_session_tracking()
-            _audit_login(username)
-            return {
-                "status": "logged_in",
-                "username": username,
-                "user_type": user_role,
-                "permissions": list(get_user_permissions(username, user_role)),
-            }, 200
-
-        if ldap_authenticate(username, password):
-            clear_login_lockout_state(username)
-            session_obj.clear()
-            session_obj.permanent = True
-            session_obj["logged_in"] = True
-            session_obj["username"] = user[0]
-            session_obj["user_type"] = user_role
-            session_obj.pop("reset_required", None)
-            initialize_session_tracking()
-            _audit_login(username)
-            return {
-                "status": "logged_in",
-                "username": username,
-                "user_type": session_obj["user_type"],
-                "permissions": list(get_user_permissions(username, user_role)),
-            }, 200
-
+    if status != "ok":
         return _invalid_credentials_response(username)
 
-    return _invalid_credentials_response(username)
+    realm_roles = grant.get("realm_roles") or []
+    if ACCESS_ROLE not in realm_roles and username != ADMIN_USERNAME:
+        return _invalid_credentials_response(username)
+    if username == ADMIN_USERNAME and "raptor-admin" not in realm_roles and ACCESS_ROLE not in realm_roles:
+        return _invalid_credentials_response(username)
+
+    role = _role_from_grant(username, realm_roles)
+    extra_permissions = grant.get("client_roles") or []
+    claims = grant.get("claims") or {}
+    keycloak_id = str(claims.get("sub") or "")
+    detected = auth_type_for_username(username)
+    auth_type = detected or ((cached[2] if cached and len(cached) > 2 else None) or ("local" if role == "admin" else "ldap"))
+    if role != "admin":
+        cache_from_login(username, role, extra_permissions, keycloak_id, auth_type)
+
+    _establish_session(session_obj, username, role, logged_in=True, reset_required=False)
+    attach_grant_tokens(session_obj, username, grant)
+    _audit_login(username)
+    return {
+        "status": "logged_in",
+        "username": username,
+        "user_type": role,
+        "permissions": list(get_user_permissions(username, role)),
+    }, 200
 
 
 def session_status(session_obj: Any) -> Tuple[Dict[str, Any], int]:
+    if drop_invalid_identity_session(session_obj):
+        return {"status": "logged_out"}, 401
+
     if session_obj.get("logged_in") and session_has_expired(update_activity=False):
         session_obj.clear()
         return {"status": "logged_out"}, 401
@@ -223,6 +194,7 @@ def extend_logged_in_session(session_obj: Any) -> Tuple[Dict[str, Any], int]:
 
 
 def logout(session_obj: Any) -> Tuple[Dict[str, Any], int]:
+    clear_identity_session(session_obj)
     session_obj.clear()
     return {"status": "logged_out"}, 200
 
@@ -243,6 +215,7 @@ def admin_reset_password(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[s
         session_obj["logged_in"] = True
         session_obj["reset_required"] = False
         session_obj["user_type"] = "admin"
+        initialize_session_tracking()
         return {
             "status": "logged_in",
             "username": session_obj.get("username"),
@@ -270,23 +243,10 @@ def user_reset_password(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[st
         return {"error": msg}, 400
 
     try:
-        existing_value = get_user_password(username)
-        if not existing_value:
-            return {"error": "User not found."}, 404
-
-        existing_hash = normalize_password_hash(existing_value)
-        if existing_hash and bcrypt.checkpw(new_password.encode(), existing_hash):
-            return {
-                "error": "New password must be different from the temporary password."
-            }, 400
-
-        hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
-        rowcount = update_local_user_password(username, hashed_password)
-        if rowcount == 0:
-            return {"error": "User not found."}, 404
-
+        set_user_password(username, new_password, temporary=False)
         session_obj["logged_in"] = True
         session_obj["reset_required"] = False
+        initialize_session_tracking()
         user_type = session_obj.get("user_type")
         return {
             "status": "logged_in",
@@ -294,6 +254,8 @@ def user_reset_password(data: Dict[str, Any], session_obj: Any) -> Tuple[Dict[st
             "user_type": user_type,
             "permissions": list(get_user_permissions(username, user_type)),
         }, 200
-    except Exception as e:
-        logger.error(f"Error resetting password for user {username}: {e}")
+    except LookupError:
+        return {"error": "User not found."}, 404
+    except Exception as exc:
+        logger.error("Error resetting password for user %s: %s", username, exc)
         return {"error": "Failed to reset password."}, 500

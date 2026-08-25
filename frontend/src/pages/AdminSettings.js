@@ -1,15 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import {
-  Alert,
-  Box,
-  Collapse,
-  IconButton,
-  LinearProgress,
-  Typography,
-  useMediaQuery,
-  useTheme
-} from '@mui/material';
+import { useMediaQuery, useTheme } from '@mui/material';
 import {
   Article as ArticleIcon,
   BugReport as BugReportIcon,
@@ -17,13 +8,21 @@ import {
   Dns as DnsIcon,
   Email as EmailIcon,
   FactCheck as FactCheckIcon,
-  Menu as MenuIcon,
   People as PeopleIcon,
   Security as SecurityIcon,
   SmartToy as SmartToyIcon
 } from '@mui/icons-material';
 import {
+  Button,
+  EmptyState,
+  Page,
+  PageHeader,
+  Progress,
+  Toast
+} from '../design/primitives';
+import {
   COMMON_PASSWORDS,
+  DOMAIN_SUBSECTIONS,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH
 } from './admin-settings/constants';
@@ -37,13 +36,16 @@ import {
   createReportTemplateFormFromApi,
   toReportTemplateDefinition
 } from './admin-settings/report-template-utils';
-import AdminSettingsNavDrawer from './admin-settings/components/AdminSettingsNavDrawer';
+import { hasPermission as hasRolePermission } from '../utils/permissions';
+import SettingsNav from './admin-settings/components/SettingsNav';
+import SettingsShell from './admin-settings/components/SettingsShell';
 import IpSourcesSection from './admin-settings/components/IpSourcesSection';
 import MaintenanceSection from './admin-settings/components/MaintenanceSection';
 import ResetPentestDialog from './admin-settings/components/ResetPentestDialog';
 import SecuritySection from './admin-settings/components/SecuritySection';
 import ChecklistTemplatesSection from './admin-settings/components/ChecklistTemplatesSection';
 import CollectorsSection from './admin-settings/components/CollectorsSection';
+import CloudDnsSection from './admin-settings/components/CloudDnsSection';
 import DomainsManagementSection from './admin-settings/components/DomainsManagementSection';
 import DomainsRefreshCard from './admin-settings/components/DomainsRefreshCard';
 import ReportTemplatesSection from './admin-settings/components/ReportTemplatesSection';
@@ -52,9 +54,10 @@ import DomainUsersPanel from './admin-settings/components/users/DomainUsersPanel
 import ExistingUsersPanel from './admin-settings/components/users/ExistingUsersPanel';
 import LocalUsersPanel from './admin-settings/components/users/LocalUsersPanel';
 import ServiceAccountsPanel from './admin-settings/components/users/ServiceAccountsPanel';
+import SsoConnectionsPanel from './admin-settings/components/users/SsoConnectionsPanel';
 import UserManagementSection from './admin-settings/components/users/UserManagementSection';
 import EmailSettingsPanel from './admin-settings/components/EmailSettingsPanel';
-import ScannerSettingsPanel from './admin-settings/components/ScannerSettingsPanel';
+import AiScannerSection from './admin-settings/components/AiScannerSection';
 
 const REQUIRED_RESET_PHRASE = 'RESET NOTEBOOKS KEEP FINDINGS';
 const EMPTY_CHECKLIST_TEMPLATE_FORM = {
@@ -129,13 +132,15 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
 
   const [selectedSection, setSelectedSection] = useState('');
   const [userManagementPage, setUserManagementPage] = useState('existing');
+  const [domainManagementPage, setDomainManagementPage] = useState('collectors');
+  const [aiScannerPage, setAiScannerPage] = useState('connections');
   const [navOpen, setNavOpen] = useState(false);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const hasPermission = useCallback(
-    (permission) => userRole === 'admin' || (userPermissions || []).includes(permission),
+    (permission) => hasRolePermission(userRole, userPermissions, permission),
     [userPermissions, userRole]
   );
 
@@ -166,7 +171,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       {
         key: 'domains',
         label: 'Domains Management',
-        description: 'Collectors, zone refresh, and IP source groups for DNS inventory.',
+        description: 'Collectors, cloud DNS connectors, zone refresh, and IP source groups.',
         icon: DnsIcon,
         visible: canManageSecurity || canManageIpSources || canRunMaintenance
       },
@@ -208,7 +213,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       {
         key: 'ai-scanner',
         label: 'AI Scanner',
-        description: 'Configure the AI-powered security scanner using AWS Bedrock.',
+        description: 'Providers, RAPTOR Local, and scan policy for the agentic scanner.',
         icon: SmartToyIcon,
         visible: canManageSecurity
       }
@@ -227,6 +232,17 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
   const visibleSections = useMemo(
     () => sections.filter((section) => section.visible),
     [sections]
+  );
+
+  const domainTabs = useMemo(
+    () =>
+      DOMAIN_SUBSECTIONS.filter((item) => {
+        if (item.key === 'collectors') return canManageSecurity || canRunMaintenance;
+        if (item.key === 'cloud') return canManageSecurity;
+        if (item.key === 'ip-sources') return canManageIpSources;
+        return false;
+      }).map((item) => ({ key: item.key, label: item.label })),
+    [canManageIpSources, canManageSecurity, canRunMaintenance]
   );
 
   const activeSection =
@@ -394,6 +410,13 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
   }, [selectedSection, visibleSections]);
 
   useEffect(() => {
+    if (!domainTabs.length) return;
+    if (!domainTabs.some((item) => item.key === domainManagementPage)) {
+      setDomainManagementPage(domainTabs[0].key);
+    }
+  }, [domainManagementPage, domainTabs]);
+
+  useEffect(() => {
     if (message) {
       const timer = setTimeout(() => setMessage(''), 5000);
       return () => clearTimeout(timer);
@@ -405,13 +428,18 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     if (!selectedServiceAccount) {
       setSelectedServiceAccountScopes([]);
       setSelectedServiceAccountEndDate('');
-      setVisibleServiceApiKey('');
       return;
     }
     setSelectedServiceAccountScopes(selectedServiceAccount.scopes || []);
     setSelectedServiceAccountEndDate('');
-    setVisibleServiceApiKey('');
   }, [selectedServiceAccount]);
+
+  const handleSelectServiceAccount = (username) => {
+    if (username !== selectedServiceAccountUsername) {
+      setVisibleServiceApiKey('');
+    }
+    setSelectedServiceAccountUsername(username);
+  };
 
   const handleAddSourceType = () => {
     const trimmedName = newSourceName.trim();
@@ -594,7 +622,6 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
   };
 
   const handleDeleteUser = async (username) => {
-    if (!window.confirm(`Are you sure you want to delete user ${username}?`)) return;
     try {
       const response = await axios.delete('/delete-user', { data: { username } });
       if (response.status === 200) {
@@ -642,10 +669,10 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       if (response.data.ok) {
         showMessage(
           'success',
-          `Drop-folder parsed. Asked ${queued} agent${queued === 1 ? '' : 's'} to collect (${immediate} immediate).`
+          `Asked ${queued} agent${queued === 1 ? '' : 's'} to collect (${immediate} immediate).`
         );
       } else {
-        showMessage('error', response.data.drop_folder?.error || 'Refresh completed with errors.');
+        showMessage('error', 'Refresh completed with errors.');
       }
     } catch (error) {
       showMessage('error', error.response?.data?.error || 'Failed to refresh domains.');
@@ -882,45 +909,6 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
     setReportTemplateForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleUploadReportTemplateLogo = async (file) => {
-    if (!file) return;
-    if (!selectedReportTemplateId) {
-      showMessage('error', 'Save the report template first, then upload a logo.');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('logo', file);
-    formData.append('template_id', String(selectedReportTemplateId));
-
-    setLoading(true);
-    try {
-      const response = await axios.post('/report-templates/logo-upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      if (response.status === 200 && response.data.logo_url) {
-        setReportTemplateForm((prev) => ({
-          ...prev,
-          branding: {
-            ...(prev.branding || {}),
-            logo_asset_id: response.data.logo_asset_id || null,
-            logo_url: response.data.logo_url
-          }
-        }));
-        showMessage('success', 'Logo uploaded successfully.');
-      }
-    } catch (error) {
-      showMessage(
-        'error',
-        error.response?.data?.error || 'Failed to upload logo.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSaveReportTemplate = async () => {
     const key = selectedReportTemplate?.is_system
       ? (selectedReportTemplate.key || '').trim().toLowerCase()
@@ -1037,6 +1025,50 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         'error',
         error.response?.data?.error || 'Failed to reset report template.'
       );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDuplicateReportTemplate = async () => {
+    const sourceKey = String(reportTemplateForm.key || selectedReportTemplate?.key || 'template')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-')
+      .replace(/^-+/, '');
+    const base = sourceKey.slice(0, 50) || 'template';
+    const existing = new Set((reportTemplates || []).map((item) => item.key));
+    let key = `${base}-copy`.slice(0, 63);
+    if (!/^[a-z0-9]/.test(key)) key = `t${key}`.slice(0, 63);
+    let n = 2;
+    while (existing.has(key) || key.length < 2) {
+      const suffix = `-copy-${n}`;
+      key = `${base.slice(0, Math.max(1, 63 - suffix.length))}${suffix}`;
+      n += 1;
+    }
+    const name = `${(reportTemplateForm.name || selectedReportTemplate?.name || 'Template').trim()} (copy)`;
+    const payload = {
+      key,
+      name,
+      description: (reportTemplateForm.description || '').trim(),
+      template: toReportTemplateDefinition(reportTemplateForm),
+      enabled: Boolean(reportTemplateForm.enabled)
+    };
+    setLoading(true);
+    try {
+      const response = await axios.post('/report-templates', payload);
+      if (response.status === 200) {
+        showMessage('success', 'Template duplicated.');
+        const refreshedTemplates = await fetchReportTemplates();
+        const created =
+          refreshedTemplates.find((item) => item.id === response.data.id) ||
+          refreshedTemplates.find((item) => item.key === key);
+        if (created) {
+          handleSelectReportTemplate(created);
+        }
+      }
+    } catch (error) {
+      showMessage('error', error.response?.data?.error || 'Failed to duplicate report template.');
     } finally {
       setLoading(false);
     }
@@ -1262,13 +1294,17 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
           end_date: createServiceAccountEndDate || undefined
         });
         if (keyResponse.status === 201 || keyResponse.status === 200) {
-          const account = keyResponse.data?.service_account;
-          setVisibleServiceApiKey(account?.api_key || '');
+          const issuedKey = keyResponse.data?.service_account?.api_key || '';
           setCreateServiceAccountUsername('');
           setCreateServiceAccountEndDate('');
           setCreateServiceAccountScopes(['records.read']);
           setSelectedServiceAccountUsername(username);
-          showMessage('success', 'Service account and API key created.');
+          setVisibleServiceApiKey(issuedKey);
+          if (issuedKey) {
+            showMessage('success', 'Service account created. Copy the API key now — it will not be shown again.');
+          } else {
+            showMessage('error', 'Service account created, but the API key was not returned.');
+          }
           fetchExistingUsers();
           fetchServiceAccounts();
         }
@@ -1302,36 +1338,20 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         }
       );
       if (response.status === 201 || response.status === 200) {
-        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
+        const issuedKey = response.data?.service_account?.api_key || '';
         setSelectedServiceAccountEndDate('');
-        showMessage('success', 'API key created successfully.');
+        setVisibleServiceApiKey(issuedKey);
+        if (issuedKey) {
+          showMessage('success', 'API key created. Copy it now — it will not be shown again.');
+        } else {
+          showMessage('error', 'API key created, but it was not returned.');
+        }
         fetchServiceAccounts();
       }
     } catch (error) {
       showMessage(
         'error',
         error.response?.data?.error || 'Failed to create API key.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleViewSelectedApiKey = async () => {
-    if (!selectedServiceAccountUsername) return;
-    setLoading(true);
-    try {
-      const response = await axios.get(
-        `/service-accounts/${selectedServiceAccountUsername}/api-key`
-      );
-      if (response.status === 200) {
-        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
-        showMessage('success', 'API key loaded.');
-      }
-    } catch (error) {
-      showMessage(
-        'error',
-        error.response?.data?.error || 'Failed to fetch API key.'
       );
     } finally {
       setLoading(false);
@@ -1349,8 +1369,13 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         `/service-accounts/${selectedServiceAccountUsername}/api-key/rotate`
       );
       if (response.status === 200) {
-        setVisibleServiceApiKey(response.data?.service_account?.api_key || '');
-        showMessage('success', 'API key rotated successfully.');
+        const issuedKey = response.data?.service_account?.api_key || '';
+        setVisibleServiceApiKey(issuedKey);
+        if (issuedKey) {
+          showMessage('success', 'API key rotated. Copy the new key now — it will not be shown again.');
+        } else {
+          showMessage('error', 'API key rotated, but the new key was not returned.');
+        }
         fetchServiceAccounts();
       }
     } catch (error) {
@@ -1412,6 +1437,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         return (
           <UserManagementSection
             userManagementPage={userManagementPage}
+            onSelectUserManagementPage={setUserManagementPage}
             existingPanel={
               <ExistingUsersPanel
                 existingUsers={existingUsers}
@@ -1462,7 +1488,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
                 loading={loading}
                 serviceAccounts={serviceAccounts}
                 selectedServiceAccountUsername={selectedServiceAccountUsername}
-                onSelectServiceAccount={setSelectedServiceAccountUsername}
+                onSelectServiceAccount={handleSelectServiceAccount}
                 createUsername={createServiceAccountUsername}
                 setCreateUsername={setCreateServiceAccountUsername}
                 createScopes={createServiceAccountScopes}
@@ -1476,12 +1502,13 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
                 setSelectedEndDate={setSelectedServiceAccountEndDate}
                 onCreateKeyForSelectedServiceAccount={handleCreateKeyForSelectedServiceAccount}
                 onSaveSelectedScopes={handleSaveSelectedServiceScopes}
-                onViewSelectedKey={handleViewSelectedApiKey}
                 onRotateSelectedKey={handleRotateSelectedApiKey}
                 visibleApiKey={visibleServiceApiKey}
                 onCopyVisibleApiKey={handleCopyVisibleApiKey}
+                onDismissVisibleApiKey={() => setVisibleServiceApiKey('')}
               />
             }
+            ssoPanel={<SsoConnectionsPanel showMessage={showMessage} />}
           />
         );
       case 'security':
@@ -1503,8 +1530,11 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
             canManageCollectors={canManageSecurity}
             canRunMaintenance={canRunMaintenance}
             canManageIpSources={canManageIpSources}
+            tab={domainManagementPage}
+            onSelectTab={setDomainManagementPage}
             collectors={<CollectorsSection showMessage={showMessage} />}
             refresh={<DomainsRefreshCard loading={loading} onRunUpdate={handleDomainsRefresh} />}
+            cloudDns={canManageSecurity ? <CloudDnsSection showMessage={showMessage} /> : null}
             ipSources={
               <IpSourcesSection
                 loading={loading}
@@ -1555,17 +1585,14 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         return (
           <ReportTemplatesSection
             loading={loading}
-            templates={reportTemplates}
-            selectedTemplateId={selectedReportTemplateId}
             selectedTemplate={selectedReportTemplate}
             templateForm={reportTemplateForm}
-            onCreateNewTemplate={handleCreateNewReportTemplate}
-            onSelectTemplate={handleSelectReportTemplate}
+            showMessage={showMessage}
             onChangeTemplateForm={handleReportTemplateFormChange}
-            onUploadLogo={handleUploadReportTemplateLogo}
             onSaveTemplate={handleSaveReportTemplate}
             onDeleteTemplate={handleDeleteReportTemplate}
             onResetTemplate={handleResetReportTemplate}
+            onDuplicateTemplate={handleDuplicateReportTemplate}
           />
         );
       case 'maintenance':
@@ -1581,63 +1608,69 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       case 'notifications':
         return <EmailSettingsPanel showMessage={showMessage} />;
       case 'ai-scanner':
-        return <ScannerSettingsPanel showMessage={showMessage} />;
+        return (
+          <AiScannerSection
+            tab={aiScannerPage}
+            onSelectTab={setAiScannerPage}
+            showMessage={showMessage}
+          />
+        );
       default:
         return null;
     }
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
-      <AdminSettingsNavDrawer
+    <Page>
+      <PageHeader
+        title="Settings"
+        subtitle={
+          activeSection?.description || 'Manage platform settings available for your role.'
+        }
+        leading={
+          isMobile ? (
+            <Button size="small" onClick={() => setNavOpen(true)}>
+              Menu
+            </Button>
+          ) : null
+        }
+      />
+      {loading ? <Progress deferred /> : null}
+      <SettingsShell
+        renderNav={() => (
+          <SettingsNav
+            sections={visibleSections}
+            selectedSection={selectedSection}
+            onSelectSection={handleSelectSection}
+            userManagementPage={userManagementPage}
+            onSelectUserManagementPage={setUserManagementPage}
+            domainManagementPage={domainManagementPage}
+            onSelectDomainManagementPage={setDomainManagementPage}
+            domainTabs={domainTabs}
+            aiScannerPage={aiScannerPage}
+            onSelectAiScannerPage={setAiScannerPage}
+            reportTemplates={reportTemplates}
+            selectedReportTemplateId={selectedReportTemplateId}
+            onCreateReportTemplate={handleCreateNewReportTemplate}
+            onSelectReportTemplate={handleSelectReportTemplate}
+          />
+        )}
         isMobile={isMobile}
         navOpen={navOpen}
-        onClose={() => setNavOpen(false)}
-        sections={visibleSections}
-        selectedSection={selectedSection}
-        onSelectSection={handleSelectSection}
-        userManagementPage={userManagementPage}
-        onSelectUserManagementPage={setUserManagementPage}
-        reportTemplates={reportTemplates}
-        selectedReportTemplateId={selectedReportTemplateId}
-        onCreateReportTemplate={handleCreateNewReportTemplate}
-        onSelectReportTemplate={handleSelectReportTemplate}
-      />
-
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0, overflowX: 'hidden' }}>
-        <Box display="flex" alignItems="center" gap={2} mb={3}>
-          {isMobile && (
-            <IconButton onClick={() => setNavOpen(true)}>
-              <MenuIcon />
-            </IconButton>
-          )}
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 600 }}>
-              {activeSection?.label || 'Settings'}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {activeSection?.description || 'Manage platform settings available for your role.'}
-            </Typography>
-          </Box>
-        </Box>
-
-        {loading && <LinearProgress sx={{ mb: 2 }} />}
-
-        <Collapse in={Boolean(message)}>
-          <Alert
-            severity={messageType || 'info'}
-            sx={{ mb: 2 }}
-            onClose={() => setMessage('')}
-          >
-            {message}
-          </Alert>
-        </Collapse>
-
-        {activeSection ? renderSection() : (
-          <Alert severity="warning">No settings sections are available for your account.</Alert>
+        onCloseNav={() => setNavOpen(false)}
+      >
+        {activeSection ? (
+          renderSection()
+        ) : (
+          <EmptyState title="No settings" hint="No settings sections are available for your account." />
         )}
-      </Box>
-
+      </SettingsShell>
+      <Toast
+        open={Boolean(message)}
+        message={message}
+        severity={messageType || 'info'}
+        onClose={() => setMessage('')}
+      />
       <ResetPentestDialog
         open={resetDialogOpen}
         loading={loading}
@@ -1650,7 +1683,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         resetConfirmChecked={resetConfirmChecked}
         setResetConfirmChecked={setResetConfirmChecked}
       />
-    </Box>
+    </Page>
   );
 };
 

@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.domain.offsec.shared import safe_json_load
 from app.integrations.db.connection import IntegrityError
 from app.repositories import applications_repository, environments_repository, phase2b_repository
+from app.repositories.phase2b_repository import wave_env_ids
+from app.services.authorization_service import user_has_permission
 
 PACKAGES = {
     "owner_delivery": {"include_drafts": False, "occurrence_statuses": None, "prod_default": True},
@@ -34,6 +36,44 @@ def reject_if_closed(wave: Optional[Dict[str, Any]]) -> Optional[Tuple[Dict[str,
 
 def _is_override(role: str) -> bool:
     return str(role or "").strip().lower() in {"admin", "manager"}
+
+
+def _hidden_env_error(
+    app_id: int, env_ids: List[int], username: str, role: str
+) -> Optional[Tuple[Dict[str, Any], int]]:
+    if not username:
+        return None
+    allowed = visible_env_ids(app_id, username, role)
+    if allowed is None:
+        return None
+    allowed_set = {int(item) for item in allowed}
+    if any(int(env_id) not in allowed_set for env_id in (env_ids or [])):
+        return {"error": "Environment is not visible to this user."}, 403
+    return None
+
+
+def _wave_accessible_error(
+    app_id: int, wave: Dict[str, Any], username: str, role: str
+) -> Optional[Tuple[Dict[str, Any], int]]:
+    """Deny only when the caller cannot see any environment on the wave."""
+    if not username:
+        return None
+    allowed = visible_env_ids(app_id, username, role)
+    if _filter_wave_to_acl(wave, allowed) is None:
+        return {"error": "Environment is not visible to this user."}, 403
+    return None
+
+
+def _filter_wave_to_acl(wave: Dict[str, Any], allowed: Optional[List[int]]) -> Optional[Dict[str, Any]]:
+    if allowed is None:
+        return wave
+    allowed_set = {int(item) for item in allowed}
+    visible_ids = [env_id for env_id in wave_env_ids(wave) if env_id in allowed_set]
+    if not visible_ids:
+        return None
+    item = dict(wave)
+    item["env_ids"] = visible_ids
+    return item
 
 
 def package_defaults(package: str) -> Dict[str, Any]:
@@ -92,18 +132,32 @@ def verify_export(export_id: int) -> Tuple[Any, int]:
     }, 200
 
 
-def list_waves(app_id: int) -> Tuple[Any, int]:
+def list_waves(app_id: int, username: str = "", role: str = "") -> Tuple[Any, int]:
     if not applications_repository.fetch_application(app_id):
         return {"error": "Application not found."}, 404
-    return {"waves": phase2b_repository.list_waves(app_id)}, 200
+    waves = phase2b_repository.list_waves(app_id)
+    allowed = visible_env_ids(app_id, username, role) if username else None
+    if allowed is None:
+        return {"waves": waves}, 200
+    filtered = []
+    for wave in waves:
+        item = _filter_wave_to_acl(wave, allowed)
+        if item:
+            filtered.append(item)
+    return {"waves": filtered}, 200
 
 
-def get_wave(app_id: int, wave_id: int) -> Tuple[Any, int]:
+def get_wave(app_id: int, wave_id: int, username: str = "", role: str = "") -> Tuple[Any, int]:
     if not applications_repository.fetch_application(app_id):
         return {"error": "Application not found."}, 404
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
+    allowed = visible_env_ids(app_id, username, role) if username else None
+    filtered_wave = _filter_wave_to_acl(wave, allowed)
+    if filtered_wave is None:
+        return {"error": "Environment is not visible to this user."}, 403
+    wave = filtered_wave
     from app.repositories.pentest_findings_repository import fetch_app_findings
 
     env_ids = phase2b_repository.wave_env_ids(wave)
@@ -113,9 +167,28 @@ def get_wave(app_id: int, wave_id: int) -> Tuple[Any, int]:
         if env:
             environments.append(env)
     hosts = phase2b_repository.list_live_wave_hosts(wave)
+    if allowed is not None:
+        allowed_set = {int(item) for item in allowed}
+        hosts = [host for host in hosts if int(host.get("environment_id") or 0) in allowed_set]
     findings, _ = fetch_app_findings(
-        app_id, wave_id=int(wave["id"]), include_drafts=True, limit=200, offset=0
+        app_id,
+        wave_id=int(wave["id"]),
+        include_drafts=True,
+        limit=200,
+        offset=0,
+        env_ids=allowed,
     )
+    current_scan_job = None
+    try:
+        from app.repositories.scan_jobs_repository import latest_job_for_wave, scan_jobs_table_ready
+
+        if scan_jobs_table_ready():
+            current_scan_job = latest_job_for_wave(int(wave["id"]))
+    except Exception:
+        current_scan_job = None
+    if current_scan_job:
+        wave = dict(wave)
+        wave["current_scan_job"] = current_scan_job
     return {
         "wave": wave,
         "environment": environments[0] if environments else None,
@@ -125,6 +198,7 @@ def get_wave(app_id: int, wave_id: int) -> Tuple[Any, int]:
         "members": wave.get("members") or [],
         "finding_total": len(findings),
         "host_total": len(hosts),
+        "current_scan_job": current_scan_job,
     }, 200
 
 
@@ -149,7 +223,7 @@ def _parse_env_ids(data: Dict[str, Any]) -> List[int]:
     return cleaned
 
 
-def create_wave(app_id: int, data: Dict[str, Any], username: str) -> Tuple[Any, int]:
+def create_wave(app_id: int, data: Dict[str, Any], username: str, role: str = "") -> Tuple[Any, int]:
     if not applications_repository.fetch_application(app_id):
         return {"error": "Application not found."}, 404
     name = str((data or {}).get("name") or "").strip()
@@ -161,6 +235,9 @@ def create_wave(app_id: int, data: Dict[str, Any], username: str) -> Tuple[Any, 
     known = {int(env["id"]) for env in environments_repository.fetch_environments(app_id)}
     if any(env_id not in known for env_id in env_ids):
         return {"error": "Every environment must belong to this application."}, 400
+    hidden = _hidden_env_error(app_id, env_ids, username, role)
+    if hidden:
+        return hidden
     members = data.get("members") if isinstance(data.get("members"), list) else []
     seeded = list(members)
     for env_id in env_ids:
@@ -173,7 +250,9 @@ def create_wave(app_id: int, data: Dict[str, Any], username: str) -> Tuple[Any, 
     return {"wave": wave}, 201
 
 
-def put_wave_environments(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tuple[Any, int]:
+def put_wave_environments(
+    app_id: int, wave_id: int, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Any, int]:
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
@@ -186,6 +265,9 @@ def put_wave_environments(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tu
     known = {int(env["id"]) for env in environments_repository.fetch_environments(app_id)}
     if any(env_id not in known for env_id in env_ids):
         return {"error": "Every environment must belong to this application."}, 400
+    hidden = _hidden_env_error(app_id, env_ids, username, role)
+    if hidden:
+        return hidden
     updated = phase2b_repository.replace_wave_env_ids(wave_id, env_ids)
     phase2b_repository.sync_wave_host_collaborators(wave_id, updated.get("members") or wave.get("members") or [])
     host_status = "In Progress" if updated.get("started_at") else "Not Started"
@@ -193,23 +275,37 @@ def put_wave_environments(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tu
     return {"wave": updated, "env_ids": phase2b_repository.wave_env_ids(updated)}, 200
 
 
-def set_wave_host_scope(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tuple[Any, int]:
+def set_wave_host_scope(
+    app_id: int, wave_id: int, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Any, int]:
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
     blocked = reject_if_closed(wave)
     if blocked:
         return blocked
+    hidden = _wave_accessible_error(app_id, wave, username, role)
+    if hidden:
+        return hidden
     try:
         record_ids = [int(item) for item in (data.get("record_ids") or [])]
     except (TypeError, ValueError):
         return {"error": "record_ids must be integers."}, 400
     if "in_scope" not in (data or {}):
         return {"error": "in_scope is required."}, 400
-    live = {int(item["id"]) for item in phase2b_repository.list_live_wave_hosts(wave)}
+    live_hosts = phase2b_repository.list_live_wave_hosts(wave)
+    live = {int(item["id"]) for item in live_hosts}
     ids = [item for item in record_ids if item in live]
     if not ids:
         return {"error": "Pick hosts that belong to this wave's environments."}, 400
+    scoped_env_ids = [
+        int(item["environment_id"])
+        for item in live_hosts
+        if int(item["id"]) in ids and item.get("environment_id") not in (None, "")
+    ]
+    hidden_hosts = _hidden_env_error(app_id, scoped_env_ids, username, role)
+    if hidden_hosts:
+        return hidden_hosts
     updated = phase2b_repository.set_wave_host_scope(wave_id, ids, bool(data.get("in_scope")))
     return {"updated": updated, "in_scope": bool(data.get("in_scope"))}, 200
 
@@ -223,13 +319,18 @@ def delete_wave(app_id: int, wave_id: int) -> Tuple[Any, int]:
     return {"message": "Wave deleted. Findings were kept."}, 200
 
 
-def put_wave_members(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tuple[Any, int]:
+def put_wave_members(
+    app_id: int, wave_id: int, data: Dict[str, Any], username: str = "", role: str = ""
+) -> Tuple[Any, int]:
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
     blocked = reject_if_closed(wave)
     if blocked:
         return blocked
+    hidden = _wave_accessible_error(app_id, wave, username, role)
+    if hidden:
+        return hidden
     names = data.get("usernames") if isinstance(data, dict) else None
     if not isinstance(names, list):
         return {"error": "usernames must be a list."}, 400
@@ -242,13 +343,18 @@ def put_wave_members(app_id: int, wave_id: int, data: Dict[str, Any]) -> Tuple[A
     return {"wave": wave, "members": members}, 200
 
 
-def claim_wave_hosts(app_id: int, wave_id: int, data: Dict[str, Any], username: str) -> Tuple[Any, int]:
+def claim_wave_hosts(
+    app_id: int, wave_id: int, data: Dict[str, Any], username: str, role: str = ""
+) -> Tuple[Any, int]:
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
     blocked = reject_if_closed(wave)
     if blocked:
         return blocked
+    hidden = _wave_accessible_error(app_id, wave, username, role)
+    if hidden:
+        return hidden
     actor = str(username or "").strip()
     members = [str(name).strip() for name in (wave.get("members") or []) if str(name).strip()]
     opener = str(wave.get("opened_by") or "").strip()
@@ -267,10 +373,13 @@ def claim_wave_hosts(app_id: int, wave_id: int, data: Dict[str, Any], username: 
     return {"updated": updated, "tested_by": actor}, 200
 
 
-def start_wave(app_id: int, wave_id: int) -> Tuple[Any, int]:
+def start_wave(app_id: int, wave_id: int, username: str = "", role: str = "") -> Tuple[Any, int]:
     wave = phase2b_repository.get_wave(wave_id)
     if not wave or int(wave.get("application_id") or 0) != int(app_id):
         return {"error": "Wave not found."}, 404
+    hidden = _wave_accessible_error(app_id, wave, username, role)
+    if hidden:
+        return hidden
     if str(wave.get("status") or "") != "open":
         return {"error": "Only an open wave can be started."}, 400
     if wave.get("started_at"):
@@ -281,17 +390,31 @@ def start_wave(app_id: int, wave_id: int) -> Tuple[Any, int]:
     return {"wave": started}, 200
 
 
-def close_wave(app_id: int, wave_id: int) -> Tuple[Any, int]:
+def close_wave(app_id: int, wave_id: int, username: str = "", role: str = "") -> Tuple[Any, int]:
+    wave = phase2b_repository.get_wave(wave_id)
+    if not wave or int(wave.get("application_id") or 0) != int(app_id):
+        return {"error": "Wave not found or already closed."}, 404
+    hidden = _wave_accessible_error(app_id, wave, username, role)
+    if hidden:
+        return hidden
     wave = phase2b_repository.close_wave(wave_id, app_id)
     if not wave:
         return {"error": "Wave not found or already closed."}, 404
     return {"wave": wave}, 200
 
 
-def get_acl(app_id: int, env_id: int) -> Tuple[Any, int]:
+def get_acl(app_id: int, env_id: int, username: str = "", role: str = "") -> Tuple[Any, int]:
     env = environments_repository.fetch_environment(app_id, env_id)
     if not env:
         return {"error": "Environment not found."}, 404
+    app = applications_repository.fetch_application(app_id) or {}
+    lead = str(app.get("app_lead") or "")
+    if not (
+        _is_override(role)
+        or user_has_permission(username, role, "manage_apps")
+        or (lead and lead == username)
+    ):
+        return {"error": "You are not allowed to view this environment ACL."}, 403
     return {"usernames": phase2b_repository.list_acl(env_id)}, 200
 
 

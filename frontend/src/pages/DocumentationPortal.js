@@ -28,8 +28,18 @@ import {
   ArrowForward,
   Search as SearchIcon
 } from '@mui/icons-material';
+import { RaptorMark } from '../design/primitives';
 
 const buildDocPath = (sectionSlug, pageSlug) => `/docs/${sectionSlug}/${pageSlug}`;
+
+const DocsBrandTitle = ({ children, sx }) => (
+  <Stack direction="row" spacing={1.5} alignItems="center" sx={sx}>
+    <RaptorMark variant="mark" height={36} decorative />
+    <Typography variant="h4" sx={{ fontWeight: 700, fontSize: { xs: '1.75rem', md: '2rem' } }}>
+      {children}
+    </Typography>
+  </Stack>
+);
 
 const flattenPages = (sections) =>
   (sections || []).flatMap((section) =>
@@ -536,9 +546,7 @@ const DocumentationPortal = () => {
   if (loadingManifest) {
     return (
       <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          RAPTOR Documentation
-        </Typography>
+        <DocsBrandTitle sx={{ mb: 1 }}>RAPTOR Documentation</DocsBrandTitle>
         <Typography variant="body2" color="text.secondary">
           Loading documentation...
         </Typography>
@@ -549,9 +557,7 @@ const DocumentationPortal = () => {
   if (!defaultRoute) {
     return (
       <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          RAPTOR Documentation
-        </Typography>
+        <DocsBrandTitle sx={{ mb: 1 }}>RAPTOR Documentation</DocsBrandTitle>
         <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
             No documentation available
@@ -567,12 +573,7 @@ const DocumentationPortal = () => {
   return (
     <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
       <Stack spacing={0.5} sx={{ mb: 2 }}>
-        <Typography
-          variant="h4"
-          sx={{ fontWeight: 700, fontSize: { xs: '1.75rem', md: '2rem' } }}
-        >
-          RAPTOR Documentation
-        </Typography>
+        <DocsBrandTitle>RAPTOR Documentation</DocsBrandTitle>
         <Typography variant="body2" color="text.secondary">
           Technical reference for operators, testers, and administrators.
         </Typography>

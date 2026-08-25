@@ -16,6 +16,9 @@ const emptyForm = {
   record_id: '',
   record_ids: [],
   description: '',
+  impact: '',
+  evidence: '',
+  remediation: '',
   auth_context: '',
   ticket_url: ''
 };
@@ -129,11 +132,35 @@ const NewFindingDialog = ({ open, appId, sharedHosts = [], lockedHost = null, en
       </div>
       <Field
         multiline
-        minRows={4}
+        minRows={3}
         label="Description"
-        placeholder="What you found, how you proved it, and the impact"
+        placeholder="What you found. Hosts stay on the occurrence table."
         value={form.description}
         onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+      />
+      <Field
+        multiline
+        minRows={3}
+        label="Impact"
+        placeholder="What an attacker can do in this environment."
+        value={form.impact}
+        onChange={(event) => setForm((prev) => ({ ...prev, impact: event.target.value }))}
+      />
+      <Field
+        multiline
+        minRows={3}
+        label="Evidence"
+        placeholder="Proof, requests, and screenshots. Add images on the finding page."
+        value={form.evidence}
+        onChange={(event) => setForm((prev) => ({ ...prev, evidence: event.target.value }))}
+      />
+      <Field
+        multiline
+        minRows={3}
+        label="Remediation"
+        placeholder="How to fix it and what to retest."
+        value={form.remediation}
+        onChange={(event) => setForm((prev) => ({ ...prev, remediation: event.target.value }))}
       />
     </Panel>
   );

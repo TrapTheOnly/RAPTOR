@@ -3,11 +3,13 @@ from typing import Any, Dict, List, Optional
 
 from app.config import DB_PATH
 from app.integrations.db.connection import IntegrityError, get_db_connection
+from app.repositories.dns_sources_repository import latest_a_observations_for_fqdn, latest_live_a_fqdns
 from app.repositories.records_row_mapper import determine_source_with_cursor
 
 logger = logging.getLogger(__name__)
 
 MANUAL_SYNC_CONFLICT_REASON = "manual_domain_matches_import"
+MULTI_SOURCE_A_CONFLICT_REASON = "multi_source_a_disagreement"
 
 
 def _insert_record_history(
@@ -131,6 +133,56 @@ def store_records_in_db(
                 continue
 
             new_source = determine_source_with_cursor(c, record["ip_address"])
+            other_ips = {
+                str(row.get("ip_address") or "")
+                for row in latest_a_observations_for_fqdn(record["name"], db_path=db_path)
+                if int(row.get("source_id") or 0) != int(source_id or 0) and row.get("ip_address")
+            }
+            other_ips.discard("")
+
+            if (
+                existing_record["ip_address"] != record["ip_address"]
+                and other_ips
+                and record["ip_address"] not in other_ips
+            ):
+                if not existing_record["sync_conflict"]:
+                    try:
+                        from app.services.notifications_service import notify_by_roles
+
+                        notify_by_roles(
+                            notification_type="sync_conflict",
+                            roles=["admin", "manager"],
+                            title="Sync conflict detected",
+                            message=(
+                                f"Record '{record['name']}' has A records that disagree across DNS sources."
+                            ),
+                            metadata={"record_id": existing_record["id"]},
+                        )
+                    except Exception:
+                        pass
+                    _insert_record_history(
+                        c,
+                        record_id=existing_record["id"],
+                        action="conflict",
+                        username="system",
+                        old_ip_address=existing_record["ip_address"],
+                        new_ip_address=record["ip_address"],
+                        old_source=existing_record["source"],
+                        new_source=new_source,
+                        old_maintainer=existing_record["maintainer"],
+                        new_maintainer=existing_record["maintainer"],
+                    )
+                c.execute(
+                    """
+                    UPDATE records
+                    SET sync_conflict = 1,
+                        sync_conflict_reason = ?,
+                        last_modification_date = (NOW() + INTERVAL '4 hours')
+                    WHERE id = ?
+                    """,
+                    (MULTI_SOURCE_A_CONFLICT_REASON, existing_record["id"]),
+                )
+                continue
 
             if (
                 existing_record["ip_address"] != record["ip_address"]
@@ -152,8 +204,6 @@ def store_records_in_db(
                         source = ?,
                         status = 'updated',
                         origin = 'automated',
-                        sync_conflict = 0,
-                        sync_conflict_reason = NULL,
                         last_modification_date = (NOW() + INTERVAL '4 hours')
                     WHERE name = ?
                     """,
@@ -177,9 +227,7 @@ def store_records_in_db(
                     """
                     UPDATE records
                     SET status = 'unchanged',
-                        origin = 'automated',
-                        sync_conflict = 0,
-                        sync_conflict_reason = NULL
+                        origin = 'automated'
                     WHERE name = ?
                     """,
                     (record["name"],),
@@ -233,7 +281,9 @@ def store_records_in_db(
                 previously_seen.add(row.get("fqdn"))
             else:
                 previously_seen.add(row[0])
-        names_to_mark_missing = sorted(previously_seen - set(current_names))
+        live_names = set(latest_live_a_fqdns(db_path=db_path))
+        live_names.update(current_names)
+        names_to_mark_missing = sorted(name for name in (previously_seen - live_names) if name)
         if names_to_mark_missing:
             missing_placeholders = ",".join("?" for _ in names_to_mark_missing)
             c.execute(
@@ -441,6 +491,27 @@ def resolve_manual_sync_conflict(
     username: str,
     db_path: str = DB_PATH,
 ) -> Optional[str]:
+    return resolve_sync_conflict_with_ip(
+        record_id=record_id,
+        ip_address=imported_ip_address,
+        username=username,
+        require_manual=True,
+        db_path=db_path,
+    )
+
+
+def resolve_sync_conflict_with_ip(
+    *,
+    record_id: int,
+    ip_address: str,
+    username: str,
+    require_manual: bool = False,
+    db_path: str = DB_PATH,
+) -> Optional[str]:
+    chosen_ip = str(ip_address or "").strip()
+    if not chosen_ip:
+        return "invalid_ip"
+
     conn = get_db_connection(db_path)
     c = conn.cursor()
 
@@ -458,17 +529,21 @@ def resolve_manual_sync_conflict(
         return "record_not_found"
 
     _, name, old_ip_address, old_source, maintainer, origin, sync_conflict = row
-    if origin != "manual" or not bool(sync_conflict):
+    if not bool(sync_conflict):
+        conn.close()
+        return "no_conflict"
+    if require_manual and origin != "manual":
         conn.close()
         return "no_conflict"
 
-    imported_source = determine_source_with_cursor(c, imported_ip_address)
+    imported_source = determine_source_with_cursor(c, chosen_ip)
+    next_origin = "automated"
     c.execute(
         """
         UPDATE records
         SET ip_address = ?,
             source = ?,
-            origin = 'automated',
+            origin = ?,
             sync_conflict = 0,
             sync_conflict_reason = NULL,
             status = CASE
@@ -478,7 +553,7 @@ def resolve_manual_sync_conflict(
             last_modification_date = (NOW() + INTERVAL '4 hours')
         WHERE id = ?
         """,
-        (imported_ip_address, imported_source, imported_ip_address, imported_source, record_id),
+        (chosen_ip, imported_source, next_origin, chosen_ip, imported_source, record_id),
     )
     c.execute(
         """
@@ -486,7 +561,7 @@ def resolve_manual_sync_conflict(
         SET dns_name = ?, ip_address = ?, source = ?
         WHERE record_id = ?
         """,
-        (name, imported_ip_address, imported_source, record_id),
+        (name, chosen_ip, imported_source, record_id),
     )
     _insert_record_history(
         c,
@@ -494,7 +569,7 @@ def resolve_manual_sync_conflict(
         action="resolved_conflict",
         username=username,
         old_ip_address=old_ip_address,
-        new_ip_address=imported_ip_address,
+        new_ip_address=chosen_ip,
         old_source=old_source,
         new_source=imported_source,
         old_maintainer=maintainer,
@@ -619,9 +694,11 @@ def delete_record(record_id: int, username: str, db_path: str = DB_PATH) -> bool
 
 __all__ = [
     "MANUAL_SYNC_CONFLICT_REASON",
+    "MULTI_SOURCE_A_CONFLICT_REASON",
     "create_manual_record",
     "delete_record",
     "resolve_manual_sync_conflict",
+    "resolve_sync_conflict_with_ip",
     "store_records_in_db",
     "update_record",
 ]

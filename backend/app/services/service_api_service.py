@@ -69,6 +69,16 @@ def authenticate_service_api_key(api_key: str, required_scope: str) -> Tuple[Dic
     if required_scope not in scopes:
         return {"error": "API key does not grant this scope."}, 403
 
+    from app.integrations.keycloak.constants import service_client_id
+    from app.services.keycloak_identity_service import verify_service_account_secret
+
+    if not verify_service_account_secret(
+        service_client_id(str(row.get("username") or "")),
+        normalized_key,
+        required_scope,
+    ):
+        return {"error": "Unauthorized access."}, 401
+
     try:
         touch_service_api_key_last_used(int(row.get("key_id")), _isoformat(now_utc))
     except Exception as exc:
@@ -176,7 +186,37 @@ def set_scan_status_payload(record_id: int, scan_status: str) -> Tuple[Dict[str,
         return {"error": "Failed to update scan status."}, 500
     if not found:
         return {"error": "Pentest record not found."}, 404
+    _maybe_close_scan_jobs_for_record(record_id, scan_status)
     return {"message": "Scan status updated."}, 200
+
+
+def _maybe_close_scan_jobs_for_record(record_id: int, scan_status: str) -> None:
+    if scan_status not in {"completed", "failed"}:
+        return
+    try:
+        from app.repositories.scan_jobs_repository import (
+            list_running_scan_jobs,
+            scan_jobs_table_ready,
+            update_scan_job,
+        )
+        from app.repositories.service_api_repository import fetch_pentest_row
+
+        if not scan_jobs_table_ready():
+            return
+        for job in list_running_scan_jobs():
+            ids = [int(item) for item in (job.get("record_ids") or [])]
+            if int(record_id) not in ids:
+                continue
+            statuses = []
+            for rid in ids:
+                row = fetch_pentest_row(rid) or {}
+                statuses.append(str(row.get("scan_status") or "idle"))
+            if any(status == "running" for status in statuses):
+                continue
+            final = "failed" if "failed" in statuses else "completed"
+            update_scan_job(int(job["id"]), {"status": final})
+    except Exception as exc:
+        logger.warning("Failed to close scan job after record %s: %s", record_id, exc)
 
 
 def append_vulnerability_payload(

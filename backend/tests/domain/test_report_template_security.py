@@ -98,6 +98,15 @@ def test_replace_inline_markdown_rejects_unsafe_link_schemes():
     assert "click" in rendered
 
 
+def test_replace_inline_markdown_covers_italic_strike_and_code():
+    rendered = replace_inline_markdown("Use *weak* and ~~old~~ plus `id` and __heavy__.")
+    assert "<i>weak</i>" in rendered
+    assert "<strike>old</strike>" in rendered
+    assert "Courier" in rendered
+    assert "<b>heavy</b>" in rendered
+    assert replace_inline_markdown("host_name stays") == "host_name stays"
+
+
 def test_validate_report_logo_file_allows_png():
     file_data, error = offsec_templates._validate_report_logo_file(DummyUpload("logo.png", _png_bytes()))
 

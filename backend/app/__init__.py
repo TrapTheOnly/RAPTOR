@@ -10,6 +10,7 @@ def create_app():
     from app.config import BASE_DIR, configure_logging, env_flag, is_production
     from app.routes.admin import admin_bp
     from app.routes.auth import auth_bp
+    from app.routes.cloud_dns import cloud_dns_bp
     from app.routes.collector import collector_bp
     from app.routes.docs import docs_bp
     from app.routes.frontend import register_frontend_routes
@@ -18,6 +19,7 @@ def create_app():
     from app.routes.offsec_routes import register_offsec_routes
     from app.routes.app_program import app_program_bp
     from app.routes.records import records_bp
+    from app.routes.llm import llm_bp
     from app.routes.scanner import scanner_bp
     from app.routes.service_api import service_api_bp
     from app.services.session_policy_service import SESSION_IDLE_TIMEOUT_SECONDS
@@ -64,12 +66,14 @@ def create_app():
     app.register_blueprint(app_program_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(collector_bp)
+    app.register_blueprint(cloud_dns_bp)
     app.register_blueprint(metadata_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(docs_bp)
     app.register_blueprint(service_api_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(scanner_bp)
+    app.register_blueprint(llm_bp)
     register_offsec_routes(app)
     register_frontend_routes(app)
 

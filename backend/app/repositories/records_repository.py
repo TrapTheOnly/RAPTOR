@@ -4,6 +4,7 @@ from app.repositories.records_mutation_repository import (
     create_manual_record,
     delete_record,
     resolve_manual_sync_conflict,
+    resolve_sync_conflict_with_ip,
     store_records_in_db,
     update_record,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "fetch_record_history",
     "fetch_records",
     "resolve_manual_sync_conflict",
+    "resolve_sync_conflict_with_ip",
     "store_records_in_db",
     "update_record",
 ]

@@ -88,7 +88,7 @@ def test_retest_pack_keeps_open_like_occurrences(monkeypatch):
         "_split_occurrences",
         lambda occurrences, _ids: {"primary": list(occurrences), "observed": []},
     )
-    packed, _drafts, _unassigned = report_svc._pack_findings(
+    packed, _drafts, _unassigned, _total = report_svc._pack_findings(
         1,
         [10],
         include_drafts=False,
@@ -121,7 +121,7 @@ def test_internal_draft_includes_drafts(monkeypatch):
         "_split_occurrences",
         lambda occurrences, _ids: {"primary": list(occurrences), "observed": []},
     )
-    packed, excluded, _unassigned = report_svc._pack_findings(1, [10], include_drafts=True)
+    packed, excluded, _unassigned, _total = report_svc._pack_findings(1, [10], include_drafts=True)
     assert excluded == 1
     assert packed[0]["id"] == "draft"
 
@@ -178,10 +178,11 @@ def test_generate_persists_hmac_signature(monkeypatch):
         "_default_env_ids",
         lambda _app_id, _requested: ([9], [{"id": 9, "slug": "prod", "is_production": True}]),
     )
+    monkeypatch.setattr(report_svc, "visible_env_ids", lambda *_a, **_k: None)
     monkeypatch.setattr(
         report_svc,
         "_pack_findings",
-        lambda *args, **kwargs: ([{"id": "f1", "title": "CORS", "occurrences": [], "also_observed": []}], 0, []),
+        lambda *args, **kwargs: ([{"id": "f1", "title": "CORS", "occurrences": [], "also_observed": []}], 0, [], 1),
     )
     monkeypatch.setattr(report_svc, "safe_json_load", lambda *_args, **_kwargs: {"blocks": []})
     monkeypatch.setattr(report_svc, "bind_report_template_logo_for_template", lambda *_args, **_kwargs: ({}, None))
@@ -251,6 +252,11 @@ def test_patch_occurrence_requires_status():
 
 
 def test_patch_occurrence_404_when_missing(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_args, **_kwargs: {"id": "f1", "record_id": 5},
+    )
     monkeypatch.setattr(
         app_program_service.pentest_findings_repository,
         "set_occurrence_status",
@@ -392,24 +398,47 @@ def _scanner_ready(monkeypatch):
         "get_scanner_config",
         lambda: {
             "enabled": 1,
+            "active_connection_id": 9,
+            "active_model_id": "model",
             "bedrock_model_id": "model",
             "max_concurrent_scans": 4,
             "allow_destructive_tools": 1,
             "aws_region": "us-east-1",
         },
     )
-    monkeypatch.setattr(scanner_service, "fetch_pentest_row", lambda _id: {"scan_status": "idle"})
     monkeypatch.setattr(scanner_service, "count_running_scans", lambda: 0)
+    monkeypatch.setattr(scanner_service, "_validate_active_model", lambda _cfg: None)
+    monkeypatch.setattr("app.repositories.scan_jobs_repository.scan_jobs_table_ready", lambda: False)
+    monkeypatch.setattr("app.repositories.service_api_repository.update_pentest_fields", lambda *_a, **_k: True)
+    monkeypatch.setattr("app.services.audit_service.record_audit_event", lambda **_k: None)
+
+
+def _wave_hosts():
+    return [
+        {"id": 3, "name": "app.example", "ip_address": "10.0.0.3", "scan_status": "idle", "in_scope": True},
+        {"id": 4, "name": "api.example", "ip_address": "10.0.0.4", "scan_status": "idle", "in_scope": True},
+    ]
+
+
+def test_per_host_launch_is_rejected(monkeypatch):
+    payload, status = scanner_service.launch_scan_payload(3)
+    assert status == 400
+    assert "wave" in payload["error"].lower()
 
 
 def test_scanner_env_ceiling(monkeypatch):
     _scanner_ready(monkeypatch)
     monkeypatch.setattr(
+        "app.repositories.phase2b_repository.get_wave",
+        lambda _id: {"id": 4, "application_id": 1, "status": "open", "started_at": "2026-08-01"},
+    )
+    monkeypatch.setattr("app.repositories.phase2b_repository.list_live_wave_hosts", lambda _wave: _wave_hosts())
+    monkeypatch.setattr(
         "app.repositories.phase2b_repository.fetch_host_env",
         lambda _id: {"id": 7, "allow_destructive": 1, "max_concurrent_scans": 1},
     )
     monkeypatch.setattr("app.repositories.phase2b_repository.count_running_scans_for_env", lambda _id: 1)
-    payload, status = scanner_service.launch_scan_payload(3)
+    payload, status = scanner_service.launch_wave_scan_payload(1, 4, actor="alice")
     assert status == 429
     assert "Environment scan ceiling" in payload["error"]
 
@@ -418,23 +447,102 @@ def test_scanner_destructive_requires_env_and_global(monkeypatch):
     _scanner_ready(monkeypatch)
     captured = {}
     monkeypatch.setattr(
+        "app.repositories.phase2b_repository.get_wave",
+        lambda _id: {"id": 4, "application_id": 1, "status": "open", "started_at": "2026-08-01"},
+    )
+    monkeypatch.setattr("app.repositories.phase2b_repository.list_live_wave_hosts", lambda _wave: _wave_hosts())
+    monkeypatch.setattr(
         "app.repositories.phase2b_repository.fetch_host_env",
         lambda _id: {"id": 7, "application_id": 1, "allow_destructive": 0, "max_concurrent_scans": 2},
     )
     monkeypatch.setattr("app.repositories.phase2b_repository.count_running_scans_for_env", lambda _id: 0)
     monkeypatch.setattr(
-        "app.repositories.phase2b_repository.find_open_wave_for_env",
-        lambda *_a, **_k: {"id": 4, "status": "open", "started_at": "2026-08-01"},
+        scanner_service,
+        "_dispatch_scan",
+        lambda record_id, cfg, allow_destructive=None, extra=None: captured.update(
+            {"allow": allow_destructive, "extra": extra, "record_id": record_id}
+        ),
     )
+    payload, status = scanner_service.launch_wave_scan_payload(1, 4, actor="alice")
+    assert status == 202
+    assert captured["allow"] is False
+    assert payload["record_ids"] == [3, 4]
+    assert captured["extra"]["record_ids"] == [3, 4]
+    assert captured["extra"]["wave_id"] == 4
+
+
+def test_launch_wave_passes_operator_brief(monkeypatch):
+    _scanner_ready(monkeypatch)
+    captured = {}
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.get_wave",
+        lambda _id: {"id": 4, "application_id": 1, "status": "open", "started_at": "2026-08-01"},
+    )
+    monkeypatch.setattr("app.repositories.phase2b_repository.list_live_wave_hosts", lambda _wave: _wave_hosts())
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.fetch_host_env",
+        lambda _id: {"id": 7, "application_id": 1, "allow_destructive": 1, "max_concurrent_scans": 2},
+    )
+    monkeypatch.setattr("app.repositories.phase2b_repository.count_running_scans_for_env", lambda _id: 0)
     monkeypatch.setattr(
         scanner_service,
         "_dispatch_scan",
-        lambda record_id, cfg, allow_destructive=None: captured.update({"allow": allow_destructive}),
+        lambda record_id, cfg, allow_destructive=None, extra=None: captured.update({"extra": extra}),
     )
-    payload, status = scanner_service.launch_scan_payload(3)
+    payload, status = scanner_service.launch_wave_scan_payload(
+        1,
+        4,
+        actor="alice",
+        options={"operator_brief": "Focus on IDOR", "max_turns": 12, "skip_port_discovery": True},
+    )
     assert status == 202
-    assert captured["allow"] is False
-    assert payload["record_id"] == 3
+    assert captured["extra"]["operator_brief"] == "Focus on IDOR"
+    assert captured["extra"]["max_turns"] == 12
+    assert captured["extra"]["skip_port_discovery"] is True
+
+
+def test_launch_wave_rejects_bad_max_turns(monkeypatch):
+    _scanner_ready(monkeypatch)
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.get_wave",
+        lambda _id: {"id": 4, "application_id": 1, "status": "open", "started_at": "2026-08-01"},
+    )
+    monkeypatch.setattr("app.repositories.phase2b_repository.list_live_wave_hosts", lambda _wave: _wave_hosts())
+    payload, status = scanner_service.launch_wave_scan_payload(1, 4, actor="alice", options={"max_turns": 0})
+    assert status == 400
+    assert "max_turns" in payload["error"]
+
+
+def test_stop_wave_scan(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.get_wave",
+        lambda _id: {"id": 4, "application_id": 1, "status": "open", "started_at": "2026-08-01"},
+    )
+    monkeypatch.setattr("app.repositories.phase2b_repository.list_live_wave_hosts", lambda _wave: _wave_hosts())
+    monkeypatch.setattr("app.repositories.scan_jobs_repository.running_job_for_wave", lambda _id: {"id": 12})
+    monkeypatch.setattr("app.repositories.scan_jobs_repository.update_scan_job", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.repositories.service_api_repository.update_pentest_fields", lambda *_a, **_k: True)
+    monkeypatch.setattr(scanner_service, "_stop_scan", lambda job_id: captured.update({"job_id": job_id}))
+    monkeypatch.setattr(
+        "app.repositories.scan_events_repository.insert_scan_event",
+        lambda *a, **k: captured.update({"event": True}),
+    )
+    payload, status = scanner_service.stop_wave_scan_payload(1, 4)
+    assert status == 200
+    assert captured["job_id"] == 12
+    assert payload["job_id"] == 12
+
+
+def test_stop_wave_scan_without_running_job(monkeypatch):
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.get_wave",
+        lambda _id: {"id": 4, "application_id": 1, "status": "open", "started_at": "2026-08-01"},
+    )
+    monkeypatch.setattr("app.repositories.phase2b_repository.list_live_wave_hosts", lambda _wave: _wave_hosts())
+    monkeypatch.setattr("app.repositories.scan_jobs_repository.running_job_for_wave", lambda _id: None)
+    payload, status = scanner_service.stop_wave_scan_payload(1, 4)
+    assert status == 409
 
 
 def test_get_wave_404_when_missing(monkeypatch):
@@ -548,6 +656,7 @@ def test_claim_wave_hosts_requires_membership(monkeypatch):
         "list_live_wave_hosts",
         lambda *_a, **_k: [{"id": 11}, {"id": 12}],
     )
+    monkeypatch.setattr(svc, "visible_env_ids", lambda *_a, **_k: None)
     payload, status = svc.claim_wave_hosts(1, 4, {"record_ids": [11]}, "eve")
     assert status == 403
     captured = {}
@@ -580,6 +689,7 @@ def test_create_wave_accepts_multiple_environments(monkeypatch):
     )
     monkeypatch.setattr(svc.phase2b_repository, "sync_wave_host_collaborators", lambda *_a, **_k: None)
     monkeypatch.setattr(svc.phase2b_repository, "set_live_wave_host_status", lambda *_a, **_k: 0)
+    monkeypatch.setattr(svc, "visible_env_ids", lambda *_a, **_k: None)
     payload, status = svc.create_wave(1, {"name": "H1", "env_ids": [9, 10]}, "alice")
     assert status == 201
     assert captured["env_ids"] == [9, 10]
@@ -638,19 +748,123 @@ def test_closed_wave_still_allows_delete(monkeypatch):
 
 def test_scanner_rejects_without_open_started_wave(monkeypatch):
     _scanner_ready(monkeypatch)
+    monkeypatch.setattr("app.repositories.phase2b_repository.list_live_wave_hosts", lambda _wave: _wave_hosts())
     monkeypatch.setattr(
-        "app.repositories.phase2b_repository.fetch_host_env",
-        lambda _id: {"id": 7, "application_id": 1, "allow_destructive": 1, "max_concurrent_scans": 2},
+        "app.repositories.phase2b_repository.get_wave",
+        lambda _id: {"id": 4, "application_id": 1, "status": "open", "started_at": None},
     )
-    monkeypatch.setattr("app.repositories.phase2b_repository.count_running_scans_for_env", lambda _id: 0)
-    monkeypatch.setattr(
-        "app.repositories.phase2b_repository.find_open_wave_for_env",
-        lambda *_a, **_k: {"id": 4, "status": "open", "started_at": None},
-    )
-    payload, status = scanner_service.launch_scan_payload(3)
+    payload, status = scanner_service.launch_wave_scan_payload(1, 4, actor="alice")
     assert status == 400
     assert "start the wave" in payload["error"].lower()
-    monkeypatch.setattr("app.repositories.phase2b_repository.find_open_wave_for_env", lambda *_a, **_k: None)
-    payload, status = scanner_service.launch_scan_payload(3)
+    monkeypatch.setattr(
+        "app.repositories.phase2b_repository.get_wave",
+        lambda _id: {"id": 4, "application_id": 1, "status": "closed", "started_at": "2026-08-01"},
+    )
+    payload, status = scanner_service.launch_wave_scan_payload(1, 4, actor="alice")
     assert status == 400
     assert "open, started wave" in payload["error"].lower()
+
+
+def test_wave_members_and_scope_allowed_when_wave_partially_visible(monkeypatch):
+    wave = {
+        "id": 4,
+        "application_id": 1,
+        "status": "open",
+        "env_ids": [9, 10],
+        "opened_by": "lead",
+        "members": ["lead"],
+    }
+    monkeypatch.setattr(svc.phase2b_repository, "get_wave", lambda _id: wave)
+    monkeypatch.setattr(svc, "visible_env_ids", lambda *_a, **_k: [9])
+    monkeypatch.setattr(
+        svc.phase2b_repository,
+        "replace_wave_members",
+        lambda *_a, **_k: ["lead", "alice"],
+    )
+    monkeypatch.setattr(svc.phase2b_repository, "sync_wave_host_collaborators", lambda *_a, **_k: None)
+    members, member_status = svc.put_wave_members(
+        1, 4, {"usernames": ["alice"]}, username="alice", role="pentester"
+    )
+    assert member_status == 200
+    assert "alice" in members["members"]
+
+    monkeypatch.setattr(
+        svc.phase2b_repository,
+        "list_live_wave_hosts",
+        lambda _wave: [{"id": 11, "environment_id": 9}],
+    )
+    monkeypatch.setattr(svc.phase2b_repository, "set_wave_host_scope", lambda *_a, **_k: 1)
+    scope, scope_status = svc.set_wave_host_scope(
+        1, 4, {"record_ids": [11], "in_scope": False}, username="alice", role="pentester"
+    )
+    assert scope_status == 200
+    assert scope["updated"] == 1
+
+
+def test_create_wave_rejects_hidden_env(monkeypatch):
+    monkeypatch.setattr(svc.applications_repository, "fetch_application", lambda _id: {"id": 1})
+    monkeypatch.setattr(
+        svc.environments_repository,
+        "fetch_environments",
+        lambda _id: [{"id": 9}, {"id": 10}],
+    )
+    monkeypatch.setattr(svc, "visible_env_ids", lambda *_a, **_k: [9])
+    payload, status = svc.create_wave(1, {"name": "H1", "env_ids": [9, 10]}, "alice", role="pentester")
+    assert status == 403
+    assert "not visible" in payload["error"]
+
+
+def test_get_acl_denies_random_pentester(monkeypatch):
+    monkeypatch.setattr(
+        svc.environments_repository,
+        "fetch_environment",
+        lambda *_a, **_k: {"id": 9, "slug": "prod"},
+    )
+    monkeypatch.setattr(
+        svc.applications_repository,
+        "fetch_application",
+        lambda _id: {"id": 1, "app_lead": "lead1"},
+    )
+    monkeypatch.setattr(svc, "user_has_permission", lambda *_a, **_k: False)
+    payload, status = svc.get_acl(1, 9, username="contractor", role="pentester")
+    assert status == 403
+
+
+def test_get_acl_allows_app_lead(monkeypatch):
+    monkeypatch.setattr(
+        svc.environments_repository,
+        "fetch_environment",
+        lambda *_a, **_k: {"id": 9, "slug": "prod"},
+    )
+    monkeypatch.setattr(
+        svc.applications_repository,
+        "fetch_application",
+        lambda _id: {"id": 1, "app_lead": "lead1"},
+    )
+    monkeypatch.setattr(svc.phase2b_repository, "list_acl", lambda *_a, **_k: ["contractor"])
+    payload, status = svc.get_acl(1, 9, username="lead1", role="pentester")
+    assert status == 200
+    assert payload["usernames"] == ["contractor"]
+
+
+def test_generate_report_rejects_hidden_env(monkeypatch):
+    monkeypatch.setattr(
+        report_svc.applications_repository,
+        "fetch_application",
+        lambda _id: {"id": 1, "name": "Google"},
+    )
+    monkeypatch.setattr(
+        report_svc,
+        "_default_env_ids",
+        lambda _app_id, _requested: ([10], [{"id": 10, "slug": "stg"}]),
+    )
+    monkeypatch.setattr(report_svc, "visible_env_ids", lambda *_a, **_k: [9])
+    payload, status = report_svc.generate_scoped_report(
+        scope_kind="application",
+        scope_id=1,
+        data={"package": "retest_pack", "selected_env_ids": [10]},
+        username="alice",
+        role="pentester",
+    )
+    assert status == 403
+    assert "not visible" in payload["error"]

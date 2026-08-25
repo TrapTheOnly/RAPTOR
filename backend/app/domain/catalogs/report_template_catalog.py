@@ -6,19 +6,19 @@ import json
 DEFAULT_REPORT_TEMPLATE = {
     "key": "manager_executive",
     "name": "Manager Executive Report",
-    "description": "Executive-friendly report with risk metrics, charts, and detailed findings.",
+    "description": "Executive report with occurrence metrics, named charts, and detailed findings.",
     "version": 1,
     "branding": {
         "company_name": "Security Operations",
-        "primary_color": "#0B5CAD",
+        "primary_color": "#067A8A",
         "accent_color": "#1E293B",
         "logo_url": ""
     },
     "placeholders": {
         "report_title": "Penetration Testing Report",
-        "report_subtitle": "Comprehensive assessment and remediation overview",
+        "report_subtitle": "Assessment and remediation overview",
         "prepared_by": "{{pentest.tested_by}}",
-        "prepared_for": "{{record.name}}"
+        "prepared_for": "{{application.name}}"
     },
     "blocks": [
         {
@@ -36,37 +36,18 @@ DEFAULT_REPORT_TEMPLATE = {
             "title": "Risk Snapshot"
         },
         {
+            "type": "table_of_contents",
+            "title": "Table of Contents"
+        },
+        {
             "type": "chart",
-            "title": "Vulnerability Severity Distribution",
+            "title": "Vulnerability Severity",
             "chart": "vulnerability_severity"
         },
         {
             "type": "chart",
-            "title": "Checklist Completion Status",
-            "chart": "checklist_completion"
-        },
-        {
-            "type": "chart",
-            "title": "Open vs Remediated Findings",
-            "chart": "vulnerability_fix_status"
-        },
-        {
-            "type": "open_ports",
-            "title": "Open Ports"
-        },
-        {
-            "type": "markdown",
-            "title": "Asset Description",
-            "field": "description"
-        },
-        {
-            "type": "markdown",
-            "title": "Security Details",
-            "field": "notes"
-        },
-        {
-            "type": "checklists",
-            "title": "Checklist Coverage"
+            "title": "Occurrence Status",
+            "chart": "occurrence_status"
         },
         {
             "type": "vulnerabilities",
@@ -77,9 +58,9 @@ DEFAULT_REPORT_TEMPLATE = {
             "type": "text",
             "title": "Management Summary",
             "content": (
-                "Findings detected: {{metrics.vulnerability_count}}. "
-                "Critical/High findings: {{metrics.critical_high_count}}. "
-                "Checklist completion: {{metrics.checklist_completed}}/{{metrics.checklist_total}} items."
+                "Findings: {{metrics.vulnerability_count}}. "
+                "Critical/High: {{metrics.critical_high_count}}. "
+                "Open-like occurrences: {{metrics.open_like_count}}."
             )
         }
     ]

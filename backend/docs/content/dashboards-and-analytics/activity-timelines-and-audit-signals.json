@@ -86,7 +86,7 @@
             ],
             [
               "Display limit",
-              "Top 14 events displayed."
+              "Last 50 events, paginated 10 per page."
             ],
             [
               "Relative formatting",

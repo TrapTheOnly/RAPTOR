@@ -68,6 +68,15 @@ export const listWaves = (appId) => axios.get(`/api/apps/${appId}/waves`);
 
 export const getWave = (appId, waveId) => axios.get(`/api/apps/${appId}/waves/${waveId}`);
 
+export const launchWaveScan = (appId, waveId, payload = {}) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/launch-scan`, payload);
+
+export const resetWaveScan = (appId, waveId) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/reset-scan`);
+
+export const stopWaveScan = (appId, waveId) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/stop-scan`);
+
 export const putWaveMembers = (appId, waveId, payload) =>
   axios.put(`/api/apps/${appId}/waves/${waveId}/members`, payload);
 

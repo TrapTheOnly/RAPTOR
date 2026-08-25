@@ -1,8 +1,13 @@
-from flask import Blueprint, jsonify, session
+import logging
+
+from flask import Blueprint, jsonify, redirect, request, session
 
 from app.http.request_utils import parse_json_object
 from app.services import auth_service
+from app.services.sso_auth_service import authorization_url, complete_sso_callback, public_sso_error
+from app.services.sso_settings_service import list_login_providers
 
+logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__)
 
 
@@ -28,6 +33,30 @@ def extend_logged_in_session():
 def logout():
     payload, status_code = auth_service.logout(session)
     return jsonify(payload), status_code
+
+
+@auth_bp.route("/auth/sso/providers", methods=["GET"])
+def sso_login_providers():
+    payload, status_code = list_login_providers()
+    return jsonify(payload), status_code
+
+
+@auth_bp.route("/auth/sso/<string:alias>/start", methods=["GET"])
+def sso_start(alias: str):
+    url, error = authorization_url(alias, session)
+    if error or not url:
+        logger.warning("SSO start failed for alias=%s reason=%s", alias, error or "unsupported")
+        return redirect(f"/login?sso_error={public_sso_error(error)}")
+    return redirect(url)
+
+
+@auth_bp.route("/auth/sso/callback", methods=["GET"])
+def sso_callback():
+    target, error = complete_sso_callback(session, request.args)
+    if error:
+        logger.warning("SSO callback failed: %s", error)
+        return redirect(f"/login?sso_error={public_sso_error(error)}")
+    return redirect(target)
 
 
 @auth_bp.route("/admin-reset-password", methods=["POST"])

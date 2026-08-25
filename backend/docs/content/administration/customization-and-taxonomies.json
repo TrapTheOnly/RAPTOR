@@ -26,6 +26,7 @@
         "title": "IP source governance model",
         "paragraphs": [
           "IP source mapping links concrete IP addresses to operational source groups. This labeling is part of inventory governance and directly impacts filtering and triage in records workflows.",
+          "Cloud DNS ingest creates a provider group automatically (Cloudflare, AWS, Azure, Google Cloud, or Alibaba Cloud) and adds A-record IPs from that connector. Collector ingest still uses existing mappings, including Other when no group matches.",
           "The settings UI stages additions and deletions in memory and applies them only on `Submit Changes`, allowing admins to review a batch before commit."
         ],
         "table": {

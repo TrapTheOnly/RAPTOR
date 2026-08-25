@@ -23,6 +23,8 @@ def update_scanner_config(fields: Dict[str, Any], db_path: str = DB_PATH) -> boo
         "max_concurrent_scans", "enabled",
         "proxy_url", "proxy_username", "proxy_password",
         "allow_destructive_tools",
+        "active_connection_id", "active_model_id",
+        "thinking_budget_tokens", "max_turns",
         "updated_by", "updated_at",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}

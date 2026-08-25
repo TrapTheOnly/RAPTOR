@@ -54,7 +54,7 @@
               "user",
               "`/records`",
               "Inventory quality and metadata upkeep.",
-              "Record visibility and controlled record updates."
+              "Record visibility and controlled record updates. Cannot delete records or open host notebooks unless an optional grant applies, and notebooks are not an optional User grant."
             ]
           ]
         }
@@ -63,13 +63,14 @@
         "id": "capability-evaluation",
         "title": "Capability evaluation order",
         "paragraphs": [
-          "Effective permissions are computed in a fixed order to keep frontend and backend authorization behavior consistent."
+          "Effective permissions are computed in a fixed order to keep frontend and backend authorization behavior consistent.",
+          "Optional grants for `user` are `view_dashboard`, `view_security_dashboard`, and `manage_apps`. `view_security_dashboard` is the pentest board (`/pentest`), not host notebooks. Optional grants for `pentester` are `view_dashboard`, `modify_records`, and `manage_apps`."
         ],
         "orderedList": [
           "Load role default permissions.",
-          "Merge valid optional permissions.",
+          "Merge valid optional permissions from that role's allowlist only.",
           "Apply admin full-access behavior when role is `admin`.",
-          "Evaluate route and action checks against merged capability set."
+          "Evaluate route and action checks against merged capability set. `/apps/:id` and `/apps/:id/waves/:waveId/scan-live` require `view_pentest_page`. Documentation pages are additionally filtered by the docs access matrix."
         ]
       },
       {

@@ -1,14 +1,22 @@
 import React from 'react';
-import { Box, Typography } from '@mui/material';
+import { Text } from '../../../design/primitives';
+import { SPACE } from '../../../design/tokens';
 
-const SectionHeader = ({ icon: Icon, title, children, marginBottom = 3 }) => (
-  <Box display="flex" alignItems="center" mb={marginBottom}>
-    <Icon sx={{ color: 'primary.main', mr: 1 }} />
-    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+const SectionHeader = ({ title, children }) => (
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: SPACE.x12,
+      marginBottom: SPACE.x16
+    }}
+  >
+    <Text as="h2" variant="h2">
       {title}
-    </Typography>
+    </Text>
     {children}
-  </Box>
+  </div>
 );
 
 export default SectionHeader;

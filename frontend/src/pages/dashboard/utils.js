@@ -1,14 +1,13 @@
 import {
   RECENT_ACTIVITY_LIMIT,
   RECENT_WINDOW_DAYS,
-  TESTER_WORKLOAD_LIMIT,
-  TOP_RISK_LIMIT,
-  TREND_MONTHS
+  STARTED_STATUSES,
+  STALE_DAYS
 } from './constants';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const parseDateValue = (value) => {
+export const parseDateValue = (value) => {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -20,310 +19,205 @@ const withinLastDays = (value, days, now) => {
   return date.getTime() >= now.getTime() - days * DAY_MS;
 };
 
-const parseVulnerabilities = (rawValue) => {
-  if (!rawValue) return [];
-  if (Array.isArray(rawValue)) return rawValue;
-  if (typeof rawValue === 'string') {
-    try {
-      const parsed = JSON.parse(rawValue);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      return [];
-    }
-  }
-  return [];
+const recordIdOf = (record) => record.recordId ?? record.recordid ?? record.id;
+const applicationIdOf = (record) =>
+  record.applicationId ?? record.applicationid ?? record.application_id ?? null;
+const testerOf = (record) => {
+  const raw = String(record.tested_by ?? record.testedBy ?? '').trim();
+  return raw || 'Unassigned';
 };
 
-const getVulnerabilityCount = (record) => {
-  if (typeof record.finding_count === 'number') return record.finding_count;
-  const parsed = parseVulnerabilities(record.vulnerabilities);
-  if (parsed.length > 0) return parsed.length;
-  return record.vulnerable === 1 ? 1 : 0;
-};
+const pentestStatus = (record) => String(record.status || 'Not Started');
+const isStarted = (record) => STARTED_STATUSES.includes(pentestStatus(record));
+const isCompleted = (record) => pentestStatus(record) === 'Completed';
+const findingCountOf = (record) => Number(record.finding_count ?? record.findingCount ?? 0) || 0;
 
-const buildMonthlyBuckets = (months, now) => {
-  const buckets = [];
-  for (let offset = months - 1; offset >= 0; offset -= 1) {
-    const start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0, 23, 59, 59, 999);
-    buckets.push({
-      key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
-      label: start.toLocaleString('en-US', { month: 'short' }),
-      start,
-      end
-    });
-  }
-  return buckets;
-};
-
-const getBucketIndex = (date, buckets) =>
-  buckets.findIndex((bucket) => date >= bucket.start && date <= bucket.end);
-
-export const buildTrendData = (pentestRecords, now = new Date()) => {
-  const buckets = buildMonthlyBuckets(TREND_MONTHS, now);
-  const started = Array(buckets.length).fill(0);
-  const completed = Array(buckets.length).fill(0);
-  const detected = Array(buckets.length).fill(0);
-  const resolved = Array(buckets.length).fill(0);
-
-  pentestRecords.forEach((record) => {
-    const startDate = parseDateValue(record.test_start_date);
-    const endDate = parseDateValue(record.test_end_date);
-    const vulnerabilityCount = getVulnerabilityCount(record);
-
-    if (startDate) {
-      const index = getBucketIndex(startDate, buckets);
-      if (index >= 0) started[index] += 1;
-    }
-
-    if (record.status === 'Completed' && endDate) {
-      const index = getBucketIndex(endDate, buckets);
-      if (index >= 0) completed[index] += 1;
-    }
-
-    if (vulnerabilityCount > 0) {
-      const detectedDate = endDate || startDate;
-      if (detectedDate) {
-        const index = getBucketIndex(detectedDate, buckets);
-        if (index >= 0) detected[index] += vulnerabilityCount;
-      }
-
-      if (record.vulnerability_fixed === 1) {
-        const resolvedDate = endDate || startDate;
-        if (resolvedDate) {
-          const index = getBucketIndex(resolvedDate, buckets);
-          if (index >= 0) resolved[index] += vulnerabilityCount;
-        }
-      }
-    }
-  });
+export const buildKpis = (
+  { pentestRecords = [], findingsSummary = {} },
+  now = new Date()
+) => {
+  const neverTested = pentestRecords.filter((record) => !isStarted(record)).length;
+  const stale = pentestRecords.filter((record) => {
+    if (!isCompleted(record)) return false;
+    const end = parseDateValue(record.test_end_date);
+    if (!end) return true;
+    return now.getTime() - end.getTime() > STALE_DAYS * DAY_MS;
+  }).length;
+  const unassigned = pentestRecords.filter((record) => testerOf(record) === 'Unassigned').length;
+  const weekly = findingsSummary.weekly || [];
+  const lastFive = weekly.slice(-5);
+  const openedLast30d = lastFive.reduce((sum, week) => sum + Number(week.opened || 0), 0);
+  const closedLast30d = lastFive.reduce((sum, week) => sum + Number(week.closed || 0), 0);
+  const bySeverity = findingsSummary.bySeverity || {};
+  const criticalHigh = Number(bySeverity.critical || 0) + Number(bySeverity.high || 0);
 
   return {
-    labels: buckets.map((bucket) => bucket.label),
-    testSeries: {
-      started,
-      completed
-    },
-    vulnerabilitySeries: {
-      detected,
-      resolved
-    }
+    openFindings: Number(findingsSummary.open || 0),
+    closedFindings: Number(findingsSummary.closed || 0),
+    criticalHigh,
+    neverTested,
+    stale,
+    unassigned,
+    openedLast30d,
+    closedLast30d,
+    inProgress: pentestRecords.filter((record) => pentestStatus(record) === 'In Progress').length
   };
 };
 
-export const buildKpis = ({ records, pentestRecords, ipSources }, now = new Date()) => {
-  const totalAssets = records.length;
-  const startedTests = pentestRecords.filter((record) =>
-    ['In Progress', 'Completed'].includes(record.status)
-  ).length;
-  const inProgressTests = pentestRecords.filter(
-    (record) => record.status === 'In Progress'
-  ).length;
-  const completedTests = pentestRecords.filter(
-    (record) => record.status === 'Completed'
-  ).length;
-
-  const vulnerableAssets = pentestRecords.filter(
-    (record) => record.vulnerable === 1
-  ).length;
-  const openRiskAssets = pentestRecords.filter(
-    (record) => record.vulnerable === 1 && record.vulnerability_fixed !== 1
-  ).length;
-  const fixedAssets = pentestRecords.filter(
-    (record) => record.vulnerability_fixed === 1
-  ).length;
-
-  const startedLast30d = pentestRecords.filter((record) =>
-    withinLastDays(record.test_start_date, RECENT_WINDOW_DAYS, now)
-  ).length;
-  const completedLast30d = pentestRecords.filter(
-    (record) =>
-      record.status === 'Completed' &&
-      withinLastDays(record.test_end_date, RECENT_WINDOW_DAYS, now)
-  ).length;
-
-  const newDetectedVulns30d = pentestRecords.reduce((acc, record) => {
-    const vulnerabilityCount = getVulnerabilityCount(record);
-    if (vulnerabilityCount <= 0) return acc;
-
-    const detectionDate = record.test_end_date || record.test_start_date;
-    if (!withinLastDays(detectionDate, RECENT_WINDOW_DAYS, now)) return acc;
-    return acc + vulnerabilityCount;
-  }, 0);
-
-  const unresolvedVulnerabilityIndicators = pentestRecords.reduce((acc, record) => {
-    if (record.vulnerability_fixed === 1) return acc;
-    return acc + getVulnerabilityCount(record);
-  }, 0);
-
-  const cycleDurations = pentestRecords
-    .map((record) => {
-      const startDate = parseDateValue(record.test_start_date);
-      const endDate = parseDateValue(record.test_end_date);
-      if (!startDate || !endDate) return null;
-      const duration = (endDate.getTime() - startDate.getTime()) / DAY_MS;
-      return duration >= 0 ? duration : null;
-    })
-    .filter((duration) => duration !== null);
-
-  const averageCycleDays =
-    cycleDurations.length > 0
-      ? Math.round((cycleDurations.reduce((acc, value) => acc + value, 0) / cycleDurations.length) * 10) /
-        10
-      : 0;
-
-  const coveragePct =
-    totalAssets > 0 ? Math.round((startedTests / totalAssets) * 100) : 0;
-  const fixRatePct =
-    vulnerableAssets > 0 ? Math.round((fixedAssets / vulnerableAssets) * 100) : 0;
-
-  return {
-    totalAssets,
-    startedTests,
-    inProgressTests,
-    completedTests,
-    vulnerableAssets,
-    openRiskAssets,
-    fixedAssets,
-    startedLast30d,
-    completedLast30d,
-    newDetectedVulns30d,
-    unresolvedVulnerabilityIndicators,
-    averageCycleDays,
-    coveragePct,
-    fixRatePct,
-    ipSourceCount: [...new Set(ipSources.map((item) => item.source_name))].length
-  };
-};
-
-export const buildRecentActivity = (
-  { records, pentestRecords },
-  now = new Date(),
-  limit = RECENT_ACTIVITY_LIMIT
-) => {
-  const events = [];
-
+export const buildCoverageGaps = (pentestRecords = [], now = new Date()) => {
+  const neverTested = [];
+  const stale = [];
   pentestRecords.forEach((record) => {
-    const startDate = parseDateValue(record.test_start_date);
-    const endDate = parseDateValue(record.test_end_date);
-    const vulnerabilityCount = getVulnerabilityCount(record);
-    const tester = (record.tested_by || 'Unassigned').trim() || 'Unassigned';
-
-    if (startDate && withinLastDays(startDate, RECENT_WINDOW_DAYS, now)) {
-      events.push({
-        id: `start-${record.recordId}-${startDate.getTime()}`,
-        type: 'test_started',
-        title: 'Test started',
-        subtitle: `${record.name} • ${tester}`,
-        timestamp: startDate.getTime()
-      });
+    const item = {
+      id: recordIdOf(record),
+      name: record.name,
+      source: record.source || 'N/A',
+      applicationId: applicationIdOf(record),
+      status: pentestStatus(record),
+      tester: testerOf(record),
+      lastTested: parseDateValue(record.test_end_date)
+    };
+    if (!isStarted(record)) {
+      neverTested.push(item);
+      return;
     }
-
-    if (record.status === 'Completed' && endDate && withinLastDays(endDate, RECENT_WINDOW_DAYS, now)) {
-      events.push({
-        id: `complete-${record.recordId}-${endDate.getTime()}`,
-        type: 'test_completed',
-        title: 'Test completed',
-        subtitle: `${record.name} • ${record.vulnerable === 1 ? 'Vulnerable' : 'No findings'}`,
-        timestamp: endDate.getTime()
-      });
-    }
-
-    if (vulnerabilityCount > 0) {
-      const detectionDate = endDate || startDate;
-      if (detectionDate && withinLastDays(detectionDate, RECENT_WINDOW_DAYS, now)) {
-        events.push({
-          id: `vuln-${record.recordId}-${detectionDate.getTime()}`,
-          type: 'vuln_detected',
-          title: 'New vulnerabilities detected',
-          subtitle: `${record.name} • ${vulnerabilityCount} finding${vulnerabilityCount === 1 ? '' : 's'}`,
-          timestamp: detectionDate.getTime()
-        });
+    if (isCompleted(record)) {
+      const end = item.lastTested;
+      if (!end || now.getTime() - end.getTime() > STALE_DAYS * DAY_MS) {
+        stale.push({ ...item, kind: 'stale' });
       }
     }
   });
-
-  records.forEach((record) => {
-    if (!['updated', 'missing'].includes(record.status)) return;
-    const changeDate = parseDateValue(record.last_modification_date);
-    if (!changeDate || !withinLastDays(changeDate, RECENT_WINDOW_DAYS, now)) return;
-
-    events.push({
-      id: `scope-${record.id}-${changeDate.getTime()}`,
-      type: record.status === 'missing' ? 'scope_missing' : 'scope_updated',
-      title: record.status === 'missing' ? 'Asset marked missing' : 'Scope change detected',
-      subtitle: record.name,
-      timestamp: changeDate.getTime()
-    });
+  neverTested.sort((left, right) => String(left.name).localeCompare(String(right.name)));
+  stale.sort((left, right) => {
+    const leftTime = left.lastTested ? left.lastTested.getTime() : 0;
+    const rightTime = right.lastTested ? right.lastTested.getTime() : 0;
+    return leftTime - rightTime;
   });
-
-  return events.sort((left, right) => right.timestamp - left.timestamp).slice(0, limit);
+  return {
+    neverTested,
+    stale,
+    neverTestedTotal: neverTested.length,
+    staleTotal: stale.length
+  };
 };
 
-export const buildTopRiskAssets = (pentestRecords, limit = TOP_RISK_LIMIT) =>
-  pentestRecords
-    .map((record) => {
-      const vulnerabilityCount = getVulnerabilityCount(record);
-      const openRisk = record.vulnerable === 1 && record.vulnerability_fixed !== 1;
-      const riskScore =
-        vulnerabilityCount * 3 +
-        (openRisk ? 5 : 0) +
-        (record.status === 'In Progress' ? 2 : 0) +
-        (record.status === 'Completed' ? 1 : 0);
+export const buildAppsAtRisk = (applications = []) =>
+  [...applications]
+    .map((app) => ({
+      id: app.id,
+      name: app.name,
+      openFindingCount: Number(app.open_finding_count || 0),
+      inScopeCount: Number(app.in_scope_count || 0),
+      startedCount: Number(app.started_count || 0)
+    }))
+    .filter((app) => app.openFindingCount > 0 || app.inScopeCount > app.startedCount)
+    .sort((left, right) => {
+      if (right.openFindingCount !== left.openFindingCount) {
+        return right.openFindingCount - left.openFindingCount;
+      }
+      const leftGap = left.inScopeCount - left.startedCount;
+      const rightGap = right.inScopeCount - right.startedCount;
+      return rightGap - leftGap;
+    });
 
-      return {
-        key: `${record.recordId}-${record.name}`,
-        name: record.name,
-        source: record.source || 'N/A',
-        testedBy: record.tested_by || 'Unassigned',
-        status: record.status || 'Not Started',
-        vulnerabilityCount,
-        openRisk,
-        riskScore
-      };
-    })
-    .filter((asset) => asset.riskScore > 0)
-    .sort((left, right) => right.riskScore - left.riskScore)
-    .slice(0, limit);
-
-export const buildTesterWorkload = (
-  pentestRecords,
-  limit = TESTER_WORKLOAD_LIMIT
-) => {
+export const buildTesterWorkload = (pentestRecords = []) => {
   const grouped = pentestRecords.reduce((acc, record) => {
-    const tester = (record.tested_by || 'Unassigned').trim() || 'Unassigned';
+    const tester = testerOf(record);
+    if (tester === 'Unassigned') return acc;
     if (!acc[tester]) {
       acc[tester] = {
         tester,
         total: 0,
         inProgress: 0,
         completed: 0,
-        openRiskAssets: 0,
-        vulnerabilityIndicators: 0
+        openFindings: 0
       };
     }
-
     acc[tester].total += 1;
-    if (record.status === 'In Progress') acc[tester].inProgress += 1;
-    if (record.status === 'Completed') acc[tester].completed += 1;
-    if (record.vulnerable === 1 && record.vulnerability_fixed !== 1) {
-      acc[tester].openRiskAssets += 1;
+    if (pentestStatus(record) === 'In Progress') acc[tester].inProgress += 1;
+    if (isCompleted(record)) acc[tester].completed += 1;
+    if (!(isCompleted(record) && Number(record.vulnerability_fixed) === 1)) {
+      acc[tester].openFindings += findingCountOf(record);
     }
-    acc[tester].vulnerabilityIndicators += getVulnerabilityCount(record);
     return acc;
   }, {});
 
-  return Object.values(grouped)
-    .sort((left, right) => {
-      if (right.openRiskAssets !== left.openRiskAssets) {
-        return right.openRiskAssets - left.openRiskAssets;
-      }
-      if (right.inProgress !== left.inProgress) {
-        return right.inProgress - left.inProgress;
-      }
-      return right.total - left.total;
-    })
-    .slice(0, limit);
+  return Object.values(grouped).sort((left, right) => {
+    if (right.openFindings !== left.openFindings) return right.openFindings - left.openFindings;
+    if (right.inProgress !== left.inProgress) return right.inProgress - left.inProgress;
+    return right.total - left.total;
+  });
+};
+
+export const buildRecentActivity = (
+  { records = [], pentestRecords = [], findingsSummary = {} },
+  now = new Date(),
+  limit = RECENT_ACTIVITY_LIMIT
+) => {
+  const events = [];
+
+  (findingsSummary.recent || []).forEach((finding) => {
+    const created = parseDateValue(finding.createdAt);
+    if (!created || !withinLastDays(finding.createdAt, RECENT_WINDOW_DAYS, now)) return;
+    events.push({
+      id: `finding-${finding.id}`,
+      type: 'finding_filed',
+      title: finding.title || 'Finding filed',
+      subtitle: finding.status || 'open',
+      timestamp: created.getTime(),
+      applicationId: finding.applicationId,
+      findingId: finding.id
+    });
+  });
+
+  pentestRecords.forEach((record) => {
+    const startDate = parseDateValue(record.test_start_date);
+    const endDate = parseDateValue(record.test_end_date);
+    const id = recordIdOf(record);
+    const tester = testerOf(record);
+
+    if (startDate && withinLastDays(record.test_start_date, RECENT_WINDOW_DAYS, now)) {
+      events.push({
+        id: `start-${id}-${startDate.getTime()}`,
+        type: 'test_started',
+        title: 'Test started',
+        subtitle: `${record.name} • ${tester}`,
+        timestamp: startDate.getTime(),
+        recordId: id,
+        applicationId: applicationIdOf(record)
+      });
+    }
+
+    if (isCompleted(record) && endDate && withinLastDays(record.test_end_date, RECENT_WINDOW_DAYS, now)) {
+      events.push({
+        id: `complete-${id}-${endDate.getTime()}`,
+        type: 'test_completed',
+        title: 'Test completed',
+        subtitle: record.name,
+        timestamp: endDate.getTime(),
+        recordId: id,
+        applicationId: applicationIdOf(record)
+      });
+    }
+  });
+
+  records.forEach((record) => {
+    if (!['updated', 'missing'].includes(record.status)) return;
+    const changeDate = parseDateValue(record.last_modification_date);
+    if (!changeDate || !withinLastDays(record.last_modification_date, RECENT_WINDOW_DAYS, now)) return;
+    events.push({
+      id: `scope-${record.id}-${changeDate.getTime()}`,
+      type: record.status === 'missing' ? 'scope_missing' : 'scope_updated',
+      title: record.status === 'missing' ? 'Asset marked missing' : 'Scope change detected',
+      subtitle: record.name,
+      timestamp: changeDate.getTime(),
+      recordId: record.id,
+      applicationId: applicationIdOf(record)
+    });
+  });
+
+  return events.sort((left, right) => right.timestamp - left.timestamp).slice(0, limit);
 };
 
 export const formatActivityTimestamp = (timestamp) => {
@@ -347,14 +241,45 @@ export const formatActivityTimestamp = (timestamp) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-export const buildDashboardViewModel = ({ records, pentestRecords, ipSources }) => {
-  const now = new Date();
+export const formatRelativeAge = (date) => {
+  if (!date) return 'unknown';
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 7 * DAY_MS) {
+    const days = Math.max(1, Math.floor(diffMs / DAY_MS));
+    return `${days}d ago`;
+  }
+  const weeks = Math.max(1, Math.floor(diffMs / (7 * DAY_MS)));
+  if (weeks < 8) return `${weeks}w ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+export const buildDashboardViewModel = (sourceData, now = new Date()) => {
+  const records = sourceData.records || [];
+  const pentestRecords = sourceData.pentestRecords || [];
+  const findingsSummary = sourceData.findingsSummary || {
+    open: 0,
+    closed: 0,
+    bySeverity: { critical: 0, high: 0, medium: 0, low: 0, none: 0 },
+    weekly: [],
+    recent: []
+  };
+  const applications = sourceData.applications || [];
+
   return {
-    kpis: buildKpis({ records, pentestRecords, ipSources }, now),
-    trends: buildTrendData(pentestRecords, now),
-    recentActivity: buildRecentActivity({ records, pentestRecords }, now),
-    topRiskAssets: buildTopRiskAssets(pentestRecords),
+    kpis: buildKpis({ pentestRecords, findingsSummary }, now),
+    weekly: findingsSummary.weekly || [],
+    bySeverity: findingsSummary.bySeverity || {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      none: 0
+    },
+    coverageGaps: buildCoverageGaps(pentestRecords, now),
+    appsAtRisk: buildAppsAtRisk(applications),
     testerWorkload: buildTesterWorkload(pentestRecords),
+    recentActivity: buildRecentActivity({ records, pentestRecords, findingsSummary }, now),
+    recentFindings: findingsSummary.recent || [],
     generatedAt: now.toISOString()
   };
 };

@@ -15,6 +15,7 @@ import {
   Text
 } from '../../../design/primitives';
 import { SPACE, TYPE } from '../../../design/tokens';
+import { hostNotebookPath } from '../../../design/navigation';
 import { usePalette } from '../../../design/usePalette';
 import { DEFAULT_CVSS_METRICS } from '../../pentest-record/constants';
 import { calculateCvssBase } from '../../pentest-record/cvss';
@@ -88,13 +89,16 @@ const FindingPage = ({
   const [payload, setPayload] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [impact, setImpact] = useState('');
+  const [evidence, setEvidence] = useState('');
+  const [remediation, setRemediation] = useState('');
   const [authContext, setAuthContext] = useState('');
   const [ticketUrl, setTicketUrl] = useState('');
   const [category, setCategory] = useState(null);
   const [categories, setCategories] = useState([]);
   const [metrics, setMetrics] = useState(DEFAULT_CVSS_METRICS);
   const [collaborators, setCollaborators] = useState([]);
-  const [editingMarkdown, setEditingMarkdown] = useState(false);
+  const [editingSection, setEditingSection] = useState('');
   const [imageUploading, setImageUploading] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -108,6 +112,9 @@ const FindingPage = ({
     setPayload(data);
     setTitle(finding.title || '');
     setDescription(finding.description || '');
+    setImpact(finding.impact || '');
+    setEvidence(finding.evidence || '');
+    setRemediation(finding.remediation || '');
     setAuthContext(finding.auth_context || '');
     setTicketUrl(finding.ticket_url || '');
     setMetrics({ ...DEFAULT_CVSS_METRICS, ...(finding.metrics || {}) });
@@ -156,6 +163,9 @@ const FindingPage = ({
       await patchFinding(finding.id, {
         title,
         description,
+        impact,
+        evidence,
+        remediation,
         auth_context: authContext,
         ticket_url: ticketUrl,
         categoryId: category?.id || '',
@@ -174,9 +184,17 @@ const FindingPage = ({
   };
 
   const insertImage = (url) => {
-    setDescription((prev) => `${prev || ''}\n\n![uploaded-image](${url})\n`);
+    const snippet = `\n\n![uploaded-image](${url})\n`;
+    const writers = {
+      description: setDescription,
+      impact: setImpact,
+      evidence: setEvidence,
+      remediation: setRemediation
+    };
+    const write = writers[editingSection] || setEvidence;
+    write((prev) => `${prev || ''}${snippet}`);
     setDirty(true);
-    setEditingMarkdown(true);
+    setEditingSection(editingSection || 'evidence');
   };
 
   const handleImageUpload = async (file) => {
@@ -248,7 +266,7 @@ const FindingPage = ({
           </Button>
         }
         title={title || finding.categoryName || 'Untitled finding'}
-        subtitle="Write the narrative once. Score it. Attach evidence. Occurrences stay on the hosts it touches."
+        subtitle="Write the narrative once. Score it. Attach evidence, impact, and remediation as separate fields."
         meta={
           <>
             {score > 0 ? <Tag emphasized>{score.toFixed(1)}</Tag> : <Tag>unscored</Tag>}
@@ -308,7 +326,11 @@ const FindingPage = ({
         }}
       >
         {foundHere ? (
-          <FactChip kicker="Found here" to={`/pentest/record/${foundHere.id}`} weight="host">
+          <FactChip
+            kicker="Found here"
+            to={hostNotebookPath(foundHere.id, wave?.id) || undefined}
+            weight="host"
+          >
             <Mono>{foundHere.name}</Mono>
           </FactChip>
         ) : null}
@@ -392,14 +414,59 @@ const FindingPage = ({
           <MarkdownEditorCard
             title="Description"
             value={description}
-            isEditing={editingMarkdown}
-            onToggleEditing={() => setEditingMarkdown((prev) => !prev)}
+            isEditing={editingSection === 'description'}
+            onToggleEditing={() => setEditingSection((prev) => (prev === 'description' ? '' : 'description'))}
             onChange={(value) => markDirty(() => setDescription(value))}
             onUploadImage={handleImageUpload}
             onPasteImage={handlePasteImage}
-            placeholder="What you found, how you proved it, and the impact. Paste or upload images."
-            emptyText="No write-up yet. Edit to add markdown and evidence."
-            minRows={16}
+            placeholder="What you found. Markdown is kept: headings, lists, tables, code, quotes, and images."
+            emptyText="No write-up yet. Edit to add markdown."
+            minRows={10}
+            canEdit={canEdit}
+            canUploadImages={Boolean(foundHere?.id) && canEdit}
+            imageUploading={imageUploading}
+          />
+          <MarkdownEditorCard
+            title="Impact"
+            value={impact}
+            isEditing={editingSection === 'impact'}
+            onToggleEditing={() => setEditingSection((prev) => (prev === 'impact' ? '' : 'impact'))}
+            onChange={(value) => markDirty(() => setImpact(value))}
+            onUploadImage={handleImageUpload}
+            onPasteImage={handlePasteImage}
+            placeholder="What an attacker can do with this in this environment."
+            emptyText="No impact write-up yet."
+            minRows={8}
+            canEdit={canEdit}
+            canUploadImages={Boolean(foundHere?.id) && canEdit}
+            imageUploading={imageUploading}
+          />
+          <MarkdownEditorCard
+            title="Evidence"
+            value={evidence}
+            isEditing={editingSection === 'evidence'}
+            onToggleEditing={() => setEditingSection((prev) => (prev === 'evidence' ? '' : 'evidence'))}
+            onChange={(value) => markDirty(() => setEvidence(value))}
+            onUploadImage={handleImageUpload}
+            onPasteImage={handlePasteImage}
+            placeholder="Proof, requests, and screenshots. Paste or upload images."
+            emptyText="No evidence yet. Edit to add markdown and screenshots."
+            minRows={8}
+            canEdit={canEdit}
+            canUploadImages={Boolean(foundHere?.id) && canEdit}
+            imageUploading={imageUploading}
+          />
+          <MarkdownEditorCard
+            title="Remediation"
+            value={remediation}
+            isEditing={editingSection === 'remediation'}
+            onToggleEditing={() => setEditingSection((prev) => (prev === 'remediation' ? '' : 'remediation'))}
+            onChange={(value) => markDirty(() => setRemediation(value))}
+            onUploadImage={handleImageUpload}
+            onPasteImage={handlePasteImage}
+            placeholder="How to fix it and what to retest."
+            emptyText="No remediation write-up yet."
+            minRows={8}
             canEdit={canEdit}
             canUploadImages={Boolean(foundHere?.id) && canEdit}
             imageUploading={imageUploading}

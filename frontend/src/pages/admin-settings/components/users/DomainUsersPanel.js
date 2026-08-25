@@ -1,30 +1,8 @@
 import React from 'react';
-import {
-  Avatar,
-  Box,
-  Button,
-  FormControl,
-  Grid,
-  IconButton,
-  InputAdornment,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  MenuItem,
-  Paper,
-  Select,
-  TextField,
-  Typography
-} from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
-import {
-  Delete as DeleteIcon,
-  PersonAdd as PersonAddIcon,
-  Search as SearchIcon
-} from '@mui/icons-material';
+import { Button, Combo, Field, Surface, Text } from '../../../../design/primitives';
+import { SPACE } from '../../../../design/tokens';
 import { ROLE_OPTIONS } from '../../constants';
-import { getRoleMeta, normalizeOptionalPermissions } from '../../utils';
+import { normalizeOptionalPermissions } from '../../utils';
 import OptionalPermissionControls from '../OptionalPermissionControls';
 import SectionHeader from '../SectionHeader';
 
@@ -44,173 +22,146 @@ const DomainUsersPanel = ({
   onSelectedPermissionToggle,
   onSubmit
 }) => {
-  const theme = useTheme();
+  const available = searchResults.filter(
+    (user) => !existingUsers.some((existingUser) => existingUser.username === user.username)
+  );
 
   return (
     <>
-      <SectionHeader icon={PersonAddIcon} title="Add LDAP Users" />
-
-      <Box display="flex" gap={1} mb={2}>
-        <TextField
-          placeholder="Search domain user..."
-          variant="outlined"
-          size="small"
-          fullWidth
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          onKeyDown={(event) => event.key === 'Enter' && onSearch()}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            )
+      <SectionHeader title="Add LDAP Users" />
+      <div className="raptor-users-split">
+        <Surface
+          className="raptor-users-pane"
+          style={{
+            padding: SPACE.x16,
+            minHeight: 420,
+            gap: SPACE.x12
           }}
-        />
-        <Button
-          variant="contained"
-          size="small"
-          startIcon={<SearchIcon />}
-          onClick={onSearch}
-          disabled={loading}
         >
-          Search
-        </Button>
-      </Box>
-
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 1, backgroundColor: 'background.default', height: 320, overflow: 'auto' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, px: 1 }}>
-              Available Users
-            </Typography>
-            {searchResults.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
-                No users found
-              </Typography>
+          <Text variant="bodyStrong">Directory</Text>
+          <div style={{ display: 'flex', gap: SPACE.x8, alignItems: 'flex-end' }}>
+            <Field
+              label="Search"
+              placeholder="Name or username"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && onSearch()}
+              style={{ flex: 1 }}
+            />
+            <Button
+              variant="contained"
+              onClick={onSearch}
+              disabled={loading}
+              style={{ minHeight: 40, height: 40, flexShrink: 0 }}
+            >
+              Search
+            </Button>
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 280 }}>
+            {available.length === 0 ? (
+              <Text variant="meta" tone="secondary">
+                Search the directory, then add people from the results.
+              </Text>
             ) : (
-              <List sx={{ p: 0 }}>
-                {searchResults
-                  .filter((user) => !existingUsers.some((existingUser) => existingUser.username === user.username))
-                  .map((user) => (
-                    <ListItem disablePadding key={user.username} sx={{ mb: 0.5 }}>
-                      <ListItemButton
-                        onClick={() => onSelectUser(user)}
-                        sx={{
-                          borderRadius: 1,
-                          '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) }
-                        }}
-                      >
-                        <Avatar sx={{ mr: 1, width: 24, height: 24, fontSize: '0.75rem' }}>
-                          {user.full_name?.charAt(0) || user.username?.charAt(0)}
-                        </Avatar>
-                        <ListItemText
-                          primary={user.full_name}
-                          secondary={user.email}
-                          primaryTypographyProps={{ fontSize: '0.875rem' }}
-                          secondaryTypographyProps={{ fontSize: '0.75rem' }}
-                        />
-                      </ListItemButton>
-                    </ListItem>
-                  ))}
-              </List>
+              available.map((user) => (
+                <button
+                  key={user.username}
+                  type="button"
+                  onClick={() => onSelectUser(user)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    border: 0,
+                    background: 'transparent',
+                    padding: `${SPACE.x8}px 0`,
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--raptor-line)'
+                  }}
+                >
+                  <Text as="div" variant="bodyStrong">
+                    {user.full_name || user.username}
+                  </Text>
+                  <Text as="div" variant="meta" tone="secondary">
+                    {user.username}
+                    {user.email ? ` · ${user.email}` : ''}
+                    {user.source ? ` · ${user.source}` : ''}
+                  </Text>
+                </button>
+              ))
             )}
-          </Paper>
-        </Grid>
+          </div>
+        </Surface>
 
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 1, backgroundColor: 'background.default', height: 320, overflow: 'auto' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, px: 1 }}>
-              Selected Users ({selectedUsers.length})
-            </Typography>
+        <Surface
+          className="raptor-users-pane"
+          style={{
+            padding: SPACE.x16,
+            minHeight: 420,
+            gap: SPACE.x12
+          }}
+        >
+          <Text variant="bodyStrong">{`Selected (${selectedUsers.length})`}</Text>
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 280 }}>
             {selectedUsers.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
-                No users selected
-              </Typography>
+              <Text variant="meta" tone="secondary">
+                Click a directory result to queue it here.
+              </Text>
             ) : (
-              <List sx={{ p: 0 }}>
-                {selectedUsers.map((user) => {
-                  const roleKey = selectedUserRoles[user.username] || 'user';
-                  const permissions = normalizeOptionalPermissions(
-                    roleKey,
-                    selectedUserPermissions[user.username] || []
-                  );
-
-                  return (
-                    <ListItem
-                      key={user.username}
-                      sx={{
-                        border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: 1,
-                        mb: 1,
-                        backgroundColor: 'background.paper'
-                      }}
-                    >
-                      <Avatar sx={{ mr: 1, width: 24, height: 24, fontSize: '0.75rem' }}>
-                        {user.full_name?.charAt(0) || user.username?.charAt(0)}
-                      </Avatar>
-                      <ListItemText
-                        primary={user.full_name}
-                        secondary={
-                          <Box sx={{ mt: 0.5 }}>
-                            <FormControl size="small" sx={{ minWidth: 120 }}>
-                              <Select
-                                value={roleKey}
-                                onChange={(event) => onSelectedRoleChange(user.username, event.target.value)}
-                                size="small"
-                                sx={{
-                                  backgroundColor: 'background.paper',
-                                  transition: 'all 0.2s ease'
-                                }}
-                              >
-                                {ROLE_OPTIONS.map((option) => (
-                                  <MenuItem key={option.value} value={option.value}>
-                                    {option.label}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                              {getRoleMeta(roleKey).description}
-                            </Typography>
-                            <OptionalPermissionControls
-                              roleKey={roleKey}
-                              permissions={permissions}
-                              onToggle={(permission) => onSelectedPermissionToggle(user.username, permission)}
-                            />
-                          </Box>
-                        }
-                        primaryTypographyProps={{ fontSize: '0.875rem' }}
+              selectedUsers.map((user) => {
+                const roleKey = selectedUserRoles[user.username] || 'user';
+                const permissions = normalizeOptionalPermissions(
+                  roleKey,
+                  selectedUserPermissions[user.username] || []
+                );
+                return (
+                  <div
+                    key={user.username}
+                    style={{
+                      padding: `${SPACE.x12}px 0`,
+                      borderBottom: '1px solid var(--raptor-line)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE.x8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <Text as="div" variant="bodyStrong">
+                          {user.full_name || user.username}
+                        </Text>
+                        <Text as="div" variant="meta" tone="secondary">
+                          {user.username}
+                        </Text>
+                      </div>
+                      <Button size="small" variant="outlined" onClick={() => onRemoveUser(user)}>
+                        Remove
+                      </Button>
+                    </div>
+                    <div style={{ marginTop: SPACE.x8 }}>
+                      <Combo
+                        label="Role"
+                        options={ROLE_OPTIONS}
+                        value={roleKey}
+                        onChange={(next) => next && onSelectedRoleChange(user.username, next)}
+                        disableClearable
                       />
-                      <IconButton
-                        edge="end"
-                        color="error"
-                        onClick={() => onRemoveUser(user)}
-                        size="small"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </ListItem>
-                  );
-                })}
-              </List>
+                      <OptionalPermissionControls
+                        roleKey={roleKey}
+                        permissions={permissions}
+                        onToggle={(permission) => onSelectedPermissionToggle(user.username, permission)}
+                        compact
+                      />
+                    </div>
+                  </div>
+                );
+              })
             )}
-            {selectedUsers.length > 0 && (
-              <Button
-                variant="contained"
-                color="secondary"
-                startIcon={<PersonAddIcon />}
-                onClick={onSubmit}
-                disabled={loading}
-                fullWidth
-                sx={{ mt: 1 }}
-              >
-                Add Selected Users
-              </Button>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
+          </div>
+          {selectedUsers.length > 0 ? (
+            <Button variant="contained" onClick={onSubmit} disabled={loading}>
+              Add selected users
+            </Button>
+          ) : null}
+        </Surface>
+      </div>
     </>
   );
 };

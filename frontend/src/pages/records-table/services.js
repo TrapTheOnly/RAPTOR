@@ -21,7 +21,7 @@ export const deleteAppById = (appId) => axios.delete(`/api/apps/${appId}`);
 export const updateRecordById = (recordId, payload) =>
   axios.post(`/api/records/${recordId}`, payload);
 
-export const resolveSyncConflictById = (recordId) =>
-  axios.post(`/api/records/${recordId}/resolve-sync-conflict`);
+export const resolveSyncConflictById = (recordId, payload) =>
+  axios.post(`/api/records/${recordId}/resolve-sync-conflict`, payload || {});
 
 export const deleteRecordById = (recordId) => axios.delete(`/api/records/${recordId}`);

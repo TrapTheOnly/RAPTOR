@@ -410,12 +410,22 @@ def get_pentest_data_internal(record_id=None):
         return None
 
 
-def enforce_pentest_record_access(record_id, action_verb="access", allowed_roles=None):
+def enforce_pentest_record_access(
+    record_id,
+    action_verb="access",
+    allowed_roles=None,
+    username=None,
+    role=None,
+):
     """
     Enforce record-level access for pentest resources.
     allowed_roles defaults to owner/collaborator/admin override/manager override.
+    Pass username/role to evaluate a specific actor; otherwise the Flask session is used.
     """
-    access_role = get_pentest_access_role(record_id)
+    if username is not None:
+        access_role = get_access_role_for_user(record_id, username=username, role=role)
+    else:
+        access_role = get_pentest_access_role(record_id)
     allowed = set(allowed_roles or {"owner", "collaborator", "manager_override", "admin_override"})
     if access_role in allowed:
         return True, None

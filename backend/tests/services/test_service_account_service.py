@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from app.services import service_account_service
+from app.services import keycloak_identity_service as identity
 
 
 def test_create_service_account_key_uses_default_rotation_window(monkeypatch):
@@ -26,6 +27,8 @@ def test_create_service_account_key_uses_default_rotation_window(monkeypatch):
         },
     ]
 
+    monkeypatch.setattr(identity, "push_service_account_credentials", lambda *args, **kwargs: "client-uuid")
+    monkeypatch.setattr(service_account_service, "update_service_account_keycloak_client", lambda *args, **kwargs: None)
     monkeypatch.setattr(service_account_service, "_utc_now", lambda: now)
     monkeypatch.setattr(service_account_service, "_generate_api_key", lambda: "raptor_sk_generated")
     monkeypatch.setattr(
@@ -89,3 +92,33 @@ def test_view_service_account_key_returns_gone(monkeypatch):
 
     assert status == 410
     assert "Rotate" in payload["error"]
+
+
+def test_rotate_service_account_key_returns_plaintext_once(monkeypatch):
+    now = datetime(2026, 3, 13, 10, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(identity, "push_service_account_credentials", lambda *args, **kwargs: "client-uuid")
+    monkeypatch.setattr(service_account_service, "_utc_now", lambda: now)
+    monkeypatch.setattr(service_account_service, "_generate_api_key", lambda: "raptor_sk_rotated")
+    monkeypatch.setattr(
+        service_account_service,
+        "get_service_account_with_key",
+        lambda username: {
+            "service_account_id": 9,
+            "username": "svc.reader",
+            "added_date": "2026-03-10T12:00:00+00:00",
+            "has_api_key": True,
+            "scopes": ["records.read"],
+            "key_created_at": now.isoformat(),
+            "expires_at": (now + timedelta(days=90)).replace(microsecond=0).isoformat(),
+        },
+    )
+    monkeypatch.setattr(service_account_service, "rotate_service_account_key", lambda **kwargs: 1)
+
+    payload, status = service_account_service.rotate_service_account_key_service(
+        username="svc.reader",
+        actor_username="awadmin",
+    )
+
+    assert status == 200
+    assert payload["service_account"]["api_key"] == "raptor_sk_rotated"
+    assert "rotated" in payload["message"].lower()

@@ -25,7 +25,7 @@
         "id": "authentication-contract",
         "title": "Authentication contract",
         "paragraphs": [
-          "Authentication and authorization are enforced separately. Login establishes identity, while route visibility and action availability are derived from role plus effective permissions.",
+          "Authentication and authorization are enforced separately. The RAPTOR login form posts to `/login`; Flask validates credentials with Keycloak (direct grant) and then establishes a server-side session. Enabled OIDC/SAML connections add Sign in with … buttons that start `/auth/sso/{alias}/start` and return through `/auth/sso/callback`. The browser keeps the HttpOnly Flask cookie; Keycloak access and refresh tokens stay on the server. Route visibility and actions still use role plus effective permissions from the identity cache.",
           "After login, RAPTOR loads session status and applies capability checks before rendering module navigation and page actions."
         ]
       },
@@ -33,7 +33,7 @@
         "id": "first-access-reset",
         "title": "First access and reset behavior",
         "paragraphs": [
-          "Some accounts are provisioned with a reset-required state. In this state, RAPTOR routes users through password reset before granting normal navigation.",
+          "Some accounts are provisioned with Keycloak required action `UPDATE_PASSWORD`. RAPTOR maps that to `password_reset_required` and routes users through password reset before granting a normal session. LDAP and other federated users authenticate with their directory password; incomplete Keycloak profile required actions are cleared on login instead of sending those users into password reset.",
           "This prevents partial operational access under transitional credential state."
         ]
       },
@@ -100,7 +100,7 @@
             ],
             [
               "Forced reset flow appears",
-              "Account flagged as reset required.",
+              "Keycloak required action `UPDATE_PASSWORD`.",
               "Complete reset flow or confirm user policy with admin."
             ]
           ]

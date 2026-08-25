@@ -1,51 +1,55 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link as RouterLink, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowBack, Monitor, RestartAlt, SmartToy, Stop } from '@mui/icons-material';
 import {
-  Alert,
-  Box,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  Divider,
-  LinearProgress,
-  Stack,
-  Typography,
-  alpha,
-} from '@mui/material';
-import {
-  ArrowBack as ArrowBackIcon,
-  BugReport as BugIcon,
-  CheckCircle as CheckCircleIcon,
-  Code as CodeIcon,
-  Error as ErrorIcon,
-  Psychology as BrainIcon,
-  Security as SecurityIcon,
-  Terminal as TerminalIcon,
-} from '@mui/icons-material';
-import { useTheme } from '@mui/material/styles';
-import axios from 'axios';
+  Button,
+  DataList,
+  DataRow,
+  EmptyState,
+  Field,
+  MetricStrip,
+  Mono,
+  Page,
+  PageHeader,
+  ProviderMark,
+  Surface,
+  SwitchRow,
+  Tag,
+  Text,
+  Toast
+} from '../design/primitives';
+import { FONTS, RADIUS, SPACE } from '../design/tokens';
+import { usePalette } from '../design/usePalette';
+import { getWave, launchWaveScan, resetWaveScan, stopWaveScan } from './app-workspace/services';
+import { fetchPentestRecord } from './pentest-record/services';
 
 const MAX_FEED_EVENTS = 200;
+const DETAIL_CHARS = 220;
 
-const SOURCE_COLORS = {
-  kali: 'error',
-  raptor: 'primary',
-  unknown: 'default',
-};
+const HIDDEN_TOOLS = new Set([
+  'log_scan_event',
+  'set_scan_status',
+  'notify_scan_complete',
+  'get_pentest',
+  'get_checklist_templates',
+  'update_checklist_item',
+  'get_or_create_vuln_category'
+]);
 
-const SOURCE_LABELS = {
-  kali: 'Kali',
-  raptor: 'RAPTOR',
-  unknown: '?',
-};
-
-const EVENT_ICONS = {
-  api_call: <BrainIcon fontSize="small" />,
-  tool_call: <TerminalIcon fontSize="small" />,
-  tool_result: <CodeIcon fontSize="small" />,
-  finding: <BugIcon fontSize="small" />,
-  status: <SecurityIcon fontSize="small" />,
+const TOOL_LABELS = {
+  nmap_scan: 'nmap',
+  nuclei_scan: 'nuclei',
+  nikto_scan: 'nikto',
+  gobuster_scan: 'gobuster',
+  ffuf_scan: 'ffuf',
+  dirb_scan: 'dirb',
+  wpscan_analyze: 'wpscan',
+  sqlmap_scan: 'sqlmap',
+  enum4linux_scan: 'enum4linux',
+  hydra_attack: 'hydra',
+  execute_command: 'command',
+  update_pentest_ports: 'ports',
+  add_pentest_vulnerability: 'finding'
 };
 
 function formatTs(ts) {
@@ -63,207 +67,356 @@ function toEpochMs(ts) {
   return Number.isFinite(value) ? value : null;
 }
 
-function StatusBadge({ status }) {
-  const map = {
-    running: { color: 'info', label: 'Running', icon: <CircularProgress size={12} color="inherit" /> },
-    completed: { color: 'success', label: 'Completed', icon: <CheckCircleIcon fontSize="small" /> },
-    failed: { color: 'error', label: 'Failed', icon: <ErrorIcon fontSize="small" /> },
-    idle: { color: 'default', label: 'Idle', icon: null },
-  };
-  const cfg = map[status] || map.idle;
-  return (
-    <Chip
-      size="small"
-      color={cfg.color}
-      icon={cfg.icon}
-      label={cfg.label}
-      variant={status === 'running' ? 'filled' : 'outlined'}
-    />
-  );
+function formatTokens(n) {
+  const value = Number(n) || 0;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+  return String(value);
 }
 
-function StatCard({ label, value, color }) {
-  const theme = useTheme();
-  return (
-    <Box
-      sx={{
-        px: 2,
-        py: 1.5,
-        borderRadius: 2,
-        border: `1px solid ${theme.palette.divider}`,
-        minWidth: 100,
-        textAlign: 'center',
-        bgcolor: color ? alpha(theme.palette[color]?.main || theme.palette.primary.main, 0.07) : 'background.paper',
-      }}
-    >
-      <Typography variant="h5" fontWeight={700} color={color ? `${color}.main` : 'text.primary'}>
-        {value}
-      </Typography>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
-    </Box>
-  );
+function shortHost(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '';
+  return raw.split('.')[0];
 }
 
-function FeedEvent({ event }) {
-  const theme = useTheme();
-  const { event_type, payload, ts } = event;
+function hostColor(palette, hostId) {
+  const colors = [
+    palette.accent,
+    palette.lifecycle?.deferred,
+    palette.severity?.high,
+    palette.lifecycle?.positive
+  ].filter(Boolean);
+  if (!colors.length) return palette.accent;
+  const index = Math.abs(Number(hostId) || 0) % colors.length;
+  return colors[index];
+}
 
-  let primary = event_type;
-  let secondary = '';
-  let chipColor = 'default';
-  let chipLabel = null;
-  let isError = false;
+function toolLabel(name) {
+  return TOOL_LABELS[name] || String(name || 'tool').replace(/_/g, ' ');
+}
 
-  if (event_type === 'tool_call') {
-    primary = payload.tool_name || 'unknown';
-    secondary = payload.input_snippet || '';
-    chipColor = SOURCE_COLORS[payload.mcp_source] || 'default';
-    chipLabel = SOURCE_LABELS[payload.mcp_source] || payload.mcp_source;
-  } else if (event_type === 'tool_result') {
-    primary = payload.tool_name || 'unknown';
-    secondary = payload.result_snippet || '';
-    isError = !!payload.is_error;
-    chipColor = SOURCE_COLORS[payload.mcp_source] || 'default';
-    chipLabel = SOURCE_LABELS[payload.mcp_source] || payload.mcp_source;
-  } else if (event_type === 'api_call') {
-    primary = `API call #${payload.api_call_count}`;
-    secondary = `+${payload.input_tokens}in / +${payload.output_tokens}out  •  $${(payload.cost_usd || 0).toFixed(4)}`;
-    chipLabel = 'Bedrock';
-    chipColor = 'secondary';
-  } else if (event_type === 'finding') {
-    primary = `Finding #${payload.findings_count}`;
-    chipLabel = 'vuln';
-    chipColor = 'error';
-  } else if (event_type === 'status') {
-    primary = `Status → ${payload.scan_status}`;
-    if (payload.reason) secondary = payload.reason;
-    chipLabel = payload.scan_status;
-    chipColor = payload.scan_status === 'completed' ? 'success' : payload.scan_status === 'failed' ? 'error' : 'info';
+function clip(text, max = DETAIL_CHARS) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!value) return '';
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function detailFromInput(snippet) {
+  const raw = String(snippet || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw.replace(/…$/, ''));
+    if (parsed && typeof parsed === 'object') {
+      const bits = [];
+      ['command', 'target', 'url', 'host', 'ports', 'title', 'query', 'path', 'name', 'scan_type'].forEach((key) => {
+        if (parsed[key]) bits.push(String(parsed[key]));
+      });
+      if (bits.length) return bits.join(' · ');
+    }
+  } catch {
+    /* keep raw snippet */
   }
-
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        gap: 1.5,
-        alignItems: 'flex-start',
-        py: 0.75,
-        px: 1,
-        borderRadius: 1,
-        bgcolor: isError ? alpha(theme.palette.error.main, 0.06) : 'transparent',
-        '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.04) },
-      }}
-    >
-      <Box sx={{ pt: 0.25, color: isError ? 'error.main' : 'text.secondary', flexShrink: 0 }}>
-        {EVENT_ICONS[event_type] || <CodeIcon fontSize="small" />}
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <Typography variant="body2" fontWeight={600} sx={{ fontFamily: 'monospace' }}>
-            {primary}
-          </Typography>
-          {chipLabel && (
-            <Chip size="small" label={chipLabel} color={chipColor} variant="outlined"
-              sx={{ height: 18, fontSize: 10, '& .MuiChip-label': { px: 0.75 } }} />
-          )}
-          <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto', flexShrink: 0 }}>
-            {formatTs(ts)}
-          </Typography>
-        </Box>
-        {secondary && (
-          <Typography variant="caption" color={isError ? 'error.main' : 'text.secondary'}
-            sx={{ display: 'block', fontFamily: 'monospace', mt: 0.25, wordBreak: 'break-all' }}>
-            {secondary}
-          </Typography>
-        )}
-      </Box>
-    </Box>
-  );
+  return raw;
 }
 
-const ScanLive = ({ darkMode }) => {
-  const { recordId } = useParams();
-  const navigate = useNavigate();
-  const theme = useTheme();
+function foldEvents(raw) {
+  const rows = [];
+  for (const ev of raw) {
+    const payload = ev.payload || {};
+    const type = ev.event_type;
+    if (type === 'api_call') continue;
+    if (type === 'status') {
+      if (payload.wave_complete || payload.scan_status === 'completed' || payload.scan_status === 'failed') {
+        const stopped = payload.reason === 'stopped';
+        const title = stopped ? 'Scan stopped' : payload.scan_status === 'failed' ? 'Scan failed' : 'Scan complete';
+        const last = rows[rows.length - 1];
+        if (last && last.kind === 'outcome' && last.title === title) continue;
+        rows.push({
+          id: ev.id,
+          kind: 'outcome',
+          title,
+          detail: clip(payload.reason && payload.reason !== 'stopped' ? payload.reason : ''),
+          recordId: ev.record_id,
+          ts: ev.ts,
+          error: payload.scan_status === 'failed' && !stopped
+        });
+        continue;
+      }
+      const title = payload.message || (payload.section ? payload.section : payload.phase);
+      if (payload.phase === 'port_discovery' || payload.phase === 'testing' || payload.message) {
+        rows.push({
+          id: ev.id,
+          kind: 'phase',
+          title: title || 'Working',
+          detail: clip(
+            [payload.section, payload.message && payload.message !== title ? payload.message : '']
+              .filter(Boolean)
+              .join(' · ')
+          ),
+          recordId: payload.record_id || ev.record_id,
+          ts: ev.ts
+        });
+      }
+      continue;
+    }
+    if (type === 'finding') {
+      rows.push({
+        id: ev.id,
+        kind: 'finding',
+        title: payload.title || (payload.findings_count ? `Finding ${payload.findings_count}` : 'Finding'),
+        detail: clip(payload.severity || payload.summary || ''),
+        recordId: ev.record_id,
+        ts: ev.ts
+      });
+      continue;
+    }
+    if (type === 'tool_call') {
+      if (HIDDEN_TOOLS.has(payload.tool_name)) continue;
+      const input = detailFromInput(payload.input_snippet);
+      rows.push({
+        id: ev.id,
+        kind: 'tool',
+        tool: payload.tool_name,
+        title: toolLabel(payload.tool_name),
+        detail: clip(input),
+        input,
+        source: payload.mcp_source,
+        pending: true,
+        error: false,
+        recordId: ev.record_id,
+        ts: ev.ts
+      });
+      continue;
+    }
+    if (type === 'tool_result') {
+      if (HIDDEN_TOOLS.has(payload.tool_name)) continue;
+      const result = clip(payload.result_snippet);
+      let matched = false;
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        if (rows[i].kind === 'tool' && rows[i].pending && rows[i].tool === payload.tool_name) {
+          const input = rows[i].input || rows[i].detail;
+          rows[i] = {
+            ...rows[i],
+            pending: false,
+            error: Boolean(payload.is_error),
+            detail: clip([input, result].filter(Boolean).join(' → '))
+          };
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        rows.push({
+          id: ev.id,
+          kind: 'tool',
+          tool: payload.tool_name,
+          title: toolLabel(payload.tool_name),
+          detail: result,
+          source: payload.mcp_source,
+          pending: false,
+          error: Boolean(payload.is_error),
+          recordId: ev.record_id,
+          ts: ev.ts
+        });
+      }
+    }
+  }
+  return rows;
+}
 
-  const [record, setRecord] = useState(null);
+const HostChip = ({ active, color, children, onClick, style }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      height: 22,
+      padding: '0 8px',
+      borderRadius: RADIUS.chip,
+      border: `1px solid ${color}`,
+      color,
+      background: active ? `color-mix(in srgb, ${color} 16%, transparent)` : 'transparent',
+      cursor: 'pointer',
+      fontFamily: FONTS.mono,
+      fontSize: 11,
+      fontWeight: 500,
+      letterSpacing: '0.04em',
+      textTransform: 'uppercase',
+      whiteSpace: 'nowrap',
+      ...style
+    }}
+  >
+    {children}
+  </button>
+);
+
+const HostScanLiveRedirect = () => {
+  const { recordId } = useParams();
+  const [searchParams] = useSearchParams();
+  const waveId = searchParams.get('wave');
+  const [record, setRecord] = useState(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPentestRecord(recordId)
+      .then((response) => {
+        if (!cancelled) setRecord(response.data || null);
+      })
+      .catch(() => {
+        if (!cancelled) setRecord(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recordId]);
+
+  if (record === undefined) return <Page />;
+  if (record?.application_id && waveId) {
+    return <Navigate to={`/apps/${record.application_id}/waves/${waveId}/scan-live`} replace />;
+  }
+  const appTo = record?.application_id ? `/apps/${record.application_id}` : '/pentest';
+  return (
+    <Page>
+      <EmptyState
+        icon={Monitor}
+        title="Launch from the wave"
+        hint="Open the application, start the wave, then launch the AI scan from there."
+        actions={
+          <Button size="small" component={RouterLink} to={appTo}>
+            Open application
+          </Button>
+        }
+      />
+    </Page>
+  );
+};
+
+const WaveScanLive = () => {
+  const { appId, waveId } = useParams();
+  const palette = usePalette();
+  const [wave, setWave] = useState(null);
+  const [hosts, setHosts] = useState([]);
+  const [appName, setAppName] = useState('');
+  const [hostFilter, setHostFilter] = useState('all');
   const [events, setEvents] = useState([]);
   const [stats, setStats] = useState({
     scan_status: 'idle',
-    api_calls: 0,
-    raptor_calls: 0,
-    kali_calls: 0,
     findings: 0,
     input_tokens: 0,
     output_tokens: 0,
     cost_usd: 0,
-    cost_limit_usd: 0,
+    provider: ''
   });
   const [currentTool, setCurrentTool] = useState(null);
   const [done, setDone] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [scanStarted, setScanStarted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [operatorBrief, setOperatorBrief] = useState('');
+  const [maxTurns, setMaxTurns] = useState('');
+  const [skipPorts, setSkipPorts] = useState(false);
+  const [toast, setToast] = useState({ open: false, message: '', severity: 'error' });
   const startTimeRef = useRef(null);
   const feedRef = useRef(null);
-  const eventSourceRef = useRef(null);
   const lastIdRef = useRef(0);
+  const [sseKey, setSseKey] = useState(0);
+
+  const scopedHosts = useMemo(
+    () => (hosts || []).filter((host) => host.in_scope !== false),
+    [hosts]
+  );
+  const hostById = useMemo(() => {
+    const map = new Map();
+    scopedHosts.forEach((host) => map.set(Number(host.id), host));
+    return map;
+  }, [scopedHosts]);
+
+  const loadWave = useCallback(async () => {
+    try {
+      const response = await getWave(appId, waveId);
+      const data = response.data || {};
+      setWave(data.wave || null);
+      setHosts(data.hosts || []);
+      setAppName(data.wave?.application_name || '');
+      const job = data.current_scan_job || data.wave?.current_scan_job || {};
+      const jobStatus = String(job.status || '');
+      const jobError = String(job.last_error || '');
+      const hostStatuses = (data.hosts || [])
+        .filter((host) => host.in_scope !== false)
+        .map((host) => String(host.scan_status || 'idle'));
+      let status = jobStatus === 'running' || hostStatuses.includes('running')
+        ? 'running'
+        : hostStatuses.includes('failed')
+          ? 'failed'
+          : hostStatuses.includes('completed')
+            ? 'completed'
+            : 'idle';
+      if (status === 'failed' && jobError === 'stopped') status = 'stopped';
+      setStats((prev) => ({ ...prev, scan_status: status }));
+      if (status === 'running') {
+        setScanStarted(true);
+        setDone(false);
+      }
+      if (status === 'completed' || status === 'failed' || status === 'stopped') {
+        setDone(true);
+      }
+    } catch {
+      setWave(null);
+      setHosts([]);
+    }
+  }, [appId, waveId]);
 
   useEffect(() => {
-    axios.get(`/pentest/records`).then((res) => {
-      const pentests = Array.isArray(res.data) ? res.data : (res.data?.pentests || []);
-      const found = pentests.find(
-        (p) => String(p.record_id) === String(recordId) || String(p.id) === String(recordId)
-      ) || null;
-      if (found) setRecord(found);
-    }).catch(() => {});
-  }, [recordId]);
+    loadWave();
+  }, [loadWave]);
 
   const applyEvent = useCallback((ev) => {
-    const { event_type, payload, ts, id } = ev;
+    const { event_type, payload = {}, ts, id } = ev;
     lastIdRef.current = id;
-
     setEvents((prev) => {
       const next = [...prev, ev];
       return next.length > MAX_FEED_EVENTS ? next.slice(next.length - MAX_FEED_EVENTS) : next;
     });
 
     if (event_type === 'status') {
-      const status = payload.scan_status;
+      const stopped = payload.reason === 'stopped';
+      const status = stopped ? 'stopped' : payload.scan_status;
       setStats((s) => ({
         ...s,
-        scan_status: status,
+        scan_status: status || s.scan_status,
         findings: payload.findings_count ?? s.findings,
         input_tokens: payload.input_tokens ?? s.input_tokens,
         output_tokens: payload.output_tokens ?? s.output_tokens,
-        cost_usd: payload.cost_usd ?? s.cost_usd,
+        cost_usd: payload.cost_usd ?? s.cost_usd
       }));
-      if (status === 'running' && !startTimeRef.current) {
+      if ((status === 'running' || payload.phase) && !startTimeRef.current) {
         const eventTimeMs = toEpochMs(ts);
         startTimeRef.current = eventTimeMs || Date.now();
         setElapsedMs(Math.max(0, Date.now() - startTimeRef.current));
         setScanStarted(true);
       }
-      if (status === 'completed' || status === 'failed') {
+      if (payload.wave_complete || status === 'completed' || status === 'failed' || stopped) {
         setCurrentTool(null);
         setDone(true);
       }
     } else if (event_type === 'api_call') {
       setStats((s) => ({
         ...s,
-        api_calls: payload.api_call_count ?? s.api_calls + 1,
         input_tokens: payload.total_input_tokens ?? s.input_tokens,
         output_tokens: payload.total_output_tokens ?? s.output_tokens,
         cost_usd: payload.cost_usd ?? s.cost_usd,
-        cost_limit_usd: payload.cost_limit_usd || s.cost_limit_usd,
+        provider: payload.provider || s.provider
       }));
     } else if (event_type === 'tool_call') {
-      setCurrentTool({ name: payload.tool_name, source: payload.mcp_source });
-      if (payload.mcp_source === 'kali') {
-        setStats((s) => ({ ...s, kali_calls: s.kali_calls + 1 }));
-      } else if (payload.mcp_source === 'raptor') {
-        setStats((s) => ({ ...s, raptor_calls: s.raptor_calls + 1 }));
+      if (!HIDDEN_TOOLS.has(payload.tool_name)) {
+        setCurrentTool({
+          name: payload.tool_name,
+          source: payload.mcp_source,
+          recordId: ev.record_id,
+          detail: clip(detailFromInput(payload.input_snippet), 120)
+        });
       }
     } else if (event_type === 'tool_result') {
       setCurrentTool(null);
@@ -272,178 +425,474 @@ const ScanLive = ({ darkMode }) => {
     }
   }, []);
 
-  const [sseKey, setSseKey] = useState(0);
-
   useEffect(() => {
-    if (done) return;
-    const url = `/pentest/${recordId}/scan-events/stream?after=${lastIdRef.current}`;
+    if (done) return undefined;
+    const url = `/api/apps/${appId}/waves/${waveId}/scan-events/stream?after=${lastIdRef.current}`;
     const es = new EventSource(url);
-    eventSourceRef.current = es;
-
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        if (data.__done__) { setDone(true); es.close(); return; }
+        if (data.__done__) {
+          setDone(true);
+          es.close();
+          return;
+        }
         applyEvent(data);
-      } catch {}
+      } catch {
+        /* heartbeat */
+      }
     };
     es.onerror = () => {
       es.close();
       if (!done) setTimeout(() => setSseKey((k) => k + 1), 3000);
     };
     return () => es.close();
-  }, [recordId, done, applyEvent, sseKey]);
+  }, [appId, waveId, done, applyEvent, sseKey]);
 
   useEffect(() => {
-    if (done || !scanStarted) return;
+    if (done || !scanStarted) return undefined;
     const iv = setInterval(() => setElapsedMs(Date.now() - (startTimeRef.current || Date.now())), 500);
     return () => clearInterval(iv);
   }, [done, scanStarted]);
 
   useEffect(() => {
-    if (feedRef.current) {
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
-    }
-  }, [events]);
+    if (done || !scanStarted) return undefined;
+    const iv = setInterval(() => {
+      loadWave();
+    }, 12000);
+    return () => clearInterval(iv);
+  }, [done, scanStarted, loadWave]);
 
-  const elapsedStr = () => {
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [events, hostFilter]);
+
+  const failWith = (error, fallback) => {
+    setToast({
+      open: true,
+      message: error?.response?.data?.error || fallback,
+      severity: 'error'
+    });
+  };
+
+  const resetLocalScan = () => {
+    lastIdRef.current = 0;
+    startTimeRef.current = null;
+    setEvents([]);
+    setCurrentTool(null);
+    setDone(false);
+    setScanStarted(false);
+    setElapsedMs(0);
+    setHostFilter('all');
+    setStats((prev) => ({
+      ...prev,
+      scan_status: 'idle',
+      findings: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: 0,
+      provider: ''
+    }));
+    setSseKey((k) => k + 1);
+  };
+
+  const launchPayload = () => {
+    const payload = {};
+    const brief = operatorBrief.trim();
+    if (brief) payload.operator_brief = brief;
+    if (maxTurns.trim()) {
+      const turns = Number(maxTurns);
+      if (Number.isFinite(turns)) payload.max_turns = turns;
+    }
+    if (skipPorts) payload.skip_port_discovery = true;
+    return payload;
+  };
+
+  const handleLaunch = async () => {
+    setBusy(true);
+    try {
+      await launchWaveScan(appId, waveId, launchPayload());
+      setDone(false);
+      setScanStarted(true);
+      setStats((prev) => ({ ...prev, scan_status: 'running' }));
+      startTimeRef.current = Date.now();
+      setSseKey((k) => k + 1);
+      await loadWave();
+      setToast({ open: true, message: 'Wave scan launched.', severity: 'success' });
+    } catch (error) {
+      failWith(error, 'Failed to launch scan.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    setBusy(true);
+    try {
+      await resetWaveScan(appId, waveId);
+      resetLocalScan();
+      await launchWaveScan(appId, waveId, launchPayload());
+      setDone(false);
+      setScanStarted(true);
+      setStats((prev) => ({ ...prev, scan_status: 'running' }));
+      startTimeRef.current = Date.now();
+      setSseKey((k) => k + 1);
+      await loadWave();
+      setToast({ open: true, message: 'Scan restarted with current notes.', severity: 'success' });
+    } catch (error) {
+      failWith(error, 'Failed to restart scan.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleStop = async () => {
+    setBusy(true);
+    try {
+      await stopWaveScan(appId, waveId);
+      setStats((prev) => ({ ...prev, scan_status: 'stopped' }));
+      setCurrentTool(null);
+      setDone(true);
+      await loadWave();
+      setToast({ open: true, message: 'Scan stop requested.', severity: 'success' });
+    } catch (error) {
+      failWith(error, 'Failed to stop scan.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const status = stats.scan_status || 'idle';
+  const running = status === 'running';
+  const finished = status === 'completed' || status === 'failed' || status === 'stopped';
+  const idle = !running && !finished;
+  const isOpen = wave?.status === 'open';
+  const isStarted = Boolean(wave?.started_at || wave?.started);
+  const canLaunch = isOpen && isStarted;
+  const waveTo = `/apps/${appId}/waves/${waveId}`;
+  const elapsedStr = (() => {
     const s = Math.floor(elapsedMs / 1000);
     const m = Math.floor(s / 60);
     return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+  })();
+  const showCost = Number(stats.cost_usd) > 0;
+  const feedRows = useMemo(() => foldEvents(events), [events]);
+  const visibleRows = useMemo(() => {
+    if (hostFilter === 'all') return feedRows;
+    const wanted = Number(hostFilter);
+    return feedRows.filter((row) => row.kind === 'phase' || row.kind === 'outcome' || Number(row.recordId) === wanted);
+  }, [feedRows, hostFilter]);
+
+  const hostName = (recordId) => {
+    const host = hostById.get(Number(recordId));
+    return shortHost(host?.name) || (recordId ? `#${recordId}` : '');
   };
 
-  const costPct = stats.cost_limit_usd > 0 ? Math.min((stats.cost_usd / stats.cost_limit_usd) * 100, 100) : 0;
+  const rowSeverity = (row) => {
+    if (row.kind === 'finding') return 'critical';
+    if (row.error || (row.kind === 'outcome' && status === 'failed')) return 'high';
+    if (row.kind === 'tool' && row.source === 'kali') return 'medium';
+    if (row.kind === 'tool') return 'low';
+    return 'none';
+  };
+
+  const launchForm = canLaunch && (idle || finished) ? (
+    <Surface
+      style={{
+        maxWidth: 720,
+        margin: `0 auto ${SPACE.x24}px`,
+        padding: SPACE.x16
+      }}
+    >
+      <Text variant="h2" style={{ marginBottom: SPACE.x8 }}>
+        {finished ? 'Restart with notes' : 'Launch options'}
+      </Text>
+      <Text variant="meta" tone="secondary" style={{ marginBottom: SPACE.x16, display: 'block' }}>
+        Notes go to the agent as extra prompt. Use them for credentials, out-of-scope paths, or what to focus on.
+      </Text>
+      <Field
+        label="Operator notes"
+        hint="Optional. The model treats this as engagement context."
+        multiline
+        minRows={4}
+        value={operatorBrief}
+        onChange={(event) => setOperatorBrief(event.target.value)}
+        placeholder="e.g. Auth is at /login. Do not brute-force. Focus on IDOR on /api/admin."
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: SPACE.x16, marginTop: SPACE.x12 }}>
+        <Field
+          label="Max turns"
+          hint="Blank uses policy default"
+          value={maxTurns}
+          onChange={(event) => setMaxTurns(event.target.value)}
+          placeholder="40"
+        />
+        <div />
+      </div>
+      <SwitchRow
+        label="Skip port discovery"
+        hint="Use open ports already stored on the records."
+        checked={skipPorts}
+        onChange={setSkipPorts}
+      />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: SPACE.x8 }}>
+        {finished ? (
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<RestartAlt sx={{ fontSize: 16 }} />}
+            onClick={handleRestart}
+            disabled={busy || scopedHosts.length === 0}
+          >
+            Restart scan
+          </Button>
+        ) : (
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<SmartToy sx={{ fontSize: 16 }} />}
+            onClick={handleLaunch}
+            disabled={busy || scopedHosts.length === 0}
+          >
+            Launch scan
+          </Button>
+        )}
+      </div>
+    </Surface>
+  ) : null;
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1100, mx: 'auto' }}>
-      {/* Header */}
-      <Card sx={{ mb: 2, border: `1px solid ${theme.palette.divider}`,
-        background: `linear-gradient(120deg, ${alpha(theme.palette.primary.main, 0.12)} 0%, ${alpha(theme.palette.background.paper, 0.94)} 60%)` }}>
-        <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
-            <Box>
-              <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
-                <BrainIcon color="primary" />
-                <Typography variant="h5" fontWeight={700}>
-                  AI Scan — Live Progress
-                </Typography>
-                <StatusBadge status={stats.scan_status} />
-              </Stack>
-              {record && (
-                <Typography variant="body2" color="text.secondary">
-                  {record.dns_name || record.ip_address || `Record #${recordId}`}
-                  {record.ip_address && record.dns_name ? ` · ${record.ip_address}` : ''}
-                </Typography>
-              )}
-            </Box>
-            <Stack direction="row" spacing={1} alignItems="center">
-              {scanStarted && !done && (
-                <Chip size="small" label={`Elapsed: ${elapsedStr()}`} variant="outlined" />
-              )}
-              <Chip
+    <Page>
+      <PageHeader
+        crumbs={[
+          { label: 'Applications', to: '/pentest' },
+          { label: appName || 'Application', to: `/apps/${appId}` },
+          { label: wave?.name || 'Wave', to: waveTo },
+          { label: 'AI scan' }
+        ]}
+        leading={
+          <Button size="small" component={RouterLink} to={waveTo} startIcon={<ArrowBack sx={{ fontSize: 16 }} />}>
+            Wave
+          </Button>
+        }
+        title="AI scan"
+        subtitle={wave?.name || ''}
+        meta={
+          <>
+            <Tag emphasized={running}>{status}</Tag>
+            {stats.provider ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <ProviderMark type={stats.provider} size={14} />
+                <Tag>{stats.provider}</Tag>
+              </span>
+            ) : null}
+            {scanStarted ? <Tag>{elapsedStr}</Tag> : null}
+          </>
+        }
+        actions={
+          <>
+            {canLaunch && running ? (
+              <Button
                 size="small"
-                label={`Back to record`}
-                icon={<ArrowBackIcon fontSize="small" />}
-                onClick={() => navigate(`/pentest/record/${recordId}`)}
-                sx={{ cursor: 'pointer' }}
-                variant="outlined"
-              />
-            </Stack>
-          </Box>
+                startIcon={<Stop sx={{ fontSize: 16 }} />}
+                onClick={handleStop}
+                disabled={busy}
+              >
+                Stop scan
+              </Button>
+            ) : null}
+            {canLaunch && idle ? (
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<SmartToy sx={{ fontSize: 16 }} />}
+                onClick={handleLaunch}
+                disabled={busy || scopedHosts.length === 0}
+              >
+                Launch scan
+              </Button>
+            ) : null}
+            {canLaunch && finished ? (
+              <Button
+                size="small"
+                startIcon={<RestartAlt sx={{ fontSize: 16 }} />}
+                onClick={handleRestart}
+                disabled={busy || scopedHosts.length === 0}
+              >
+                Restart scan
+              </Button>
+            ) : null}
+          </>
+        }
+      />
 
-          {/* Cost bar */}
-          {stats.cost_limit_usd > 0 && (
-            <Box mt={1.5}>
-              <Box display="flex" justifyContent="space-between" mb={0.5}>
-                <Typography variant="caption" color="text.secondary">Cost</Typography>
-                <Typography variant="caption" fontFamily="monospace">
-                  ${stats.cost_usd.toFixed(4)} / ${stats.cost_limit_usd.toFixed(2)}
-                </Typography>
-              </Box>
-              <LinearProgress
-                variant="determinate"
-                value={costPct}
-                color={costPct > 80 ? 'error' : costPct > 50 ? 'warning' : 'primary'}
-                sx={{ height: 6, borderRadius: 3 }}
-              />
-            </Box>
-          )}
-        </CardContent>
-      </Card>
+      {!(idle && events.length === 0) ? (
+        <MetricStrip
+          items={[
+            { label: 'Findings', value: stats.findings },
+            { label: 'Tokens in', value: formatTokens(stats.input_tokens) },
+            { label: 'Tokens out', value: formatTokens(stats.output_tokens) },
+            ...(showCost ? [{ label: 'Est. USD', value: `$${Number(stats.cost_usd).toFixed(2)}` }] : [])
+          ]}
+        />
+      ) : null}
 
-      {/* Stats row */}
-      <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap mb={2}>
-        <StatCard label="API calls" value={stats.api_calls} />
-        <StatCard label="RAPTOR calls" value={stats.raptor_calls} color="primary" />
-        <StatCard label="Kali calls" value={stats.kali_calls} color="error" />
-        <StatCard label="Findings" value={stats.findings} color={stats.findings > 0 ? 'error' : undefined} />
-        <StatCard label="Tokens in" value={stats.input_tokens.toLocaleString()} />
-        <StatCard label="Tokens out" value={stats.output_tokens.toLocaleString()} />
-      </Stack>
+      {scopedHosts.length > 0 ? (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: SPACE.x8,
+            marginBottom: SPACE.x16
+          }}
+        >
+          <HostChip
+            active={hostFilter === 'all'}
+            color={hostFilter === 'all' ? palette.accent : palette.textSecondary}
+            onClick={() => setHostFilter('all')}
+          >
+            All hosts
+          </HostChip>
+          {scopedHosts.map((host) => {
+            const color = hostColor(palette, host.id);
+            const active = String(hostFilter) === String(host.id);
+            return (
+              <HostChip
+                key={host.id}
+                active={active}
+                color={color}
+                onClick={() => setHostFilter(active ? 'all' : String(host.id))}
+              >
+                {shortHost(host.name) || host.name}
+              </HostChip>
+            );
+          })}
+        </div>
+      ) : null}
 
-      {/* Current tool */}
-      {currentTool && (
-        <Card sx={{ mb: 2, border: `1px solid ${theme.palette.info.main}`,
-          bgcolor: alpha(theme.palette.info.main, 0.06) }}>
-          <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <CircularProgress size={16} color="info" />
-              <Typography variant="body2" fontWeight={600}>Running:</Typography>
-              <Typography variant="body2" fontFamily="monospace">{currentTool.name}</Typography>
-              <Chip size="small" label={SOURCE_LABELS[currentTool.source] || currentTool.source}
-                color={SOURCE_COLORS[currentTool.source] || 'default'} variant="outlined"
-                sx={{ height: 18, fontSize: 10, '& .MuiChip-label': { px: 0.75 } }} />
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
+      {currentTool ? (
+        <Surface raised style={{ maxWidth: 880, margin: `0 auto ${SPACE.x16}px`, padding: `${SPACE.x12}px ${SPACE.x16}px` }}>
+          <Text variant="meta" tone="secondary">
+            Running <Mono style={{ fontWeight: 600 }}>{toolLabel(currentTool.name)}</Mono>
+            {currentTool.recordId ? (
+              <HostChip
+                active
+                color={hostColor(palette, currentTool.recordId)}
+                onClick={() => setHostFilter(String(currentTool.recordId))}
+                style={{ marginLeft: 8 }}
+              >
+                {hostName(currentTool.recordId)}
+              </HostChip>
+            ) : null}
+            {currentTool.source === 'kali' ? <Tag emphasized style={{ marginLeft: 8 }}>Kali</Tag> : null}
+          </Text>
+          {currentTool.detail ? (
+            <Text variant="meta" tone="tertiary" style={{ display: 'block', marginTop: 6 }}>
+              {currentTool.detail}
+            </Text>
+          ) : null}
+        </Surface>
+      ) : null}
 
-      {/* Event feed */}
-      <Card sx={{ border: `1px solid ${theme.palette.divider}` }}>
-        <CardContent sx={{ pb: '12px !important' }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-            <Typography variant="subtitle2" fontWeight={600}>Event Feed</Typography>
-            <Typography variant="caption" color="text.secondary">{events.length} events</Typography>
-          </Box>
-          <Divider sx={{ mb: 1 }} />
-          <Box
-            ref={feedRef}
-            sx={{
-              height: 480,
-              overflowY: 'auto',
-              '&::-webkit-scrollbar': { width: 4 },
-              '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 2 },
+      {launchForm}
+
+      {idle && events.length === 0 && !canLaunch ? (
+        <EmptyState
+          icon={Monitor}
+          title="No scan running"
+          hint="Start an open wave before launching an AI scan."
+          actions={
+            <Button size="small" component={RouterLink} to={waveTo}>
+              Open wave
+            </Button>
+          }
+        />
+      ) : idle && events.length === 0 ? null : (
+        <Surface style={{ maxWidth: 880, margin: '0 auto', overflow: 'hidden' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: `${SPACE.x16}px ${SPACE.x16}px ${SPACE.x12}px`
             }}
           >
-            {events.length === 0 ? (
-              <Box display="flex" alignItems="center" justifyContent="center" height="100%">
-                <Stack alignItems="center" spacing={1}>
-                  <CircularProgress size={28} />
-                  <Typography variant="body2" color="text.secondary">
-                    Waiting for scan events…
-                  </Typography>
-                </Stack>
-              </Box>
+            <Text variant="h2">Activity</Text>
+            <Text variant="meta" tone="secondary">
+              {visibleRows.length} updates
+            </Text>
+          </div>
+          <div ref={feedRef} style={{ height: 560, overflowY: 'auto' }}>
+            {visibleRows.length === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                <Text variant="meta" tone="secondary">
+                  {events.length === 0 ? 'Waiting…' : 'Nothing for this host yet.'}
+                </Text>
+              </div>
             ) : (
-              events.map((ev, i) => (
-                <React.Fragment key={ev.id ?? i}>
-                  <FeedEvent event={ev} />
-                  {i < events.length - 1 && <Divider sx={{ opacity: 0.4 }} />}
-                </React.Fragment>
-              ))
+              <DataList>
+                {visibleRows.map((row) => {
+                  const color = row.recordId ? hostColor(palette, row.recordId) : null;
+                  const label = hostName(row.recordId);
+                  return (
+                    <DataRow
+                      key={row.id}
+                      id={row.id}
+                      severity={rowSeverity(row)}
+                      title={
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <Text variant="bodyStrong">{row.title}</Text>
+                          {row.kind === 'tool' && row.source === 'kali' ? <Tag>Kali</Tag> : null}
+                          {row.pending ? <Tag emphasized>live</Tag> : null}
+                          {row.error ? <Tag emphasized>failed</Tag> : null}
+                        </span>
+                      }
+                      meta={
+                        <div style={{ marginTop: 4, minWidth: 0 }}>
+                          {row.detail ? (
+                            <Text
+                              variant="meta"
+                              tone="secondary"
+                              style={{ display: 'block', marginBottom: label ? 6 : 0 }}
+                            >
+                              {row.detail}
+                            </Text>
+                          ) : null}
+                          {label && color ? (
+                            <HostChip active={String(hostFilter) === String(row.recordId)} color={color} onClick={() => setHostFilter(String(row.recordId))}>
+                              {label}
+                            </HostChip>
+                          ) : null}
+                        </div>
+                      }
+                      trailing={
+                        <Text variant="meta" tone="tertiary">
+                          {formatTs(row.ts)}
+                        </Text>
+                      }
+                    />
+                  );
+                })}
+              </DataList>
             )}
-          </Box>
-        </CardContent>
-      </Card>
-
-      {done && (
-        <Alert severity={stats.scan_status === 'completed' ? 'success' : 'error'} sx={{ mt: 2 }}>
-          Scan {stats.scan_status}.{' '}
-          {stats.scan_status === 'completed' && `${stats.findings} finding(s) recorded.`}
-        </Alert>
+          </div>
+        </Surface>
       )}
-    </Box>
+
+      <Toast
+        open={toast.open}
+        message={toast.message}
+        severity={toast.severity}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+      />
+    </Page>
   );
+};
+
+const ScanLive = () => {
+  const { recordId, appId } = useParams();
+  if (recordId && !appId) return <HostScanLiveRedirect />;
+  return <WaveScanLive />;
 };
 
 export default ScanLive;

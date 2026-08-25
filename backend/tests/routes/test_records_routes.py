@@ -65,7 +65,7 @@ def test_resolve_sync_conflict_route_requires_admin(monkeypatch):
     _install_permission_bypass(monkeypatch)
     monkeypatch.setattr(
         "app.routes.records.records_service.resolve_sync_conflict",
-        lambda record_id, username: ({"status": "success"}, 200),
+        lambda record_id, username, data=None: ({"status": "success"}, 200),
     )
 
     app = make_app()
@@ -82,4 +82,12 @@ def test_resolve_sync_conflict_route_requires_admin(monkeypatch):
         flask_session["logged_in"] = True
         flask_session["username"] = "manager1"
         flask_session["user_type"] = "manager"
-    assert manager_client.post("/api/records/5/resolve-sync-conflict").status_code == 403
+    assert manager_client.post("/api/records/5/resolve-sync-conflict").status_code == 200
+
+    for role in ("user", "pentester"):
+        client = app.test_client()
+        with client.session_transaction() as flask_session:
+            flask_session["logged_in"] = True
+            flask_session["username"] = f"{role}1"
+            flask_session["user_type"] = role
+        assert client.post("/api/records/5/resolve-sync-conflict").status_code == 403

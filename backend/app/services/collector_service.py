@@ -735,17 +735,21 @@ def collect_now_all_service(actor_username: str) -> Tuple[Dict[str, Any], int]:
 
 
 def refresh_domains_service(actor_username: str) -> Tuple[Dict[str, Any], int]:
-    from app.services.dns_sync_service import update_data
-
-    drop_folder: Dict[str, Any] = {"ok": True}
-    try:
-        update_data()
-    except Exception as exc:
-        logger.exception("Drop-folder domain refresh failed")
-        drop_folder = {"ok": False, "error": str(exc)}
     agents_payload, _status = collect_now_all_service(actor_username)
+    from app.repositories.dns_sources_repository import CLOUD_SOURCE_TYPES, list_dns_sources
+    from app.services.cloud_dns_service import enqueue_source_sync
+
+    queued = []
+    for source in list_dns_sources(types=list(CLOUD_SOURCE_TYPES), enabled_only=True, mask=True):
+        queued.append(
+            {
+                "source_id": source.get("id"),
+                "type": source.get("type"),
+                "job_id": enqueue_source_sync(int(source["id"])),
+            }
+        )
     return {
-        "ok": bool(drop_folder.get("ok")),
-        "drop_folder": drop_folder,
+        "ok": True,
         "agents": agents_payload,
-    }, 200 if drop_folder.get("ok") else 500
+        "cloud": queued,
+    }, 200

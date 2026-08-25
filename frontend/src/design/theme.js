@@ -209,7 +209,7 @@ export const createRaptorTheme = (darkMode) => {
       },
 
       MuiButton: {
-        defaultProps: { disableElevation: true, disableRipple: true },
+        defaultProps: { disableElevation: true, disableRipple: true, variant: 'outlined' },
         styleOverrides: {
           root: {
             textTransform: 'none',
@@ -224,10 +224,13 @@ export const createRaptorTheme = (darkMode) => {
           },
           sizeSmall: { minHeight: CONTROL_HEIGHT, padding: '5px 10px', fontSize: 13 },
           sizeLarge: { minHeight: 36, padding: '7px 16px' },
+          startIcon: { marginRight: 6, '& > *:nth-of-type(1)': { fontSize: 16 } },
+          endIcon: { marginLeft: 6, '& > *:nth-of-type(1)': { fontSize: 16 } },
           contained: {
             backgroundColor: p.accent,
             color: isDark ? p.canvas : '#FFFFFF',
             fontWeight: 600,
+            border: '1px solid transparent',
             '&:hover': { backgroundColor: p.accent, filter: 'brightness(1.08)' },
             '&.Mui-disabled': {
               backgroundColor: p.lineStrong,
@@ -235,10 +238,32 @@ export const createRaptorTheme = (darkMode) => {
               opacity: 1
             }
           },
+          containedError: {
+            backgroundColor: p.severity.critical,
+            color: '#FFFFFF',
+            fontWeight: 600,
+            border: '1px solid transparent',
+            '&:hover': { backgroundColor: p.severity.critical, filter: 'brightness(1.08)' }
+          },
           outlined: {
+            backgroundColor: 'transparent',
             borderColor: p.lineStrong,
             color: p.text,
             '&:hover': { borderColor: p.textTertiary, backgroundColor: p.hover }
+          },
+          outlinedPrimary: {
+            borderColor: p.accentLine,
+            color: p.accent,
+            '&:hover': { borderColor: p.accent, backgroundColor: p.accentFill, color: p.accent }
+          },
+          outlinedError: {
+            borderColor: alpha(p.severity.critical, 0.45),
+            color: p.severity.critical,
+            '&:hover': {
+              borderColor: p.severity.critical,
+              backgroundColor: alpha(p.severity.critical, 0.1),
+              color: p.severity.critical
+            }
           },
           text: {
             color: p.textSecondary,

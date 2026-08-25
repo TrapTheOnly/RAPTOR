@@ -59,6 +59,14 @@ def test_merge_survivor_fields_fills_blanks_only():
     )
     assert scored == {}
 
+    narrative = merge_survivor_fields(
+        {"title": "Keep", "impact": "", "evidence": "Keep proof", "remediation": ""},
+        {"title": "Other", "impact": "Account takeover", "evidence": "Drop me", "remediation": "Patch it"},
+    )
+    assert narrative["impact"] == "Account takeover"
+    assert "evidence" not in narrative
+    assert narrative["remediation"] == "Patch it"
+
 
 def test_suggest_env_slug_markers():
     assert suggest_env_slug("api-stg.google.com") == "stg"
@@ -365,6 +373,7 @@ def test_create_finding_rejects_closed_wave(monkeypatch):
         "fetch_record_by_id",
         lambda *_a, **_k: {"id": 11, "application_id": 1, "environment_id": 9},
     )
+    monkeypatch.setattr(app_program_service, "_host_access_error", lambda *_a, **_k: None)
     monkeypatch.setattr(
         app_program_service.phase2b_repository,
         "get_wave",
@@ -391,3 +400,256 @@ def test_patch_finding_allows_unassigned_finding(monkeypatch):
     payload, status = app_program_service.patch_finding("f1", {"title": "kept"})
     assert status == 200
     assert payload["finding"]["title"] == "kept"
+
+
+def test_create_finding_allows_unassigned_tester_when_env_open(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.applications_repository,
+        "fetch_application",
+        lambda *_a, **_k: {"id": 1},
+    )
+    monkeypatch.setattr(
+        app_program_service,
+        "fetch_record_by_id",
+        lambda *_a, **_k: {"id": 11, "application_id": 1, "environment_id": 9},
+    )
+    monkeypatch.setattr(
+        app_program_service,
+        "enforce_pentest_record_access",
+        lambda *_a, **_k: (False, "You are not allowed to create a finding on this pentest."),
+    )
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda *_a, **_k: None)
+    monkeypatch.setattr(app_program_service.phase2b_repository, "find_open_wave_for_env", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "insert_finding",
+        lambda *_a, **_k: "f-new",
+    )
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "replace_finding_collaborators",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {"id": "f-new", "title": "CORS"},
+    )
+    payload, status = app_program_service.create_finding(
+        1, {"record_id": 11, "title": "CORS"}, "alice", role="pentester"
+    )
+    assert status == 201
+    assert payload["finding"]["id"] == "f-new"
+
+
+def test_create_finding_denies_assigned_tester_outside_acl(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.applications_repository,
+        "fetch_application",
+        lambda *_a, **_k: {"id": 1},
+    )
+    monkeypatch.setattr(
+        app_program_service,
+        "fetch_record_by_id",
+        lambda *_a, **_k: {"id": 11, "application_id": 1, "environment_id": 9},
+    )
+    monkeypatch.setattr(
+        app_program_service,
+        "enforce_pentest_record_access",
+        lambda *_a, **_k: (True, None),
+    )
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda *_a, **_k: [10])
+    payload, status = app_program_service.create_finding(
+        1, {"record_id": 11, "title": "CORS"}, "alice", role="pentester"
+    )
+    assert status == 403
+    assert "not visible" in payload["error"]
+
+
+def test_get_finding_allows_unassigned_when_env_open(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {"id": "f1", "record_id": 11, "application_id": 1},
+    )
+    monkeypatch.setattr(
+        app_program_service,
+        "fetch_record_by_id",
+        lambda *_a, **_k: {"id": 11, "application_id": 1, "environment_id": 9, "name": "api.example"},
+    )
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        app_program_service.environments_repository,
+        "fetch_environment",
+        lambda *_a, **_k: {"id": 9, "slug": "prod"},
+    )
+    payload, status = app_program_service.get_finding("f1", username="alice", role="pentester")
+    assert status == 200
+    assert payload["finding"]["id"] == "f1"
+
+
+def test_get_finding_denies_when_env_hidden(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {"id": "f1", "record_id": 11},
+    )
+    monkeypatch.setattr(
+        app_program_service,
+        "fetch_record_by_id",
+        lambda *_a, **_k: {"id": 11, "application_id": 1, "environment_id": 9},
+    )
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda *_a, **_k: [10])
+    payload, status = app_program_service.get_finding("f1", username="alice", role="pentester")
+    assert status == 403
+    assert "not visible" in payload["error"]
+
+
+def test_assign_tester_self_claim_allowed(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service.applications_repository,
+        "fetch_application",
+        lambda *_a, **_k: {"id": 1},
+    )
+
+    class Cursor:
+        def execute(self, query, params=None):
+            return self
+
+        def fetchall(self):
+            return [{"id": 11}]
+
+    class Conn:
+        row_factory = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def cursor(self):
+            return Cursor()
+
+    monkeypatch.setattr(
+        "app.integrations.db.connection.get_db_connection",
+        lambda _path: Conn(),
+    )
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda *_a, **_k: None)
+    monkeypatch.setattr(app_program_service, "fetch_record_by_id", lambda *_a, **_k: {"id": 11, "environment_id": 9})
+    monkeypatch.setattr(
+        app_program_service.phase2b_repository,
+        "assign_record_testers",
+        lambda *_a, **_k: 1,
+    )
+    monkeypatch.setattr(app_program_service.phase2b_repository, "fetch_host_env", lambda *_a, **_k: None)
+    payload, status = app_program_service.assign_host_testers(
+        1,
+        {"record_ids": [11], "username": "Alice"},
+        username="alice",
+        role="pentester",
+    )
+    assert status == 200
+    assert payload["tested_by"] == "Alice"
+
+
+def test_assign_tester_other_user_requires_reassign_permission(monkeypatch):
+    monkeypatch.setattr(
+        app_program_service,
+        "user_has_permission",
+        lambda username, role, permission: False,
+    )
+    payload, status = app_program_service.assign_host_testers(
+        1,
+        {"record_ids": [11], "username": "bob"},
+        username="alice",
+        role="pentester",
+    )
+    assert status == 403
+    assert "reassign_pentests_admin" in payload["error"]
+
+
+def test_search_hosts_drops_hidden_envs_keeps_unfiled(monkeypatch):
+    rows = [
+        {"id": 1, "name": "open.example.com", "application_id": 1, "environment_id": 9},
+        {"id": 2, "name": "hidden.example.com", "application_id": 1, "environment_id": 10},
+        {"id": 3, "name": "unfiled.example.com", "application_id": None, "environment_id": None},
+    ]
+
+    class Cursor:
+        def execute(self, query, params=None):
+            return self
+
+        def fetchall(self):
+            return rows
+
+    class Conn:
+        row_factory = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def cursor(self):
+            return Cursor()
+
+    monkeypatch.setattr("app.integrations.db.connection.get_db_connection", lambda _path: Conn())
+    monkeypatch.setattr(app_program_service, "_acl_env_ids", lambda app_id, username, role: [9])
+    payload, status = app_program_service.search_hosts(
+        {"q": "example"}, username="alice", role="pentester"
+    )
+    assert status == 200
+    ids = [host["id"] for host in payload["hosts"]]
+    assert ids == [1, 3]
+
+
+def test_get_applications_redacts_sensitive_fields_and_filters_envs(monkeypatch):
+    from flask import Flask
+
+    from app.services import records_service
+
+    apps = [
+        {
+            "id": 1,
+            "name": "Google",
+            "roe_link": "https://secret",
+            "idp": "okta",
+            "token_audience": "aud",
+            "cookie_domain": ".google.com",
+            "app_lead": "lead1",
+            "host_count": 12,
+            "in_scope_count": 8,
+            "environments": [
+                {"id": 9, "slug": "prod", "in_scope_count": 5},
+                {"id": 10, "slug": "stg", "in_scope_count": 3},
+            ],
+        }
+    ]
+    monkeypatch.setattr(records_service.applications_repository, "fetch_applications", lambda: apps)
+    monkeypatch.setattr(
+        "app.services.phase2b_service.visible_env_ids",
+        lambda *_a, **_k: [9],
+    )
+    flask_app = Flask(__name__)
+    flask_app.secret_key = "test-secret"
+
+    @flask_app.route("/apps")
+    def _apps():
+        payload, status = records_service.get_applications()
+        return {"payload": payload, "status": status}
+
+    client = flask_app.test_client()
+    with client.session_transaction() as sess:
+        sess["username"] = "contractor"
+        sess["user_type"] = "pentester"
+    response = client.get("/apps")
+    body = response.get_json()
+    assert body["status"] == 200
+    app = body["payload"][0]
+    assert app["host_count"] == 12
+    assert [env["id"] for env in app["environments"]] == [9]
+    assert "roe_link" not in app
+    assert "idp" not in app
+    assert "token_audience" not in app

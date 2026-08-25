@@ -8,7 +8,6 @@ NO_SCANNER=false
 FORCE_SCANNER=false
 BUILD=false
 YES=false
-SEED=true
 MODE=""
 SHOW_HELP=false
 
@@ -25,9 +24,8 @@ Options:
   --yes, -y             Non-interactive: use .env + defaults, generate missing secrets
   --build, -b           Rebuild images
   --clean, -v           docker compose down -v (destroys volumes)
-  --no-scanner, -n      Do not start Kali + scanner
-  --with-scanner        Start Kali + scanner (AWS Bedrock token is optional)
-  --no-seed             Skip copying sample *_A_Records into the SFTP volume
+  --no-scanner, -n      Do not start Kali + scanner + local model runtime
+  --with-scanner        Start Kali + scanner + local model runtime
   -h, --help            Show this help
 
 Examples:
@@ -44,7 +42,6 @@ for arg in "$@"; do
     --with-scanner)   FORCE_SCANNER=true ;;
     --build|-b)       BUILD=true ;;
     --yes|-y)         YES=true ;;
-    --no-seed)        SEED=false ;;
     --dev)            MODE="dev" ;;
     --prod)           MODE="prod" ;;
     -h|--help)        SHOW_HELP=true ;;
@@ -225,18 +222,23 @@ sync_database_url() {
 
 apply_fixed_defaults() {
   export DATA_PATH="${DATA_PATH:-/appdata/data}"
-  export BACKUP_FOLDER="${BACKUP_FOLDER:-/appdata/backups}"
-  export SHARED_PATH="${SHARED_PATH:-/usr/app/src/shared}"
   export APP_PORT="${APP_PORT:-5000}"
   export RAPTOR_API_BASE_URL="${RAPTOR_API_BASE_URL:-http://app:5000}"
   export MCP_PORT="${MCP_PORT:-8081}"
   export RAPTOR_API_TIMEOUT_SECONDS="${RAPTOR_API_TIMEOUT_SECONDS:-30}"
   export MCP_BASE_URL="${MCP_BASE_URL:-http://mcp:8081}"
   export SCANNER_BASE_URL="${SCANNER_BASE_URL:-http://scanner:8082}"
+  export LOCAL_LLM_BASE_URL="${LOCAL_LLM_BASE_URL:-http://local-llm:8083}"
   export KALI_SERVER_URL="${KALI_SERVER_URL:-http://kali:5000}"
   export KALI_CLIENT_PATH="${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}"
-  export UPDATE_TIME="${UPDATE_TIME:-86400}"
   export ADMIN_USERNAME="${ADMIN_USERNAME:-awadmin}"
+  export KEYCLOAK_URL="${KEYCLOAK_URL:-http://keycloak:8080}"
+  export KEYCLOAK_PUBLIC_URL="${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}"
+  export RAPTOR_PUBLIC_URL="${RAPTOR_PUBLIC_URL:-http://localhost:1337}"
+  export KEYCLOAK_REALM="${KEYCLOAK_REALM:-raptor}"
+  export KEYCLOAK_ADMIN="${KEYCLOAK_ADMIN:-admin}"
+  export KEYCLOAK_LOGIN_CLIENT_ID="${KEYCLOAK_LOGIN_CLIENT_ID:-raptor-login}"
+  export KEYCLOAK_BACKEND_CLIENT_ID="${KEYCLOAK_BACKEND_CLIENT_ID:-raptor-backend}"
   export APP_USE_TLS="${APP_USE_TLS:-false}"
   export SESSION_COOKIE_SAMESITE="${SESSION_COOKIE_SAMESITE:-Lax}"
   export FTP_HOST="${FTP_HOST:-ftp}"
@@ -260,7 +262,7 @@ summarize_defaults() {
   else
     echo "  AWS_BEARER_TOKEN_BEDROCK=<not set>"
   fi
-  echo "  Secrets already present: SECRET_KEY, MCP, scanner, Kali, DB, FTP (kept hidden)."
+  echo "  Secrets already present: SECRET_KEY, MCP, scanner, Kali, DB, FTP, Keycloak (kept hidden)."
 }
 
 ensure_secrets() {
@@ -270,6 +272,10 @@ ensure_secrets() {
   [[ -n "${RAPTOR_SERVICE_API_KEY:-}" ]] || export RAPTOR_SERVICE_API_KEY="$(generate_secret 32)"
   [[ -n "${SCANNER_INTERNAL_TOKEN:-}" ]] || export SCANNER_INTERNAL_TOKEN="$(generate_secret 32)"
   [[ -n "${KALI_INTERNAL_TOKEN:-}" ]] || export KALI_INTERNAL_TOKEN="$(generate_secret 32)"
+  [[ -n "${KEYCLOAK_ADMIN:-}" ]] || export KEYCLOAK_ADMIN="admin"
+  [[ -n "${KEYCLOAK_ADMIN_PASSWORD:-}" ]] || export KEYCLOAK_ADMIN_PASSWORD="$(generate_secret 24)"
+  [[ -n "${KEYCLOAK_LOGIN_CLIENT_SECRET:-}" ]] || export KEYCLOAK_LOGIN_CLIENT_SECRET="$(generate_secret 32)"
+  [[ -n "${KEYCLOAK_BACKEND_CLIENT_SECRET:-}" ]] || export KEYCLOAK_BACKEND_CLIENT_SECRET="$(generate_secret 32)"
   if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
     if [[ "$weak_ok" == true ]]; then
       export POSTGRES_PASSWORD="raptor"
@@ -298,7 +304,7 @@ run_wizard() {
 
   if [[ -z "$MODE" ]]; then
     echo "Deploy mode"
-    echo "  1) Development  — sample zones, MCP published on the host"
+    echo "  1) Development  — MCP published on the host"
     echo "  2) Production   — fail-closed secrets, MCP unpublished, worker required"
     local choice
     choice="$(ask "Choose 1 or 2" "1")"
@@ -328,8 +334,6 @@ run_wizard() {
     echo "==> Core application"
   ADMIN_USERNAME="$(ask "Admin username" "${ADMIN_USERNAME:-awadmin}")"
   export ADMIN_USERNAME
-  UPDATE_TIME="$(ask "Zone sync interval in seconds" "${UPDATE_TIME:-86400}")"
-  export UPDATE_TIME
   ask_secret_or_generate SECRET_KEY "SECRET_KEY"
   echo
 
@@ -346,6 +350,9 @@ run_wizard() {
     [[ "$cors_default" == "*" ]] && cors_default=""
     CORS_ORIGINS="$(ask "Public origin allowlist (comma-separated, no *)" "$cors_default")"
     [[ -n "$CORS_ORIGINS" && "$CORS_ORIGINS" != "*" ]] || fail "Production requires an explicit CORS_ORIGINS allowlist."
+    RAPTOR_PUBLIC_URL="$(ask "Public RAPTOR URL (SSO callback origin)" "${RAPTOR_PUBLIC_URL:-${CORS_ORIGINS%%,*}}")"
+    KEYCLOAK_PUBLIC_URL="$(ask "Public Keycloak URL (browser SSO redirects)" "${KEYCLOAK_PUBLIC_URL:-}")"
+    export RAPTOR_PUBLIC_URL KEYCLOAK_PUBLIC_URL
     if ask_yes "Terminate TLS inside the app container? (usually no — reverse proxy does TLS)" "n"; then
       APP_USE_TLS="true"
       CERT_FILE="$(ask "CERT_FILE path in container" "${CERT_FILE:-/certs/cert.pem}")"
@@ -385,43 +392,58 @@ run_wizard() {
     LDAP_DOMAIN="$(ask "LDAP_DOMAIN" "${LDAP_DOMAIN:-}")"
     LDAP_USER="$(ask "LDAP bind user" "${LDAP_USER:-}")"
     LDAP_PASS="$(ask "LDAP bind password" "${LDAP_PASS:-}")"
-    export LDAP_SERVER LDAP_DOMAIN LDAP_USER LDAP_PASS
+    LDAP_USERS_DN="$(ask "LDAP_USERS_DN (blank = DC= from domain)" "${LDAP_USERS_DN:-}")"
+    LDAP_USE_SSL="$(ask "LDAP_USE_SSL (true/false/blank=try both)" "${LDAP_USE_SSL:-}")"
+    LDAP_TRUSTSTORE="$(ask "LDAP_TRUSTSTORE (never|ldapsOnly|always)" "${LDAP_TRUSTSTORE:-never}")"
+    export LDAP_SERVER LDAP_DOMAIN LDAP_USER LDAP_PASS LDAP_USERS_DN LDAP_USE_SSL LDAP_TRUSTSTORE
   fi
   echo
 
-  echo "==> Optional: AI scanner + Kali"
+  echo "==> Optional: OIDC/SAML identity provider"
+  if ask_yes "Register a Keycloak identity provider from env?" "n"; then
+    KEYCLOAK_IDP_ALIAS="$(ask "KEYCLOAK_IDP_ALIAS" "${KEYCLOAK_IDP_ALIAS:-}")"
+    KEYCLOAK_IDP_PROVIDER="$(ask "KEYCLOAK_IDP_PROVIDER (oidc|keycloak-oidc|saml)" "${KEYCLOAK_IDP_PROVIDER:-oidc}")"
+    KEYCLOAK_IDP_DISPLAY_NAME="$(ask "KEYCLOAK_IDP_DISPLAY_NAME" "${KEYCLOAK_IDP_DISPLAY_NAME:-}")"
+    KEYCLOAK_IDP_CLIENT_ID="$(ask "KEYCLOAK_IDP_CLIENT_ID" "${KEYCLOAK_IDP_CLIENT_ID:-}")"
+    KEYCLOAK_IDP_CLIENT_SECRET="$(ask "KEYCLOAK_IDP_CLIENT_SECRET" "${KEYCLOAK_IDP_CLIENT_SECRET:-}")"
+    KEYCLOAK_IDP_ISSUER="$(ask "KEYCLOAK_IDP_ISSUER" "${KEYCLOAK_IDP_ISSUER:-}")"
+    KEYCLOAK_IDP_AUTHORIZATION_URL="$(ask "KEYCLOAK_IDP_AUTHORIZATION_URL (if no issuer)" "${KEYCLOAK_IDP_AUTHORIZATION_URL:-}")"
+    KEYCLOAK_IDP_TOKEN_URL="$(ask "KEYCLOAK_IDP_TOKEN_URL (if no issuer)" "${KEYCLOAK_IDP_TOKEN_URL:-}")"
+    KEYCLOAK_IDP_ENTITY_ID="$(ask "KEYCLOAK_IDP_ENTITY_ID (SAML)" "${KEYCLOAK_IDP_ENTITY_ID:-}")"
+    KEYCLOAK_IDP_SSO_URL="$(ask "KEYCLOAK_IDP_SSO_URL (SAML)" "${KEYCLOAK_IDP_SSO_URL:-}")"
+    export KEYCLOAK_IDP_ALIAS KEYCLOAK_IDP_PROVIDER KEYCLOAK_IDP_DISPLAY_NAME \
+      KEYCLOAK_IDP_CLIENT_ID KEYCLOAK_IDP_CLIENT_SECRET KEYCLOAK_IDP_ISSUER \
+      KEYCLOAK_IDP_AUTHORIZATION_URL KEYCLOAK_IDP_TOKEN_URL KEYCLOAK_IDP_ENTITY_ID KEYCLOAK_IDP_SSO_URL
+  fi
+  echo
+
+  echo "==> Optional: AI scanner + Kali + local model runtime"
   if [[ "$FORCE_SCANNER" == true ]]; then
     NO_SCANNER=false
     echo "  Scanner requested (--with-scanner)."
   elif [[ "$NO_SCANNER" == true ]]; then
     echo "  Skipping (--no-scanner)."
-  elif ask_yes "Start Kali and the AI scanner?" "n"; then
+  elif ask_yes "Start Kali, the AI scanner, and the local model runtime?" "n"; then
     NO_SCANNER=false
   else
     NO_SCANNER=true
   fi
   if [[ "$NO_SCANNER" == false ]]; then
-    AWS_REGION="$(ask "AWS_REGION" "${AWS_REGION:-us-east-1}")"
+    echo "  Providers and the bundled Qwen model are configured in Admin Settings."
+    AWS_REGION="${AWS_REGION:-us-east-1}"
     export AWS_REGION
-    if [[ -z "${AWS_BEARER_TOKEN_BEDROCK:-}" ]]; then
-      AWS_BEARER_TOKEN_BEDROCK="$(ask "AWS_BEARER_TOKEN_BEDROCK (optional, can be set later)" "${AWS_BEARER_TOKEN_BEDROCK:-}")"
-    elif ask_yes "Keep existing AWS_BEARER_TOKEN_BEDROCK?" "y"; then
-      :
-    else
-      AWS_BEARER_TOKEN_BEDROCK="$(ask "AWS_BEARER_TOKEN_BEDROCK (optional)" "${AWS_BEARER_TOKEN_BEDROCK:-}")"
+    if [[ -n "${AWS_BEARER_TOKEN_BEDROCK:-}" ]]; then
+      if ! ask_yes "Keep existing AWS_BEARER_TOKEN_BEDROCK as a Bedrock fallback?" "y"; then
+        AWS_BEARER_TOKEN_BEDROCK="$(ask "AWS_BEARER_TOKEN_BEDROCK (optional fallback)" "")"
+      fi
+      export AWS_BEARER_TOKEN_BEDROCK
     fi
-    export AWS_BEARER_TOKEN_BEDROCK
   fi
-  echo
-
-  echo "==> Optional: DNS ingest SFTP"
-  DNS_SERVER_SSH_PUBKEY="$(ask "DNS_SERVER_SSH_PUBKEY (optional, for the SFTP sidecar)" "${DNS_SERVER_SSH_PUBKEY:-}")"
-  export DNS_SERVER_SSH_PUBKEY
   echo
   fi
 
   if [[ "$NO_SCANNER" == false && -z "${AWS_BEARER_TOKEN_BEDROCK:-}" ]]; then
-    echo "WARNING: AWS_BEARER_TOKEN_BEDROCK is not set. The scanner can still start; Bedrock calls will fail until you add it." >&2
+    echo "NOTE: AWS_BEARER_TOKEN_BEDROCK is unset. Bedrock can still be added later in Admin Settings." >&2
   fi
 
   if [[ "$BUILD" == false ]]; then
@@ -445,12 +467,15 @@ validate_config() {
   [[ -n "${MCP_SERVER_TOKEN:-}" ]] || fail "MCP_SERVER_TOKEN is missing."
   [[ -n "${RAPTOR_SERVICE_API_KEY:-}" ]] || fail "RAPTOR_SERVICE_API_KEY is missing."
   [[ -n "${SCANNER_INTERNAL_TOKEN:-}" ]] || fail "SCANNER_INTERNAL_TOKEN is missing."
+  [[ -n "${KEYCLOAK_ADMIN_PASSWORD:-}" ]] || fail "KEYCLOAK_ADMIN_PASSWORD is missing."
+  [[ -n "${KEYCLOAK_LOGIN_CLIENT_SECRET:-}" ]] || fail "KEYCLOAK_LOGIN_CLIENT_SECRET is missing."
+  [[ -n "${KEYCLOAK_BACKEND_CLIENT_SECRET:-}" ]] || fail "KEYCLOAK_BACKEND_CLIENT_SECRET is missing."
   if [[ "$MODE" == "prod" ]]; then
     [[ -n "${CORS_ORIGINS:-}" && "${CORS_ORIGINS}" != "*" ]] || fail "Production CORS_ORIGINS must be an explicit allowlist."
     [[ -n "${FTP_USER:-}" && -n "${FTP_PASS:-}" ]] || fail "Production requires FTP_USER and FTP_PASS."
   fi
   if [[ "$NO_SCANNER" == false && -z "${AWS_BEARER_TOKEN_BEDROCK:-}" ]]; then
-    echo "WARNING: AWS_BEARER_TOKEN_BEDROCK is not set. Scanner Bedrock calls will fail until you add it." >&2
+    echo "NOTE: AWS_BEARER_TOKEN_BEDROCK is unset. Configure providers in Admin Settings." >&2
   fi
 }
 
@@ -464,14 +489,11 @@ write_env() {
     APP_USE_TLS \
     CERT_FILE \
     KEY_FILE \
-    UPDATE_TIME \
     POSTGRES_DB \
     POSTGRES_USER \
     POSTGRES_PASSWORD \
     DATABASE_URL \
     DATA_PATH \
-    BACKUP_FOLDER \
-    SHARED_PATH \
     FTP_USER \
     FTP_PASS \
     FTP_HOST \
@@ -485,6 +507,7 @@ write_env() {
     MCP_ALLOWED_ORIGINS \
     SCANNER_INTERNAL_TOKEN \
     SCANNER_BASE_URL \
+    LOCAL_LLM_BASE_URL \
     SCANNER_MAX_CONCURRENT \
     AWS_BEARER_TOKEN_BEDROCK \
     AWS_REGION \
@@ -495,35 +518,42 @@ write_env() {
     LDAP_DOMAIN \
     LDAP_USER \
     LDAP_PASS \
-    DNS_SERVER_SSH_PUBKEY \
+    LDAP_USERS_DN \
+    LDAP_VENDOR \
+    LDAP_USE_SSL \
+    LDAP_START_TLS \
+    LDAP_TRUSTSTORE \
+    LDAP_USERNAME_ATTR \
+    LDAP_UUID_ATTR \
+    LDAP_USER_OBJECT_CLASSES \
+    KEYCLOAK_IDP_ALIAS \
+    KEYCLOAK_IDP_PROVIDER \
+    KEYCLOAK_IDP_DISPLAY_NAME \
+    KEYCLOAK_IDP_ISSUER \
+    KEYCLOAK_IDP_AUTHORIZATION_URL \
+    KEYCLOAK_IDP_TOKEN_URL \
+    KEYCLOAK_IDP_JWKS_URL \
+    KEYCLOAK_IDP_LOGOUT_URL \
+    KEYCLOAK_IDP_CLIENT_ID \
+    KEYCLOAK_IDP_CLIENT_SECRET \
+    KEYCLOAK_IDP_ENTITY_ID \
+    KEYCLOAK_IDP_SSO_URL \
+    KEYCLOAK_URL \
+    KEYCLOAK_PUBLIC_URL \
+    RAPTOR_PUBLIC_URL \
+    KEYCLOAK_REALM \
+    KEYCLOAK_ADMIN \
+    KEYCLOAK_ADMIN_PASSWORD \
+    KEYCLOAK_LOGIN_CLIENT_ID \
+    KEYCLOAK_LOGIN_CLIENT_SECRET \
+    KEYCLOAK_BACKEND_CLIENT_ID \
+    KEYCLOAK_BACKEND_CLIENT_SECRET \
     DB_AND_BACKUPS_VOLUME_NAME \
-    DNS_ZONEFILES_VOLUME_NAME \
     CERTS_VOLUME_NAME \
     FTP_VOLUME_NAME \
-    POSTGRES_DATA_VOLUME_NAME
+    POSTGRES_DATA_VOLUME_NAME \
+    LLM_MODELS_VOLUME_NAME
   echo "==> Wrote $ENV_FILE"
-}
-
-seed_zone_files() {
-  local sftp_container="$1"
-  local shared_src="$ROOT/backend/appdata/shared"
-  local primary_zone="$shared_src/example.com_A_Records"
-  local secondary_zone="$shared_src/example1.com_A_Records"
-
-  if [[ ! -f "$primary_zone" ]]; then
-    echo "WARNING: Zone file not found at $primary_zone — skipping SFTP seed." >&2
-    return 0
-  fi
-  docker cp "$primary_zone" "$sftp_container:/chroot/upload/example.com_A_Records"
-  if [[ -f "$secondary_zone" ]]; then
-    docker cp "$secondary_zone" "$sftp_container:/chroot/upload/example1.com_A_Records"
-  else
-    sed 's/example\.com/example1.com/g' "$primary_zone" \
-      | docker exec -i "$sftp_container" sh -c 'cat > /chroot/upload/example1.com_A_Records'
-  fi
-  docker exec "$sftp_container" sh -c \
-    'chown sftpuser:sftpusers /chroot/upload/example.com_A_Records /chroot/upload/example1.com_A_Records && chmod 644 /chroot/upload/example.com_A_Records /chroot/upload/example1.com_A_Records'
-  echo "==> Seeded sample zone files into $sftp_container"
 }
 
 postgres_volume_name() {
@@ -598,8 +628,8 @@ EOF
 
 wait_for_health() {
   local url="$1"
-  local tries=30
-  [[ "$BUILD" == true ]] && tries=90
+  local tries=60
+  [[ "$BUILD" == true ]] && tries=120
   local i
   for i in $(seq 1 "$tries"); do
     if curl -sf "$url" >/dev/null 2>&1; then
@@ -632,7 +662,7 @@ else
   if [[ "$FORCE_SCANNER" == true ]]; then
     NO_SCANNER=false
   elif [[ "$NO_SCANNER" == false && -z "${AWS_BEARER_TOKEN_BEDROCK:-}" ]]; then
-    echo "WARNING: AWS_BEARER_TOKEN_BEDROCK is not set. Scanner can start; Bedrock calls will fail until you add it." >&2
+    echo "NOTE: AWS_BEARER_TOKEN_BEDROCK is unset. Configure providers in Admin Settings." >&2
   fi
   ensure_secrets "$([[ "$MODE" == "dev" ]] && echo true || echo false)"
   export CORS_ORIGINS="${CORS_ORIGINS:-*}"
@@ -645,11 +675,9 @@ fi
 if [[ "$MODE" == "prod" ]]; then
   COMPOSE="docker-compose.prod.yml"
   APP_CONTAINER="raptor-prod"
-  SFTP_CONTAINER="raptor-sftp-prod"
 else
   COMPOSE="docker-compose.dev.yml"
   APP_CONTAINER="raptor-dev"
-  SFTP_CONTAINER="raptor-sftp-dev"
   export CORS_ORIGINS="${CORS_ORIGINS:-*}"
 fi
 
@@ -680,9 +708,9 @@ if [[ "$CLEAN" == true ]]; then
 fi
 docker compose "${DOWN_ARGS[@]}"
 
-SERVICES=("postgres" "ftp" "sftp" "app" "worker" "mcp")
+SERVICES=("postgres" "ftp" "keycloak" "app" "worker" "mcp")
 if [[ "$NO_SCANNER" == false ]]; then
-  SERVICES+=("kali" "scanner")
+  SERVICES+=("kali" "scanner" "local-llm")
 fi
 
 echo "==> Starting: ${SERVICES[*]}"
@@ -692,10 +720,6 @@ if [[ "$BUILD" == true ]]; then
 fi
 UP_ARGS+=("${SERVICES[@]}")
 docker compose "${UP_ARGS[@]}"
-
-if [[ "$SEED" == true && "$MODE" == "dev" ]]; then
-  seed_zone_files "$SFTP_CONTAINER"
-fi
 
 if command -v curl >/dev/null 2>&1; then
   wait_for_health "http://localhost:1337/healthz"
@@ -707,13 +731,14 @@ echo "  App:     http://localhost:1337"
 echo "  Health:  http://localhost:1337/healthz"
 if [[ "$MODE" == "dev" ]]; then
   echo "  MCP:     http://localhost:${MCP_PORT}/mcp"
-  echo "  SFTP:    localhost:2222"
+  echo "  Keycloak console (ops only): http://localhost:8180"
 else
   echo "  MCP:     unpublished on the host (app_network only)"
 fi
 if [[ "$NO_SCANNER" == false ]]; then
   echo "  Scanner: internal (http://scanner:8082)"
   echo "  Kali:    internal (http://kali:5000)"
+  echo "  Local LLM manager: internal (http://local-llm:8083)"
 fi
 echo
 echo "Next steps:"

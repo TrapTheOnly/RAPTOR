@@ -18,6 +18,7 @@ import {
   Text,
   Toolbar
 } from '../../../design/primitives';
+import { hostNotebookPath } from '../../../design/navigation';
 import { SPACE } from '../../../design/tokens';
 import FindingCard from './FindingCard';
 
@@ -43,6 +44,7 @@ const WaveDetailTab = ({
   canDelete,
   busyFinding,
   onEndWave,
+  onExportWave,
   onStartWave,
   onDeleteWave,
   onOccurrenceStatusChange,
@@ -59,7 +61,7 @@ const WaveDetailTab = ({
   canLaunchScan,
   onLaunchScan,
   onRestartScan,
-  scanBusyId
+  scanBusy
 }) => {
   const navigate = useNavigate();
   const [section, setSection] = useState('overview');
@@ -67,6 +69,7 @@ const WaveDetailTab = ({
   const [envDraft, setEnvDraft] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [deleting, setDeleting] = useState(false);
+  const [ending, setEnding] = useState(false);
 
   if (!wave) {
     return (
@@ -100,6 +103,10 @@ const WaveDetailTab = ({
   const selectedHosts = hosts.filter((host) => selectedIds.includes(host.id));
   const allInScope = selectedHosts.length > 0 && selectedHosts.every((host) => host.in_scope !== false);
   const allOutOfScope = selectedHosts.length > 0 && selectedHosts.every((host) => host.in_scope === false);
+  const scopedHosts = hosts.filter((host) => host.in_scope !== false);
+  const scanRunning = scopedHosts.some((host) => (host.scan_status || 'idle') === 'running')
+    || wave.current_scan_job?.status === 'running';
+  const scanFinished = !scanRunning && scopedHosts.some((host) => ['completed', 'failed'].includes(host.scan_status));
 
   const toggle = (id) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
@@ -139,6 +146,38 @@ const WaveDetailTab = ({
         }
         actions={
           <>
+            {canLaunchScan && isOpen && isStarted ? (
+              <Button
+                size="small"
+                variant="outlined"
+                component={RouterLink}
+                to={`/apps/${appId}/waves/${wave.id}/scan-live`}
+                startIcon={<Monitor sx={{ fontSize: 16 }} />}
+              >
+                Live progress
+              </Button>
+            ) : null}
+            {canLaunchScan && isOpen && isStarted && !scanRunning && !scanFinished ? (
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<SmartToy sx={{ fontSize: 16 }} />}
+                onClick={onLaunchScan}
+                disabled={Boolean(scanBusy)}
+              >
+                Launch scan
+              </Button>
+            ) : null}
+            {canLaunchScan && isOpen && isStarted && scanFinished ? (
+              <Button
+                size="small"
+                startIcon={<RestartAlt sx={{ fontSize: 16 }} />}
+                onClick={onRestartScan}
+                disabled={Boolean(scanBusy)}
+              >
+                Restart scan
+              </Button>
+            ) : null}
             {canCreateFinding && isOpen && isStarted ? (
               <Button size="small" variant="outlined" onClick={onCreateFinding}>
                 New finding
@@ -149,9 +188,14 @@ const WaveDetailTab = ({
                 Start wave
               </Button>
             ) : null}
-            {canExport && isOpen ? (
-              <Button size="small" variant="contained" onClick={() => onEndWave(wave)}>
-                End and export
+            {canExport ? (
+              <Button size="small" variant="contained" onClick={() => onExportWave(wave)}>
+                Export
+              </Button>
+            ) : null}
+            {canModify && isOpen ? (
+              <Button size="small" onClick={() => setEnding(true)}>
+                End wave
               </Button>
             ) : null}
             {canDelete ? (
@@ -333,10 +377,7 @@ const WaveDetailTab = ({
             <DataList>
               {hosts.map((host) => {
                 const scanStatus = host.scan_status || 'idle';
-                const running = scanStatus === 'running';
-                const finished = scanStatus === 'completed' || scanStatus === 'failed';
-                const notebookTo = `/pentest/record/${host.id}?wave=${wave.id}`;
-                const scanTo = `/pentest/record/${host.id}/scan-live?wave=${wave.id}`;
+                const notebookTo = hostNotebookPath(host.id, wave.id);
                 return (
                 <DataRow
                   key={host.id}
@@ -366,36 +407,6 @@ const WaveDetailTab = ({
                   }
                   trailing={
                     <div style={{ display: 'flex', gap: 8 }} onClick={(event) => event.stopPropagation()}>
-                      {canLaunchScan && isOpen && isStarted && !finished ? (
-                        <Button
-                          size="small"
-                          startIcon={<SmartToy sx={{ fontSize: 16 }} />}
-                          onClick={() => onLaunchScan(host)}
-                          disabled={scanBusyId === host.id || running}
-                        >
-                          {running ? 'Scanning…' : 'Launch scan'}
-                        </Button>
-                      ) : null}
-                      {canLaunchScan && isOpen && isStarted && finished ? (
-                        <Button
-                          size="small"
-                          startIcon={<RestartAlt sx={{ fontSize: 16 }} />}
-                          onClick={() => onRestartScan(host)}
-                          disabled={scanBusyId === host.id || running}
-                        >
-                          Restart scan
-                        </Button>
-                      ) : null}
-                      {running || finished ? (
-                        <Button
-                          size="small"
-                          component={RouterLink}
-                          to={scanTo}
-                          startIcon={<Monitor sx={{ fontSize: 16 }} />}
-                        >
-                          {running ? 'Live' : 'Log'}
-                        </Button>
-                      ) : null}
                       {canModify && isOpen && isStarted && isWaveTester && onClaimHost && (!host.tested_by || host.tested_by === 'Unassigned') ? (
                         <Button size="small" variant="contained" onClick={() => onClaimHost(host)}>
                           Assign to me
@@ -412,7 +423,7 @@ const WaveDetailTab = ({
                         <Tag>Assigned to {host.tested_by}</Tag>
                       ) : null}
                       {host.tested_by === username ? <Tag>Yours</Tag> : null}
-                      <Button size="small" component={RouterLink} to={notebookTo}>
+                      <Button size="small" variant="outlined" component={RouterLink} to={notebookTo}>
                         Notebook
                       </Button>
                     </div>
@@ -458,6 +469,31 @@ const WaveDetailTab = ({
         )
       ) : null}
 
+      <Panel
+        open={ending}
+        onClose={() => setEnding(false)}
+        maxWidth="xs"
+        title={`End “${wave.name}”?`}
+        actions={
+          <>
+            <Button onClick={() => setEnding(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={async () => {
+                await onEndWave(wave);
+                setEnding(false);
+              }}
+            >
+              End wave
+            </Button>
+          </>
+        }
+      >
+        <Text variant="body" tone="secondary">
+          Members, hosts, scans, and findings become read-only. You can still export a report afterwards. The wave
+          cannot be reopened.
+        </Text>
+      </Panel>
       <Panel
         open={deleting}
         onClose={() => setDeleting(false)}

@@ -5,11 +5,11 @@
     "Managers",
     "Admins"
   ],
-  "summary": "Defines template schema, block rendering rules, branding controls, and governance lifecycle for reliable PDF output.",
+  "summary": "Defines the ReportContext envelope, closed block catalog, org brand kit, and template chrome used to render host and application PDF exports.",
   "coverage": [
-    "Template sections and variable placeholders",
-    "Block composition and rendering behavior",
-    "Branding and document consistency controls",
+    "Typed report context and token registry",
+    "Block composition and named PDF regions",
+    "Org brand kit versus template chrome",
     "Template governance and change approval"
   ],
   "article": {
@@ -17,7 +17,7 @@
       "variant": "important",
       "title": "IMPORTANT",
       "paragraphs": [
-        "Template changes affect future generated PDFs only. Existing generated files are not retroactively rewritten."
+        "Template and brand-kit changes affect future generated PDFs only. Existing generated files are not retroactively rewritten."
       ]
     },
     "sections": [
@@ -25,8 +25,8 @@
         "id": "governance-scope",
         "title": "Governance scope",
         "paragraphs": [
-          "Template governance is managed in `Settings -> Report Templates`. This area controls template identity, block composition order, branding, placeholder fields, and enabled state.",
-          "Only users with `manage_report_templates` can create, edit, enable, disable, reset, or delete report templates."
+          "Template governance is managed in `Settings -> Report Templates`. This area controls template identity, linear block order, chrome strings, placeholders, supported scopes, and enabled state. The org brand kit on the same page owns company name, print ink, and logo.",
+          "Only users with `manage_report_templates` can create, edit, enable, disable, reset, or delete report templates, and can update the brand kit."
         ]
       },
       {
@@ -42,12 +42,12 @@
             [
               "Use templates during report generation",
               "`export_pentests`",
-              "User can select enabled templates in pentest record and call generate endpoint."
+              "User can select enabled templates in pentest record or app export sheet and call generate. Admin or `manage_report_templates` may also generate from a disabled template."
             ],
             [
               "List templates for administration",
               "`manage_report_templates`",
-              "Can request `include_disabled=true` and see full template catalog."
+              "Can request `include_disabled=true` and see the full template catalog."
             ],
             [
               "Create and update templates",
@@ -58,6 +58,11 @@
               "Delete or reset templates",
               "`manage_report_templates`",
               "Can delete custom templates and reset system templates to canonical."
+            ],
+            [
+              "Read and update org brand kit",
+              "`manage_report_templates`",
+              "Can call `GET`/`PUT /report-brand-kit` and upload a kit logo."
             ]
           ]
         }
@@ -66,7 +71,7 @@
         "id": "template-contract",
         "title": "Template data contract",
         "paragraphs": [
-          "Backend validates template payloads before commit. Invalid keys or missing block definitions are rejected with explicit validation errors."
+          "Backend validates template payloads before commit. Unknown block types, unknown chart ids, and unknown `{{tokens}}` are rejected. Layout coordinates are stripped and never rendered."
         ],
         "table": {
           "columns": [
@@ -102,8 +107,8 @@
             ],
             [
               "`template.branding`",
-              "Object",
-              "Contains `company_name`, `primary_color`, `accent_color`, `logo_url`."
+              "Chrome object",
+              "Template chrome: `header_text`, `footer_text`, `classification`. Company name, print ink, and logo come from the org brand kit at generate time."
             ],
             [
               "`template.placeholders`",
@@ -111,9 +116,14 @@
               "Contains tokens like `report_title`, `prepared_by`, `prepared_for`."
             ],
             [
+              "`template.supported_scopes`",
+              "Optional array",
+              "Subset of `host`, `environment`, `application`, `wave`. Missing or empty means all scopes."
+            ],
+            [
               "`template.blocks`",
               "Required non-empty array",
-              "Each block must include a valid `type`."
+              "Each block must include a valid `type` from the closed catalog."
             ]
           ]
         }
@@ -122,7 +132,7 @@
         "id": "block-types-and-rendering",
         "title": "Supported block types and rendering behavior",
         "paragraphs": [
-          "Block order in the builder is the final render order in generated PDF output. Each block type maps to a specific renderer in `report_pdf.py`."
+          "Block order in the builder is the final render order. `render_pentest_report_pdf` consumes a typed `ReportContext` and a template definition. Cover, running header, and footer are named regions; the body is a linear Platypus story. Host-only blocks omit cleanly when the envelope has no host data."
         ],
         "table": {
           "columns": [
@@ -133,69 +143,74 @@
           "rows": [
             [
               "`cover`",
-              "Title page with subtitle and optional logo.",
-              "Adds confidentiality footer and starts next page automatically."
+              "Title page with logo at half page width, company name in print ink, prepared for/by, classification, and date.",
+              "Wave, package, exporter username, and a second confidential line are omitted. Logo is 50% of A4 width."
             ],
             [
               "`engagement_overview`",
-              "Target, source, assignee, dates, status, and service desk link.",
-              "Best used near beginning of report."
+              "Application, environments, hosts in scope, people involved, and wave once.",
+              "Package is never printed. People involved are finding authors and collaborators, not only the exporter."
             ],
             [
               "`key_metrics`",
-              "KPI tile grid for findings, open ports, and checklist coverage.",
-              "Uses computed metrics from current pentest data."
+              "Occurrence-backed KPI tiles.",
+              "Counts come from occurrence status, not a host `vulnerability_fixed` flag."
+            ],
+            [
+              "`table_of_contents`",
+              "Finding titles and severity.",
+              "Injected after Risk Snapshot when a saved template omits the block. Lives on page 2 with overview and snapshot."
             ],
             [
               "`chart`",
-              "Severity distribution or checklist/remediation pie views.",
-              "Supported values: `vulnerability_severity`, `checklist_completion`, `vulnerability_fix_status`."
+              "Closed catalog only.",
+              "`vulnerability_severity`, `occurrence_status`, `checklist_completion`, `severity_by_env`, `wave_coverage`. Unknown chart ids fail render."
             ],
             [
               "`open_ports`",
-              "Normalized open ports table with service mapping.",
-              "Empty when no ports are recorded."
+              "Normalized open ports table.",
+              "Omits on application, environment, and wave packages."
             ],
             [
               "`markdown`",
-              "Rendered markdown from a selected field.",
-              "Supported fields include `description`, `notes`, `open_ports`, and `service_desk_link`."
+              "Rendered markdown from a selected host field.",
+              "Supported fields: `description`, `notes`, `open_ports`. Omits when empty."
             ],
             [
               "`checklists`",
-              "Checklist coverage table by enabled template.",
-              "Uses selected and auto-enabled checklist sets."
+              "Checklist coverage table.",
+              "Omits when the envelope has no checklist states."
             ],
             [
               "`vulnerabilities`",
-              "Finding cards with severity, CVSS, and optional descriptions.",
-              "Controlled by `include_descriptions` flag."
+              "One finding per page with occurrence table plus Description, Impact, Evidence, and Remediation sections.",
+              "Host, wave, and auth context are stripped from the write-up. Detailed Findings always starts on a new page."
             ],
             [
               "`text`",
               "Free-form narrative with token interpolation.",
-              "Useful for management summary and decision context."
+              "Unknown tokens fail at save and at render."
             ],
             [
               "`page_break`",
               "Hard pagination separator.",
-              "Forces next content block onto a new page."
+              "Forces the next content block onto a new page."
             ]
           ]
         }
       },
       {
         "id": "placeholders-and-branding-rules",
-        "title": "Placeholders and branding rules",
+        "title": "Placeholders, tokens, and brand kit",
         "paragraphs": [
-          "Variable tokens from record, pentest, metrics, and placeholder groups can be embedded in titles, subtitles, and text block content. Unknown tokens resolve to empty text.",
-          "Color values are interpreted as hex colors. Invalid values fall back to default report colors during render. Logo rendering expects an image path that resolves to a RAPTOR pentest image URL pattern."
+          "Variable tokens from application, wave, package, host, pentest, metrics, export, and placeholder groups can be embedded in titles, subtitles, chrome, and text block content. The token registry is closed: unknown `{{paths}}` raise at normalize and render.",
+          "The org brand kit supplies company name, print ink (default `#067A8A`), and logo. Table headers, section titles, and the cover company name use print ink. Running footer is company name and date plus the RAPTOR lockup at the bottom-left of every page; it does not print package, hash, or HMAC."
         ],
         "tip": {
           "variant": "tip",
           "title": "TIP",
           "paragraphs": [
-            "When using `logo_url`, prefer a value like `/pentest/images/<filename>.png`. URLs outside that pattern are ignored by the PDF image fetcher."
+            "Upload the brand-kit logo as a PNG. The PDF image fetcher only accepts RAPTOR pentest image URLs of the form `/pentest/images/<filename>.png`."
           ]
         }
       },

@@ -68,6 +68,11 @@ def test_discover_migrations():
     assert "0019_wave_live_hosts" in names
     assert "0020_wave_started_at" in names
     assert "0021_occurrence_status_changed_at" in names
+    assert "0022_cloud_dns" in names
+    assert "0023_keycloak_identity_cache" in names
+    assert "0025_scan_jobs" in names
+    assert "0026_disable_bind_file" in names
+    assert "0028_dns_source_delete_set_null" in names
     assert names == sorted(names)
 
 

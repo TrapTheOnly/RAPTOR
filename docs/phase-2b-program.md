@@ -1,6 +1,6 @@
 # Phase 2b — Waves, presets, env ACL, zones, share, signed exports
 
-Engineering spec. Depends on Phase 2a (`0014`–`0016`). SLA clocks and assignment email stay parked. Cloud DNS is Phase 3.
+Engineering spec. Depends on Phase 2a (`0014`–`0016`). SLA clocks and assignment email stay parked. Cloud DNS is Phase 3 (`docs/phase-3-cloud-dns.md`).
 
 **Status:** implemented  
 **Schema:** `0017_phase2b.py`

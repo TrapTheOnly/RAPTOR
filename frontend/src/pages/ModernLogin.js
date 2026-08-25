@@ -1,21 +1,14 @@
 import axios from 'axios';
-import {
-  Box,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Alert,
-  IconButton,
-  InputAdornment,
-  useTheme
-} from '@mui/material';
-import {
-  Visibility,
-  VisibilityOff,
-  LoginOutlined
-} from '@mui/icons-material';
-import { useState, useEffect } from 'react';
+import { Alert, IconButton } from '@mui/material';
+import { Brightness4, Brightness7, Visibility, VisibilityOff } from '@mui/icons-material';
+import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Button, Field, RaptorMark, Text } from '../design/primitives';
+import { panelVariants } from '../design/motion';
+import { alpha, SPACE } from '../design/tokens';
+import { usePalette } from '../design/usePalette';
+import Starfield from './login/Starfield';
 
 const MIN_PASSWORD_LENGTH = 12;
 const MAX_PASSWORD_LENGTH = 64;
@@ -27,6 +20,8 @@ const COMMON_PASSWORDS = new Set([
   'login', 'qwertyuiop', 'passw0rd', 'master', 'shadow'
 ]);
 
+const CARD_RADIUS = 18;
+
 const ModernLogin = ({
   setLoggedIn,
   setGlobalUsername,
@@ -37,23 +32,48 @@ const ModernLogin = ({
   resetUsername = '',
   resetUserType = null,
   setResetUserType = () => {},
-  darkMode = false
+  darkMode = true,
+  setDarkMode
 }) => {
+  const palette = usePalette();
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [resetMode, setResetMode] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
-  const theme = useTheme();
 
   useEffect(() => {
     setResetMode(passwordResetRequired);
   }, [passwordResetRequired]);
+
+  useEffect(() => {
+    if (searchParams.get('sso_error')) {
+      setError('Sign-in failed. Try again.');
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get('/auth/sso/providers')
+      .then((response) => {
+        if (!cancelled) setSsoProviders(response.data?.providers || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSsoProviders([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (resetMode && resetUsername) {
@@ -61,15 +81,15 @@ const ModernLogin = ({
     }
   }, [resetMode, resetUsername]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError('');
     setLoading(true);
 
     try {
       const response = await axios.post('/login', {
-        username: username,
-        password: password,
+        username,
+        password
       });
 
       if (response.status === 200) {
@@ -87,8 +107,8 @@ const ModernLogin = ({
           setGlobalUserPermissions(response.data.permissions || []);
         }
       }
-    } catch (error) {
-      if (error.response?.status === 401) {
+    } catch (err) {
+      if (err.response?.status === 401) {
         setError('Invalid username or password');
       } else {
         setError('Login failed. Please try again.');
@@ -115,8 +135,8 @@ const ModernLogin = ({
     return '';
   };
 
-  const handleResetSubmit = async (e) => {
-    e.preventDefault();
+  const handleResetSubmit = async (event) => {
+    event.preventDefault();
     setResetError('');
     const validationError = validatePassword(newPassword);
     if (validationError) {
@@ -142,447 +162,198 @@ const ModernLogin = ({
         setGlobalUserRole(response.data.user_type || 'user');
         setGlobalUserPermissions(response.data.permissions || []);
       }
-    } catch (error) {
-      setResetError(error.response?.data?.error || 'Password reset failed. Please try again.');
+    } catch (err) {
+      setResetError(err.response?.data?.error || 'Password reset failed. Please try again.');
     } finally {
       setResetLoading(false);
     }
   };
 
-  const handleTogglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
-  };
+  const eye = (
+    <IconButton
+      onClick={() => setShowPassword((open) => !open)}
+      edge="end"
+      aria-label={showPassword ? 'Hide password' : 'Show password'}
+      sx={{ color: palette.textSecondary }}
+    >
+      {showPassword ? <VisibilityOff /> : <Visibility />}
+    </IconButton>
+  );
+
+  const isDark = palette.mode === 'dark';
+  const glow = alpha(palette.accent, isDark ? 0.32 : 0.22);
 
   return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          backgroundColor: 'background.default',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          p: 2,
+    <div
+      style={{
+        minHeight: '100vh',
+        position: 'relative',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: SPACE.x24,
+        background: palette.canvas
+      }}
+    >
+      <Starfield color={palette.text} accent={palette.accent} />
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: isDark
+            ? `radial-gradient(ellipse at 50% 42%, ${alpha(palette.accent, 0.08)} 0%, transparent 42%)`
+            : `radial-gradient(ellipse at 50% 42%, ${alpha(palette.accent, 0.1)} 0%, transparent 46%)`,
+          pointerEvents: 'none'
         }}
-      >
-        <Paper
-          elevation={0}
+      />
+
+      {typeof setDarkMode === 'function' ? (
+        <IconButton
+          onClick={() => setDarkMode(!darkMode)}
+          aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
           sx={{
-            p: 4,
-            width: '100%',
-            maxWidth: 400,
-            textAlign: 'center',
-            backgroundColor: 'background.paper',
-            border: `1px solid ${theme.palette.divider}`,
-            boxShadow: darkMode ? 'none' : '0 4px 8px rgba(0,0,0,0.1)',
+            position: 'absolute',
+            top: 16,
+            right: 16,
+            zIndex: 1,
+            color: palette.textSecondary,
+            border: `1px solid ${palette.lineStrong}`,
+            borderRadius: '10px'
           }}
         >
-          {/* Logo/Brand */}
-          <Box mb={4}>
-            <Typography 
-              variant="h3" 
-              sx={{ 
-                fontWeight: 700,
-                fontSize: '2.5rem',
-                letterSpacing: '0.15em',
-                background: theme.palette.mode === 'dark'
-                  ? 'linear-gradient(45deg, #00d4ff 30%, #1976d2 90%)'
-                  : 'linear-gradient(45deg, #1976d2 30%, #0d47a1 90%)',
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                color: 'transparent',
-                mb: 1,
-                textAlign: 'center',
-                position: 'relative',
-                display: 'inline-block',
-                transform: 'translateZ(0)',
-                animation: 'raptorLoginGlow 8s ease-in-out infinite alternate, raptorLoginFloat 12s ease-in-out infinite',
-                transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                '&::before': {
-                  content: '"RAPTOR"',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  background: theme.palette.mode === 'dark'
-                    ? 'linear-gradient(45deg, rgba(255, 64, 129, 0.2) 30%, rgba(233, 30, 99, 0.2) 90%)'
-                    : 'linear-gradient(45deg, rgba(25, 118, 210, 0.15) 30%, rgba(13, 71, 161, 0.15) 90%)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  color: 'transparent',
-                  opacity: 0,
-                  transform: 'translate(2px, 2px)',
-                  animation: 'raptorLoginShimmer1 10s ease-in-out infinite',
-                  zIndex: -1,
-                  filter: 'blur(0.3px)',
-                },
-                '&::after': {
-                  content: '"RAPTOR"',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  background: theme.palette.mode === 'dark'
-                    ? 'linear-gradient(45deg, rgba(0, 255, 136, 0.15) 30%, rgba(76, 175, 80, 0.15) 90%)'
-                    : 'linear-gradient(45deg, rgba(25, 118, 210, 0.1) 30%, rgba(13, 71, 161, 0.1) 90%)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  color: 'transparent',
-                  opacity: 0,
-                  transform: 'translate(-2px, -2px)',
-                  animation: 'raptorLoginShimmer2 10s ease-in-out infinite 2s',
-                  zIndex: -2,
-                  filter: 'blur(0.3px)',
-                },
-                '&:hover': {
-                  transform: 'translateY(-2px) scale(1.05) translateZ(0)',
-                  filter: theme.palette.mode === 'dark'
-                    ? 'drop-shadow(0 8px 25px rgba(0, 212, 255, 0.2))'
-                    : 'drop-shadow(0 8px 25px rgba(25, 118, 210, 0.2))',
-                  animation: 'raptorLoginGlow 4s ease-in-out infinite alternate, raptorLoginFloat 6s ease-in-out infinite',
-                  '&::before': {
-                    opacity: 0.4,
-                    animation: 'raptorLoginHoverShimmer1 3s ease-in-out infinite',
-                  },
-                  '&::after': {
-                    opacity: 0.3,
-                    animation: 'raptorLoginHoverShimmer2 3s ease-in-out infinite 0.5s',
-                  }
-                },
-                '@keyframes raptorLoginGlow': {
-                  '0%': {
-                    textShadow: theme.palette.mode === 'dark'
-                      ? '0 0 10px rgba(0, 212, 255, 0.4), 0 0 20px rgba(25, 118, 210, 0.2)'
-                      : '0 0 10px rgba(25, 118, 210, 0.3), 0 0 20px rgba(13, 71, 161, 0.15)',
-                    filter: 'brightness(1) saturate(1)',
-                  },
-                  '50%': {
-                    textShadow: theme.palette.mode === 'dark'
-                      ? '0 0 15px rgba(0, 212, 255, 0.6), 0 0 30px rgba(25, 118, 210, 0.3), 0 0 45px rgba(25, 118, 210, 0.1)'
-                      : '0 0 15px rgba(25, 118, 210, 0.5), 0 0 30px rgba(13, 71, 161, 0.25), 0 0 45px rgba(13, 71, 161, 0.1)',
-                    filter: 'brightness(1.15) saturate(1.1)',
-                  },
-                  '100%': {
-                    textShadow: theme.palette.mode === 'dark'
-                      ? '0 0 10px rgba(0, 212, 255, 0.4), 0 0 20px rgba(25, 118, 210, 0.2)'
-                      : '0 0 10px rgba(25, 118, 210, 0.3), 0 0 20px rgba(13, 71, 161, 0.15)',
-                    filter: 'brightness(1) saturate(1)',
-                  }
-                },
-                '@keyframes raptorLoginFloat': {
-                  '0%, 100%': {
-                    transform: 'translateY(0px) translateZ(0)',
-                  },
-                  '25%': {
-                    transform: 'translateY(-2px) translateZ(0)',
-                  },
-                  '50%': {
-                    transform: 'translateY(-4px) translateZ(0)',
-                  },
-                  '75%': {
-                    transform: 'translateY(-2px) translateZ(0)',
-                  }
-                },
-                '@keyframes raptorLoginShimmer1': {
-                  '0%, 85%, 100%': {
-                    opacity: 0,
-                    transform: 'translate(2px, 2px)',
-                  },
-                  '5%, 8%': {
-                    opacity: 0.2,
-                    transform: 'translate(-1px, 1px)',
-                  },
-                  '40%, 43%': {
-                    opacity: 0.15,
-                    transform: 'translate(1px, -1px)',
-                  }
-                },
-                '@keyframes raptorLoginShimmer2': {
-                  '0%, 90%, 100%': {
-                    opacity: 0,
-                    transform: 'translate(-2px, -2px)',
-                  },
-                  '7%, 10%': {
-                    opacity: 0.15,
-                    transform: 'translate(1px, -1px)',
-                  },
-                  '45%, 48%': {
-                    opacity: 0.1,
-                    transform: 'translate(-1px, 1px)',
-                  }
-                },
-                '@keyframes raptorLoginHoverShimmer1': {
-                  '0%, 100%': {
-                    opacity: 0.4,
-                    transform: 'translate(2px, 2px)',
-                  },
-                  '50%': {
-                    opacity: 0.2,
-                    transform: 'translate(-1px, 1px)',
-                  }
-                },
-                '@keyframes raptorLoginHoverShimmer2': {
-                  '0%, 100%': {
-                    opacity: 0.3,
-                    transform: 'translate(-2px, -2px)',
-                  },
-                  '50%': {
-                    opacity: 0.15,
-                    transform: 'translate(1px, -1px)',
-                  }
-                }
-              }}
+          {darkMode ? <Brightness7 fontSize="small" /> : <Brightness4 fontSize="small" />}
+        </IconButton>
+      ) : null}
+
+      <motion.div
+        variants={panelVariants}
+        initial="initial"
+        animate="animate"
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: 400,
+          padding: '36px 32px 32px',
+          borderRadius: CARD_RADIUS,
+          background: isDark ? 'rgba(14, 16, 19, 0.78)' : 'rgba(255, 255, 255, 0.86)',
+          border: `1px solid ${palette.lineStrong}`,
+          boxShadow: `0 0 0 1px ${palette.accentLine}, 0 18px 64px ${glow}`,
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            margin: `0 0 ${SPACE.x32}px`
+          }}
+        >
+          <RaptorMark variant="lockup" height={192} alt="RAPTOR" style={{ maxWidth: '100%' }} />
+        </div>
+
+        {resetMode ? (
+          <form onSubmit={handleResetSubmit} style={{ display: 'flex', flexDirection: 'column', gap: SPACE.x16 }}>
+            {resetError ? <Alert severity="error">{resetError}</Alert> : null}
+            <Field label="Username" value={username} disabled autoComplete="username" />
+            <Field
+              label="New password"
+              type={showPassword ? 'text' : 'password'}
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              required
+              autoComplete="new-password"
+              trailing={eye}
+            />
+            <Field
+              label="Confirm new password"
+              type={showPassword ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              required
+              autoComplete="new-password"
+            />
+            <Text as="p" variant="meta" tone="secondary" style={{ margin: 0 }}>
+              At least {MIN_PASSWORD_LENGTH} characters, not a common password, and must not contain the username.
+            </Text>
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth
+              disabled={resetLoading || !newPassword || !confirmPassword}
+              style={{ minHeight: 44, borderRadius: 12 }}
             >
-              RAPTOR
-            </Typography>
-            <Typography 
-              variant="subtitle1" 
-              sx={{ 
-                color: 'text.secondary',
-                letterSpacing: '0.05em',
-                textAlign: 'center',
-                fontSize: '0.9rem',
-                mb: 4
-              }}
-            >
-              Reconnaissance, Assessment, Penetration Testing, Operations & Reporting
-            </Typography>
-          </Box>
-
-          {/* Login / Reset Form */}
-          {resetMode ? (
-            <Box component="form" onSubmit={handleResetSubmit} sx={{ mt: 3 }}>
-              {resetError && (
-                <Alert 
-                  severity="error" 
-                  sx={{ 
-                    mb: 3,
-                    backgroundColor: darkMode ? '#2d1b1b' : '#ffeaa7',
-                    color: darkMode ? '#ffffff' : '#d63031',
-                    border: '1px solid #f44336',
-                    '& .MuiAlert-icon': {
-                      color: '#f44336',
-                    },
-                  }}
+              {resetLoading ? 'Updating password…' : 'Reset password'}
+            </Button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: SPACE.x16 }}>
+            {error ? <Alert severity="error">{error}</Alert> : null}
+            {ssoProviders.length > 0 ? (
+              <>
+                {showPasswordForm ? null : (
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => setShowPasswordForm(true)}
+                    style={{ minHeight: 44, borderRadius: 12 }}
+                  >
+                    Sign in with RAPTOR
+                  </Button>
+                )}
+                {ssoProviders.map((provider) => (
+                  <Button
+                    key={provider.alias}
+                    type="button"
+                    variant="contained"
+                    fullWidth
+                    onClick={() => {
+                      window.location.assign(`/auth/sso/${encodeURIComponent(provider.alias)}/start`);
+                    }}
+                    style={{ minHeight: 44, borderRadius: 12 }}
+                  >
+                    Sign in with {provider.display_name || provider.alias}
+                  </Button>
+                ))}
+              </>
+            ) : null}
+            {ssoProviders.length === 0 || showPasswordForm ? (
+              <>
+                <Field
+                  label="Username"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  required
+                  autoComplete="username"
+                  autoFocus
+                />
+                <Field
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  autoComplete="current-password"
+                  trailing={eye}
+                />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  fullWidth
+                  disabled={loading || !username || !password}
+                  style={{ minHeight: 44, borderRadius: 12 }}
                 >
-                  {resetError}
-                </Alert>
-              )}
-
-              <TextField
-                fullWidth
-                label="Username"
-                variant="outlined"
-                value={username}
-                disabled
-                autoComplete="username"
-                sx={{ 
-                  mb: 3,
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
-                    '& fieldset': {
-                      borderColor: theme.palette.divider,
-                    },
-                  },
-                }}
-              />
-
-              <TextField
-                fullWidth
-                label="New Password"
-                type={showPassword ? 'text' : 'password'}
-                variant="outlined"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                autoComplete="new-password"
-                sx={{ 
-                  mb: 2,
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
-                    '& fieldset': {
-                      borderColor: theme.palette.divider,
-                    },
-                    '&:hover fieldset': {
-                      borderColor: theme.palette.primary.main,
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: theme.palette.primary.main,
-                    },
-                  },
-                }}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={handleTogglePasswordVisibility}
-                        edge="end"
-                        sx={{ color: 'text.secondary' }}
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-
-              <TextField
-                fullWidth
-                label="Confirm New Password"
-                type={showPassword ? 'text' : 'password'}
-                variant="outlined"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                autoComplete="new-password"
-                sx={{ 
-                  mb: 2,
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
-                    '& fieldset': {
-                      borderColor: theme.palette.divider,
-                    },
-                    '&:hover fieldset': {
-                      borderColor: theme.palette.primary.main,
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: theme.palette.primary.main,
-                    },
-                  },
-                }}
-              />
-
-              <Box sx={{ textAlign: 'left', mb: 3 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                  NIST password requirements:
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  - At least {MIN_PASSWORD_LENGTH} characters (max {MAX_PASSWORD_LENGTH})
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  - Not a common password
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block">
-                  - Must not contain the username
-                </Typography>
-              </Box>
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                disabled={resetLoading || !newPassword || !confirmPassword}
-                startIcon={<LoginOutlined />}
-                sx={{ mb: 2 }}
-              >
-                {resetLoading ? 'Updating password...' : 'Reset Password'}
-              </Button>
-            </Box>
-          ) : (
-            <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-              {error && (
-                <Alert 
-                  severity="error" 
-                  sx={{ 
-                    mb: 3,
-                    backgroundColor: darkMode ? '#2d1b1b' : '#ffeaa7',
-                    color: darkMode ? '#ffffff' : '#d63031',
-                    border: '1px solid #f44336',
-                    '& .MuiAlert-icon': {
-                      color: '#f44336',
-                    },
-                  }}
-                >
-                  {error}
-                </Alert>
-              )}
-
-              <TextField
-                fullWidth
-                label="Username"
-                variant="outlined"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoComplete="username"
-                autoFocus
-                sx={{ 
-                  mb: 3,
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
-                    '& fieldset': {
-                      borderColor: theme.palette.divider,
-                    },
-                    '&:hover fieldset': {
-                      borderColor: theme.palette.primary.main,
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: theme.palette.primary.main,
-                    },
-                  },
-                }}
-              />
-
-              <TextField
-                fullWidth
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                variant="outlined"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                sx={{ 
-                  mb: 4,
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'background.paper',
-                    '& fieldset': {
-                      borderColor: theme.palette.divider,
-                    },
-                    '&:hover fieldset': {
-                      borderColor: theme.palette.primary.main,
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: theme.palette.primary.main,
-                    },
-                  },
-                }}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={handleTogglePasswordVisibility}
-                        edge="end"
-                        sx={{ color: 'text.secondary' }}
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                disabled={loading || !username || !password}
-                startIcon={<LoginOutlined />}
-                sx={{ mb: 2 }}
-              >
-                {loading ? 'Signing in...' : 'Sign In'}
-              </Button>
-            </Box>
-          )}
-
-          {/* Footer */}
-          <Box mt={4}>
-            <Typography variant="caption" color="text.secondary">
-            </Typography>
-          </Box>
-        </Paper>
-      </Box>
+                  {loading ? 'Signing in…' : 'Sign in'}
+                </Button>
+              </>
+            ) : null}
+          </form>
+        )}
+      </motion.div>
+    </div>
   );
 };
 

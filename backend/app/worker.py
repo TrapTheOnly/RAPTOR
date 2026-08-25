@@ -1,8 +1,8 @@
+import json
 import logging
-import os
 import threading
 import time
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from app.repositories.jobs_repository import (
     claim_next_job,
@@ -11,7 +11,6 @@ from app.repositories.jobs_repository import (
     fail_job,
     has_pending_or_running,
 )
-from app.services.audit_service import record_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +18,8 @@ _loop_started = False
 _loop_lock = threading.Lock()
 
 
-def _update_interval_seconds() -> int:
-    try:
-        return max(30, int(os.getenv("UPDATE_TIME", "86400")))
-    except ValueError:
-        return 86400
+def _poll_interval_seconds() -> int:
+    return 300
 
 
 def _ensure_dns_sync_job() -> None:
@@ -32,18 +28,28 @@ def _ensure_dns_sync_job() -> None:
     enqueue_job("dns_sync", {})
 
 
-def _run_dns_sync() -> None:
-    from app.services.dns_sync_service import update_data
+def _job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
+    raw = job.get("payload")
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            loaded = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return loaded if isinstance(loaded, dict) else {}
+    return {}
 
-    update_data()
-    record_audit_event(
-        actor="system",
-        actor_type="worker",
-        action="ingest.dns_sync",
-        entity_type="dns_source",
-        entity_id="bind_file",
-        metadata={},
-    )
+
+def _run_dns_sync(payload: Optional[Dict[str, Any]] = None) -> None:
+    from app.services.cloud_dns_service import sync_all_pull_sources, sync_pull_source
+
+    data = payload or {}
+    source_id = data.get("source_id")
+    if source_id not in (None, ""):
+        sync_pull_source(int(source_id), force=True)
+        return
+    sync_all_pull_sources(force=False)
 
 
 def process_due_jobs() -> None:
@@ -54,7 +60,7 @@ def process_due_jobs() -> None:
     kind = str(job.get("kind") or "")
     try:
         if kind == "dns_sync":
-            _run_dns_sync()
+            _run_dns_sync(_job_payload(job))
         else:
             raise RuntimeError(f"Unknown job kind: {kind}")
         complete_job(job_id)
@@ -64,7 +70,7 @@ def process_due_jobs() -> None:
 
 
 def _loop() -> None:
-    interval = _update_interval_seconds()
+    interval = _poll_interval_seconds()
     last_periodic = time.time()
     while True:
         now = time.time()

@@ -77,27 +77,24 @@ def create_allowed_users_table(cursor: DatabaseCursor) -> None:
             added_date TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'user',
             auth_type TEXT NOT NULL DEFAULT 'ldap',
-            password BYTEA,
-            must_reset INTEGER NOT NULL DEFAULT 0,
             permissions TEXT,
             is_service_account INTEGER NOT NULL DEFAULT 0,
-            full_name TEXT
+            full_name TEXT,
+            keycloak_id TEXT
         )
         """
     )
     allowed_user_columns = get_table_columns(cursor, "allowed_users")
     if "auth_type" not in allowed_user_columns:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'ldap'")
-    if "password" not in allowed_user_columns:
-        cursor.execute("ALTER TABLE allowed_users ADD COLUMN password BYTEA")
-    if "must_reset" not in allowed_user_columns:
-        cursor.execute("ALTER TABLE allowed_users ADD COLUMN must_reset INTEGER NOT NULL DEFAULT 0")
     if "permissions" not in allowed_user_columns:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN permissions TEXT")
     if "is_service_account" not in allowed_user_columns:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN is_service_account INTEGER NOT NULL DEFAULT 0")
     if "full_name" not in allowed_user_columns:
         cursor.execute("ALTER TABLE allowed_users ADD COLUMN full_name TEXT")
+    if "keycloak_id" not in allowed_user_columns:
+        cursor.execute("ALTER TABLE allowed_users ADD COLUMN keycloak_id TEXT")
     cursor.execute(
         """
         UPDATE allowed_users
@@ -403,6 +400,8 @@ def create_service_account_api_keys_table(cursor: DatabaseCursor) -> None:
         cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN rotated_by TEXT")
     if "api_key_hash" not in key_columns:
         cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN api_key_hash TEXT")
+    if "keycloak_client_id" not in key_columns:
+        cursor.execute("ALTER TABLE service_account_api_keys ADD COLUMN keycloak_client_id TEXT")
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_service_account_api_keys_fingerprint
@@ -472,6 +471,10 @@ def create_scanner_config_table(cursor: DatabaseCursor) -> None:
             output_cost_per_1m NUMERIC(10,6) NOT NULL DEFAULT 15.0,
             max_concurrent_scans INTEGER NOT NULL DEFAULT 2,
             enabled INTEGER NOT NULL DEFAULT 0,
+            active_connection_id INTEGER,
+            active_model_id TEXT NOT NULL DEFAULT '',
+            thinking_budget_tokens INTEGER NOT NULL DEFAULT 8000,
+            max_turns INTEGER NOT NULL DEFAULT 40,
             updated_by TEXT,
             updated_at TEXT NOT NULL DEFAULT ''
         )

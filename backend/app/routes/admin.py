@@ -1,7 +1,7 @@
-from flask import Blueprint, jsonify, session, request
+from flask import Blueprint, jsonify, session, request, Response
 
 from app.http.request_utils import parse_json_object
-from app.services import dns_sync_service, offsec_admin_service, service_account_service, user_admin_service
+from app.services import offsec_admin_service, service_account_service, sso_settings_service, user_admin_service
 from app.http.decorators.admin_required import admin_required
 from app.repositories.email_config_repository import get_email_config, upsert_email_config
 from app.integrations.email.client import send_email, test_smtp_connection
@@ -65,10 +65,67 @@ def api_delete_user():
     return jsonify(payload), status_code
 
 
-@admin_bp.route("/manual-update", methods=["POST"])
+@admin_bp.route("/sso/connections", methods=["GET"])
 @admin_required
-def manual_update():
-    payload, status_code = user_admin_service.manual_update(dns_sync_service.update_data)
+def list_sso_connections():
+    payload, status_code = sso_settings_service.list_connections()
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/sso/connections", methods=["POST"])
+@admin_required
+def create_sso_connection():
+    payload, status_code = sso_settings_service.create_connection(parse_json_object())
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/sso/connections/<string:alias>", methods=["GET"])
+@admin_required
+def get_sso_connection(alias: str):
+    payload, status_code = sso_settings_service.get_connection(alias)
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/sso/connections/<string:alias>", methods=["PUT"])
+@admin_required
+def update_sso_connection(alias: str):
+    payload, status_code = sso_settings_service.update_connection(alias, parse_json_object())
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/sso/connections/<string:alias>", methods=["DELETE"])
+@admin_required
+def delete_sso_connection(alias: str):
+    payload, status_code = sso_settings_service.delete_connection(alias)
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/sso/connections/<string:alias>/test", methods=["POST"])
+@admin_required
+def test_sso_connection(alias: str):
+    payload, status_code = sso_settings_service.test_connection(alias)
+    return jsonify(payload), status_code
+
+
+@admin_bp.route("/sso/connections/<string:alias>/sp-metadata", methods=["GET"])
+@admin_required
+def download_sso_sp_metadata(alias: str):
+    body, status_code, content_type = sso_settings_service.fetch_sp_metadata(alias)
+    if status_code != 200:
+        return jsonify(body), status_code
+    filename = f"{alias}-sp-metadata.xml"
+    return Response(
+        body,
+        status=200,
+        mimetype=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@admin_bp.route("/sso/allowlist", methods=["POST"])
+@admin_required
+def preprovision_sso_user():
+    payload, status_code = user_admin_service.preprovision_sso_user(parse_json_object())
     return jsonify(payload), status_code
 
 

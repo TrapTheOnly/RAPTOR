@@ -1,4 +1,46 @@
 import re
+from pathlib import Path
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+_FENCE_RE = re.compile(r"^```([a-zA-Z0-9_+-]*)\s*$")
+_UL_RE = re.compile(r"^(\s*)([-*+])\s+(?:\[([ xX])\]\s+)?(.*)$")
+_OL_RE = re.compile(r"^(\s*)(\d+)[.)]\s+(?:\[([ xX])\]\s+)?(.*)$")
+_BLOCKQUOTE_RE = re.compile(r"^>\s?(.*)$")
+_TABLE_SEP_RE = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
+
+RAPTOR_LOCKUP_HEIGHT_MM = 15
+RAPTOR_LOCKUP_LEFT_MM = 12
+RAPTOR_LOCKUP_BOTTOM_MM = 7
+
+
+def raptor_lockup_path():
+    return Path(__file__).resolve().parents[2] / "assets" / "brand" / "raptor-lockup-print.png"
+
+
+def draw_raptor_footer_lockup(canvas, mm):
+    """Stamp the RAPTOR icon+wordmark lockup at the bottom-left of a page."""
+    path = raptor_lockup_path()
+    if not path.is_file():
+        return RAPTOR_LOCKUP_LEFT_MM * mm
+    from reportlab.lib.utils import ImageReader
+
+    image = ImageReader(str(path))
+    intrinsic_width, intrinsic_height = image.getSize()
+    height = RAPTOR_LOCKUP_HEIGHT_MM * mm
+    width = height * (float(intrinsic_width) / max(float(intrinsic_height), 1.0))
+    left = RAPTOR_LOCKUP_LEFT_MM * mm
+    bottom = RAPTOR_LOCKUP_BOTTOM_MM * mm
+    canvas.drawImage(
+        image,
+        left,
+        bottom,
+        width=width,
+        height=height,
+        mask="auto",
+        preserveAspectRatio=True,
+        anchor="sw",
+    )
+    return left + width + (3.5 * mm)
 
 
 def safe_color(value, fallback, colors):
@@ -51,6 +93,25 @@ def get_embedded_image(
         return None
 
 
+def _is_horizontal_rule(line):
+    compact = re.sub(r"\s+", "", str(line or "").strip())
+    return bool(compact) and len(compact) >= 3 and compact == compact[0] * len(compact) and compact[0] in "-*_"
+
+
+def _split_table_row(line):
+    value = str(line or "").strip()
+    if value.startswith("|"):
+        value = value[1:]
+    if value.endswith("|"):
+        value = value[:-1]
+    return [part.strip() for part in value.split("|")]
+
+
+def _list_indent_level(spaces):
+    expanded = str(spaces or "").replace("\t", "    ")
+    return max(0, len(expanded) // 2)
+
+
 def markdown_to_flowables(
     raw_text,
     styles,
@@ -63,10 +124,20 @@ def markdown_to_flowables(
     preformatted=None,
     markdown_image_target_width_mm=None,
     markdown_image_max_height_mm=250,
+    table_fn=None,
+    quote_fn=None,
+    rule_fn=None,
 ):
     text = str(raw_text or "")
     if not text.strip():
         return [paragraph(empty_message, styles["ReportMuted"])]
+
+    heading_style_map = {
+        1: "ReportMarkdownH1",
+        2: "ReportMarkdownH2",
+        3: "ReportMarkdownH3",
+        4: "ReportMarkdownH4",
+    }
 
     def append_code_block(flowables_list, code_lines, code_language):
         if not code_lines:
@@ -92,59 +163,8 @@ def markdown_to_flowables(
             flowables_list.append(paragraph(f"<font name='Courier'>{fallback_text}</font>", styles["ReportBody"]))
         flowables_list.append(spacer(1, 5))
 
-    flowables = []
-    in_code_block = False
-    code_language = ""
-    code_lines = []
-
-    for line in text.splitlines():
-        current = line.rstrip()
-        fence_match = re.match(r"^```([a-zA-Z0-9_+-]*)\s*$", current.strip())
-        if fence_match:
-            if in_code_block:
-                append_code_block(flowables, code_lines, code_language)
-                in_code_block = False
-                code_language = ""
-                code_lines = []
-            else:
-                in_code_block = True
-                code_language = (fence_match.group(1) or "").strip()
-                code_lines = []
-            continue
-
-        if in_code_block:
-            code_lines.append(current)
-            continue
-
-        if not current.strip():
-            flowables.append(spacer(1, 4))
-            continue
-
-        image_matches = list(markdown_image_pattern.finditer(current))
-        text_without_images = markdown_image_pattern.sub("", current).strip()
-
-        if text_without_images:
-            heading_match = re.match(r"^(#{1,6})\s+(.*)$", text_without_images)
-            if heading_match:
-                heading_level = len(heading_match.group(1))
-                heading_text = heading_match.group(2).strip()
-                heading_style_map = {
-                    1: "ReportMarkdownH1",
-                    2: "ReportMarkdownH2",
-                    3: "ReportMarkdownH3",
-                    4: "ReportMarkdownH4",
-                }
-                style_name = heading_style_map.get(heading_level, "ReportMarkdownH4")
-                heading_style = styles[style_name] if style_name in styles else styles["ReportSectionTitle"]
-                flowables.append(paragraph(replace_inline_markdown(heading_text), heading_style))
-            elif text_without_images.startswith("- ") or text_without_images.startswith("* "):
-                flowables.append(
-                    paragraph(replace_inline_markdown(text_without_images[2:]), styles["ReportBullet"], bulletText="•")
-                )
-            else:
-                flowables.append(paragraph(replace_inline_markdown(text_without_images), styles["ReportBody"]))
-
-        for match in image_matches:
+    def emit_images(flowables_list, raw_line):
+        for match in markdown_image_pattern.finditer(raw_line):
             image_url = match.group(2)
             image_width_target = markdown_image_target_width_mm if markdown_image_target_width_mm else 170
             image = get_embedded_image_fn(
@@ -155,17 +175,157 @@ def markdown_to_flowables(
                 centered=True,
             )
             if image:
-                flowables.append(spacer(1, 6))
-                flowables.append(image)
-                flowables.append(spacer(1, 6))
+                flowables_list.append(spacer(1, 6))
+                flowables_list.append(image)
+                flowables_list.append(spacer(1, 6))
             else:
                 alt_text = match.group(1) or "image"
-                flowables.append(
+                flowables_list.append(
                     paragraph(f"[Image omitted: {replace_inline_markdown(alt_text)}]", styles["ReportMuted"])
                 )
 
-    if in_code_block and code_lines:
-        append_code_block(flowables, code_lines, code_language)
+    def emit_text(flowables_list, raw_line, style_name, bullet=None, prefix=""):
+        text_without_images = markdown_image_pattern.sub("", raw_line).strip()
+        if prefix or text_without_images:
+            kwargs = {"bulletText": bullet} if bullet else {}
+            style = styles[style_name] if style_name in styles else styles["ReportBody"]
+            body = prefix + (replace_inline_markdown(text_without_images) if text_without_images else "")
+            flowables_list.append(paragraph(body, style, **kwargs))
+        emit_images(flowables_list, raw_line)
+
+    def is_list_line(raw_line):
+        if _is_horizontal_rule(raw_line):
+            return False
+        return bool(_UL_RE.match(raw_line) or _OL_RE.match(raw_line))
+
+    def is_table_start(source, index):
+        current = source[index]
+        if "|" not in current:
+            return False
+        if index + 1 >= len(source):
+            return False
+        return bool(_TABLE_SEP_RE.match(source[index + 1].strip()))
+
+    def starts_block(raw_line, source=None, index=None):
+        stripped = raw_line.strip()
+        if not stripped:
+            return True
+        if _FENCE_RE.match(stripped):
+            return True
+        if _is_horizontal_rule(raw_line):
+            return True
+        if _HEADING_RE.match(stripped):
+            return True
+        if _BLOCKQUOTE_RE.match(raw_line):
+            return True
+        if is_list_line(raw_line):
+            return True
+        if source is not None and index is not None and is_table_start(source, index):
+            return True
+        return False
+
+    lines = [line.rstrip() for line in text.splitlines()]
+    flowables = []
+    index = 0
+    while index < len(lines):
+        current = lines[index]
+        fence_match = _FENCE_RE.match(current.strip())
+        if fence_match:
+            language = (fence_match.group(1) or "").strip()
+            code_lines = []
+            index += 1
+            while index < len(lines) and not _FENCE_RE.match(lines[index].strip()):
+                code_lines.append(lines[index])
+                index += 1
+            if index < len(lines):
+                index += 1
+            append_code_block(flowables, code_lines, language)
+            continue
+
+        if not current.strip():
+            flowables.append(spacer(1, 4))
+            index += 1
+            continue
+
+        if _is_horizontal_rule(current):
+            if rule_fn:
+                flowables.append(rule_fn())
+            else:
+                flowables.append(spacer(1, 8))
+            index += 1
+            continue
+
+        heading_match = _HEADING_RE.match(markdown_image_pattern.sub("", current).strip())
+        if heading_match:
+            heading_level = len(heading_match.group(1))
+            style_name = heading_style_map.get(heading_level, "ReportMarkdownH4")
+            emit_text(flowables, heading_match.group(2).strip(), style_name)
+            emit_images(flowables, current)
+            index += 1
+            continue
+
+        if is_table_start(lines, index):
+            rows = [_split_table_row(current)]
+            index += 2
+            while index < len(lines) and "|" in lines[index] and lines[index].strip() and not _is_horizontal_rule(lines[index]):
+                rows.append(_split_table_row(lines[index]))
+                index += 1
+            if table_fn:
+                flowables.append(table_fn(rows))
+                flowables.append(spacer(1, 6))
+            else:
+                for row in rows:
+                    flowables.append(paragraph(replace_inline_markdown(" | ".join(row)), styles["ReportBody"]))
+            continue
+
+        quote_match = _BLOCKQUOTE_RE.match(current)
+        if quote_match:
+            quoted = [quote_match.group(1)]
+            index += 1
+            while index < len(lines):
+                nxt = _BLOCKQUOTE_RE.match(lines[index])
+                if not nxt:
+                    break
+                quoted.append(nxt.group(1))
+                index += 1
+            body = "\n".join(quoted).strip()
+            if quote_fn:
+                flowables.append(quote_fn(body))
+            else:
+                quote_style = styles["ReportQuote"] if "ReportQuote" in styles else styles["ReportBody"]
+                flowables.append(paragraph(replace_inline_markdown(body), quote_style))
+            flowables.append(spacer(1, 4))
+            continue
+
+        if is_list_line(current):
+            while index < len(lines) and is_list_line(lines[index]):
+                item = lines[index]
+                ul_match = _UL_RE.match(item)
+                ol_match = None if ul_match else _OL_RE.match(item)
+                match = ul_match or ol_match
+                level = _list_indent_level(match.group(1))
+                checked = match.group(3)
+                item_text = match.group(4) if ul_match else match.group(4)
+                if checked is not None:
+                    marker = "☑" if checked.lower() == "x" else "☐"
+                    prefix = ("&nbsp;" * (4 * level))
+                    emit_text(flowables, item_text, "ReportBullet", bullet=marker, prefix=prefix)
+                elif ul_match:
+                    prefix = "&nbsp;" * (4 * level)
+                    emit_text(flowables, item_text, "ReportBullet", bullet="•", prefix=prefix)
+                else:
+                    prefix = "&nbsp;" * (4 * level)
+                    emit_text(flowables, item_text, "ReportBullet", bullet=f"{match.group(2)}.", prefix=prefix)
+                index += 1
+            continue
+
+        paragraph_lines = [current]
+        index += 1
+        while index < len(lines) and not starts_block(lines[index], lines, index):
+            paragraph_lines.append(lines[index])
+            index += 1
+        joined = " ".join(part.strip() for part in paragraph_lines if part.strip())
+        emit_text(flowables, joined, "ReportBody")
 
     return flowables
 
@@ -201,7 +361,7 @@ def build_pie_chart(data_map, to_int, primary, colors, drawing_class, pie_class)
     return drawing
 
 
-def build_bar_chart(data_map, to_int, primary, colors, drawing_class, vertical_bar_chart_class):
+def build_bar_chart(data_map, to_int, primary, colors, drawing_class, vertical_bar_chart_class, bar_colors=None):
     keys = list(data_map.keys()) or ["No Data"]
     values = [to_int(data_map.get(key, 0), 0) for key in keys] or [0]
 
@@ -217,6 +377,13 @@ def build_bar_chart(data_map, to_int, primary, colors, drawing_class, vertical_b
     chart.barSpacing = 4
     chart.bars[0].fillColor = primary
     chart.bars[0].strokeColor = primary
+    if bar_colors:
+        for index, fill in enumerate(bar_colors):
+            try:
+                chart.bars[(0, index)].fillColor = fill
+                chart.bars[(0, index)].strokeColor = fill
+            except Exception:
+                pass
     chart.categoryAxis.categoryNames = keys
     chart.categoryAxis.labels.angle = 18
     chart.categoryAxis.labels.dy = -12
@@ -263,25 +430,69 @@ def section_title(
     return title_table
 
 
-def table_with_style(rows, col_widths, table_class, table_style_class, accent, border_color, surface_light, colors):
-    table = table_class(rows, colWidths=col_widths, hAlign="LEFT")
-    table.setStyle(
-        table_style_class(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), accent),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("GRID", (0, 0), (-1, -1), 0.55, border_color),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, surface_light]),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]
-        )
+def _xml_escape(value):
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
     )
+
+
+def _is_plain_table_cell(cell):
+    return cell is None or isinstance(cell, (str, int, float))
+
+
+def _wrap_table_rows(rows, paragraph_class, header_style, body_style):
+    wrapped = []
+    for row_index, row in enumerate(rows or []):
+        style = header_style if row_index == 0 else body_style
+        wrapped_row = []
+        for cell in row:
+            if _is_plain_table_cell(cell):
+                text = "" if cell is None else _xml_escape(cell)
+                wrapped_row.append(paragraph_class(text or " ", style))
+            else:
+                wrapped_row.append(cell)
+        wrapped.append(wrapped_row)
+    return wrapped
+
+
+def table_with_style(
+    rows,
+    col_widths,
+    table_class,
+    table_style_class,
+    accent,
+    border_color,
+    surface_light,
+    colors,
+    paragraph_class=None,
+    header_style=None,
+    body_style=None,
+    extra_commands=None,
+):
+    payload = rows
+    if paragraph_class and header_style and body_style:
+        payload = _wrap_table_rows(rows, paragraph_class, header_style, body_style)
+    table = table_class(payload, colWidths=col_widths, hAlign="LEFT")
+    commands = [
+        ("BACKGROUND", (0, 0), (-1, 0), accent),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("GRID", (0, 0), (-1, -1), 0.55, border_color),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, surface_light]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+    if extra_commands:
+        commands.extend(extra_commands)
+    table.setStyle(table_style_class(commands))
     return table
 
 
@@ -337,34 +548,61 @@ def metric_tiles(
     return table
 
 
-def make_draw_cover_page(a4, mm, primary, accent, company_name, colors):
+def _chrome_header_footer(branding, company_name, resolve, context):
+    branding = branding if isinstance(branding, dict) else {}
+    header_left = str(branding.get("header_text") or "").strip() or company_name
+    header_right = resolve("{{application.name}}") or resolve("{{record.name}}") or "Report"
+    footer_parts = []
+    footer_text = str(branding.get("footer_text") or "").strip()
+    if footer_text:
+        footer_parts.append(footer_text)
+    elif company_name:
+        footer_parts.append(company_name)
+    generated = str((context or {}).get("generated_date") or "").strip()
+    if generated:
+        footer_parts.append(generated)
+    footer = " · ".join(footer_parts)
+    return header_left, header_right, footer
+
+
+def make_draw_cover_page(a4, mm, primary, accent, company_name, colors, context=None, branding=None):
     def draw_cover_page(canvas, doc):
         canvas.saveState()
         page_width, page_height = a4
-        canvas.setFillColor(primary)
-        canvas.rect(0, page_height - (24 * mm), page_width, 24 * mm, fill=1, stroke=0)
-        canvas.setFillColor(accent)
-        canvas.rect(0, 0, page_width, 7 * mm, fill=1, stroke=0)
+        canvas.setStrokeColor(primary)
+        canvas.setLineWidth(1.2)
+        canvas.line(0, page_height - (8 * mm), page_width, page_height - (8 * mm))
+        canvas.setStrokeColor(accent)
+        canvas.setLineWidth(0.6)
+        rule_y = (RAPTOR_LOCKUP_BOTTOM_MM + RAPTOR_LOCKUP_HEIGHT_MM + 3) * mm
+        canvas.line(0, rule_y, page_width, rule_y)
+        text_x = draw_raptor_footer_lockup(canvas, mm)
+        _, _, footer = _chrome_header_footer(branding, company_name, lambda _token: "", context)
+        if footer:
+            canvas.setFont("Helvetica", 7.5)
+            canvas.setFillColor(colors.HexColor("#64748B"))
+            canvas.drawString(text_x, (RAPTOR_LOCKUP_BOTTOM_MM + 5) * mm, footer)
         canvas.restoreState()
 
     return draw_cover_page
 
 
-def make_draw_body_page(a4, mm, surface_light, border_color, muted, resolve, context, company_name):
+def make_draw_body_page(a4, mm, surface_light, border_color, muted, resolve, context, company_name, branding=None):
     def draw_body_page(canvas, doc):
         canvas.saveState()
         page_width, page_height = a4
-        canvas.setFillColor(surface_light)
-        canvas.rect(0, page_height - (15 * mm), page_width, 15 * mm, fill=1, stroke=0)
         canvas.setStrokeColor(border_color)
         canvas.setLineWidth(0.5)
-        canvas.line(12 * mm, page_height - (15 * mm), page_width - (12 * mm), page_height - (15 * mm))
+        canvas.line(12 * mm, page_height - (12 * mm), page_width - (12 * mm), page_height - (12 * mm))
         canvas.setFont("Helvetica", 8.4)
         canvas.setFillColor(muted)
-        canvas.drawString(14 * mm, page_height - (10 * mm), company_name)
-        canvas.drawRightString(page_width - (14 * mm), page_height - (10 * mm), resolve("{{record.name}}") or "Pentest")
-        canvas.drawString(14 * mm, 10 * mm, f"Generated {context['generated_date']}")
-        canvas.drawRightString(page_width - (14 * mm), 10 * mm, f"Page {doc.page}")
+        header_left, header_right, footer = _chrome_header_footer(branding, company_name, resolve, context)
+        canvas.drawString(14 * mm, page_height - (9 * mm), header_left)
+        canvas.drawRightString(page_width - (14 * mm), page_height - (9 * mm), header_right)
+        text_x = draw_raptor_footer_lockup(canvas, mm)
+        footer_y = (RAPTOR_LOCKUP_BOTTOM_MM + 5) * mm
+        canvas.drawString(text_x, footer_y, footer)
+        canvas.drawRightString(page_width - (14 * mm), footer_y, f"Page {doc.page}")
         canvas.restoreState()
 
     return draw_body_page
@@ -378,6 +616,8 @@ __all__ = [
     "make_draw_cover_page",
     "markdown_to_flowables",
     "metric_tiles",
+    "draw_raptor_footer_lockup",
+    "raptor_lockup_path",
     "safe_color",
     "section_title",
     "table_with_style",
