@@ -8,7 +8,9 @@ test('RaptorMark ships mark, wordmark, and lockup variants', () => {
   const source = readSource('./RaptorMark.js');
   expect(source).toContain("variant === 'wordmark'");
   expect(source).toContain("variant === 'lockup'");
+  expect(source).toContain('lockupPrint');
   expect(source).toContain("variant === 'lockupPrint'");
+  expect(source).toContain('if (variant === \'lockupPrint\') return lockupPrint');
   expect(source).toContain('markLight');
   expect(source).toContain('wordmarkLight');
   expect(source).toContain('lockupLight');
@@ -19,12 +21,14 @@ test('RaptorMark ships mark, wordmark, and lockup variants', () => {
   expect(source).toContain('mark: 32');
   expect(source).toContain('wordmark: 16');
   expect(source).toContain('lockup: 192');
+  expect(source).toContain("'multiply'");
   expect(fs.existsSync(path.join(__dirname, '../brand/raptor-mark.png'))).toBe(true);
   expect(fs.existsSync(path.join(__dirname, '../brand/raptor-mark-light.png'))).toBe(true);
   expect(fs.existsSync(path.join(__dirname, '../brand/raptor-wordmark.png'))).toBe(true);
   expect(fs.existsSync(path.join(__dirname, '../brand/raptor-wordmark-light.png'))).toBe(true);
   expect(fs.existsSync(path.join(__dirname, '../brand/raptor-lockup.png'))).toBe(true);
   expect(fs.existsSync(path.join(__dirname, '../brand/raptor-lockup-light.png'))).toBe(true);
+  expect(fs.existsSync(path.join(__dirname, '../brand/raptor-lockup-print.png'))).toBe(true);
   const png = (name) => {
     const bytes = fs.readFileSync(path.join(__dirname, '../brand', name));
     expect(bytes.slice(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -33,4 +37,5 @@ test('RaptorMark ships mark, wordmark, and lockup variants', () => {
   png('raptor-mark-light.png');
   png('raptor-wordmark-light.png');
   png('raptor-lockup-light.png');
+  png('raptor-lockup-print.png');
 });

@@ -14,7 +14,7 @@ RAPTOR_LOCKUP_BOTTOM_MM = 7
 
 
 def raptor_lockup_path():
-    return Path(__file__).resolve().parents[2] / "assets" / "brand" / "raptor-lockup-light.png"
+    return Path(__file__).resolve().parents[2] / "assets" / "brand" / "raptor-lockup-print.png"
 
 
 def draw_raptor_footer_lockup(canvas, mm):

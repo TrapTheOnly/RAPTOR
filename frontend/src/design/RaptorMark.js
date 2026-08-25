@@ -20,16 +20,20 @@ const SAFE = 0.04;
 
 const RAW_FRAME = {
   mark: {
-    light: { originX: 41 / 1254, originY: 127 / 1254, fillW: 1172 / 1254, fillH: 939 / 1254, aspect: 1 },
+    light: { originX: 172 / 1254, originY: 259 / 1254, fillW: 914 / 1254, fillH: 677 / 1254, aspect: 1 },
     dark: { originX: 172 / 1254, originY: 259 / 1254, fillW: 914 / 1254, fillH: 677 / 1254, aspect: 1 }
   },
   wordmark: {
-    light: { originX: 82 / 2027, originY: 282 / 776, fillW: 1859 / 2027, fillH: 180 / 776, aspect: 2027 / 776 },
+    light: { originX: 256 / 2172, originY: 289 / 724, fillW: 1669 / 2172, fillH: 173 / 724, aspect: 2172 / 724 },
     dark: { originX: 256 / 2172, originY: 289 / 724, fillW: 1669 / 2172, fillH: 173 / 724, aspect: 2172 / 724 }
   },
   lockup: {
-    light: { originX: 97 / 1254, originY: 211 / 1254, fillW: 1061 / 1254, fillH: 835 / 1254, aspect: 1 },
+    light: { originX: 178 / 1254, originY: 260 / 1254, fillW: 899 / 1254, fillH: 699 / 1254, aspect: 1 },
     dark: { originX: 178 / 1254, originY: 260 / 1254, fillW: 899 / 1254, fillH: 699 / 1254, aspect: 1 }
+  },
+  lockupPrint: {
+    light: { originX: 97 / 1254, originY: 211 / 1254, fillW: 1061 / 1254, fillH: 835 / 1254, aspect: 1 },
+    dark: { originX: 97 / 1254, originY: 211 / 1254, fillW: 1061 / 1254, fillH: 835 / 1254, aspect: 1 }
   }
 };
 
@@ -49,7 +53,7 @@ const FRAME = {
   mark: { light: padFrame(RAW_FRAME.mark.light), dark: padFrame(RAW_FRAME.mark.dark) },
   wordmark: { light: padFrame(RAW_FRAME.wordmark.light), dark: padFrame(RAW_FRAME.wordmark.dark) },
   lockup: { light: padFrame(RAW_FRAME.lockup.light), dark: padFrame(RAW_FRAME.lockup.dark) },
-  lockupPrint: { light: padFrame(RAW_FRAME.lockup.light), dark: padFrame(RAW_FRAME.lockup.dark) }
+  lockupPrint: { light: padFrame(RAW_FRAME.lockupPrint.light), dark: padFrame(RAW_FRAME.lockupPrint.dark) }
 };
 
 export const RAPTOR_BRAND = {
@@ -66,7 +70,7 @@ export const raptorBrandSrc = (variant, mode = 'dark') => {
   const light = mode === 'light';
   if (variant === 'wordmark') return light ? wordmarkLight : wordmark;
   if (variant === 'lockup') return light ? lockupLight : lockup;
-  if (variant === 'lockupPrint') return lockupLight;
+  if (variant === 'lockupPrint') return lockupPrint;
   return light ? markLight : mark;
 };
 
@@ -93,6 +97,7 @@ export const RaptorMark = ({
   const imgWidth = imgHeight * frame.aspect;
   const boxWidth = width || resolvedHeight * (frame.fillW / frame.fillH) * frame.aspect;
   const knockOutPlate = palette.mode === 'dark';
+  const blendPlate = knockOutPlate ? 'screen' : 'multiply';
   const { maxWidth, ...restStyle } = style || {};
   return (
     <span
@@ -124,7 +129,7 @@ export const RaptorMark = ({
           display: 'block',
           objectFit: 'fill',
           userSelect: 'none',
-          mixBlendMode: knockOutPlate ? 'screen' : 'normal',
+          mixBlendMode: blendPlate,
           ...restStyle
         }}
       />

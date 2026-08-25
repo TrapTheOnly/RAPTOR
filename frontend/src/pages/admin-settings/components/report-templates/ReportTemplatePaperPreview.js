@@ -487,7 +487,7 @@ const ReportTemplatePaperPreview = ({ templateForm, previewKind, brandKit }) => 
           alignItems: 'flex-end'
         }}
       >
-        <img src={RAPTOR_BRAND.lockupLight} alt="RAPTOR" style={{ height: 40, display: 'block' }} />
+        <img src={RAPTOR_BRAND.lockupPrint} alt="RAPTOR" style={{ height: 40, display: 'block' }} />
       </div>
       <div
         style={{

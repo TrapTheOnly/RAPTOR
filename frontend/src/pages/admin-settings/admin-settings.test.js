@@ -207,7 +207,7 @@ test('user and domain subpages exist in both nested nav and right-side tabs', ()
   expect(readSource('./components/report-templates/ReportTemplatePaperPreview.js')).toContain('overflowWrap');
   expect(readSource('./components/report-templates/ReportTemplatePaperPreview.js')).toContain('#DC2626');
   expect(readSource('./components/report-templates/ReportTemplatePaperPreview.js')).toContain('block.show_logo');
-  expect(readSource('./components/report-templates/ReportTemplatePaperPreview.js')).toContain('RAPTOR_BRAND.lockupLight');
+  expect(readSource('./components/report-templates/ReportTemplatePaperPreview.js')).toContain('RAPTOR_BRAND.lockupPrint');
   expect(readSource('./components/report-templates/ReportTemplatePaperPreview.js')).toContain('left: 12');
   expect(readSource('./components/report-templates/ReportTemplatePaperPreview.js')).toContain('bottom: 10');
   expect(readSource('./components/ReportTemplatesSection.js')).toContain('Template info');
