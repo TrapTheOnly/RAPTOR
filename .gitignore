@@ -15,6 +15,10 @@ nmap/
 backend/.env
 collector/dist/*
 !collector/dist/.gitkeep
+burp-extension/.gradle
+burp-extension/build
+burp-extension/dist/*
+!burp-extension/dist/.gitkeep
 .DS_Store
 __pycache__
 *Records
@@ -27,3 +31,5 @@ tree_db.py
 *.ipynb
 scripts/*.py
 !scripts/seed_demo_world.py
+deploy/integrations/generated/*
+!deploy/integrations/generated/.gitignore

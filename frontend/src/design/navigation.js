@@ -36,7 +36,10 @@ export const routeShellKey = (pathname = '') => {
   const parts = path.split('/').filter(Boolean);
   const root = parts[0] || '';
 
-  if (root === 'apps' && parts[1]) return `apps/${parts[1]}`;
+  if (root === 'apps' && parts[1]) {
+    if (parts[2] === 'waves' && parts[4] === 'scan-live') return `apps/${parts[1]}/scan-live`;
+    return `apps/${parts[1]}`;
+  }
   if (root === 'docs') return 'docs';
   if (root === 'pentest' && parts[1] === 'record' && parts[2]) {
     if (parts[3] === 'scan-live') return `pentest/record/${parts[2]}/scan-live`;

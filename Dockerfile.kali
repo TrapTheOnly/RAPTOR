@@ -44,6 +44,7 @@ RUN set -eux; \
       wordlists \
       seclists \
       curl \
+      git \
       dnsutils \
       netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
@@ -67,7 +68,19 @@ RUN set -eux; \
       pip3 install --no-cache-dir --break-system-packages -r /opt/kali-server/requirements.txt; \
     fi
 
+RUN set -eux; \
+    git_proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"; \
+    if [ -n "$git_proxy" ]; then export HTTPS_PROXY="$git_proxy" HTTP_PROXY="$git_proxy"; fi; \
+    git clone --depth 1 https://github.com/ticarpi/jwt_tool.git /opt/jwt_tool; \
+    if [ -f /opt/jwt_tool/requirements.txt ]; then \
+      pip3 install --no-cache-dir --break-system-packages -r /opt/jwt_tool/requirements.txt || true; \
+    fi; \
+    pip3 install --no-cache-dir --break-system-packages pycryptodomex pycryptodome termcolor
+
+COPY scanner/knowledge/jwt-secrets.txt /opt/jwt_tool/jwt-secrets.txt
 COPY scanner/mcp-kali-server/server.py /opt/kali-server/server.py
+# jwt_tool's createConfig() writes comment-keys that Python 3.14 rejects. Bake a real ini.
+RUN python3 -c "import importlib.util; spec=importlib.util.spec_from_file_location('kali_server', '/opt/kali-server/server.py'); mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod); mod.ensure_jwt_tool_config()"
 
 EXPOSE 5000
 

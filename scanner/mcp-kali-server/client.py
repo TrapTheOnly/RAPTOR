@@ -32,6 +32,7 @@ DESTRUCTIVE_ENDPOINTS = {
     "api/tools/metasploit",
     "api/tools/hydra",
     "api/tools/john",
+    "api/tools/jwt",
 }
 
 class KaliToolsClient:
@@ -408,6 +409,11 @@ def setup_mcp_server(kali_client: KaliToolsClient) -> FastMCP:
             "additional_args": additional_args
         }
         return kali_client.safe_post("api/tools/enum4linux", data)
+
+    @mcp.tool(name="jwt_attacks")
+    def jwt_attacks(token: str, host: str = "", path: str = "") -> Dict[str, Any]:
+        """Run the Kali jwt_tool suite on one JWT (none alg, key confusion, weak secret, claim tamper)."""
+        return kali_client.safe_post("api/tools/jwt", {"token": token, "host": host, "path": path})
 
     @mcp.tool(name="server_health")
     def server_health() -> Dict[str, Any]:

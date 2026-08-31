@@ -360,6 +360,9 @@ def test_closed_wave_rejects_finding_mutations(monkeypatch):
     assert promote_status == 400
     merged, merge_status = app_program_service.merge_findings("f1", {"loser_id": "f2"})
     assert merge_status == 400
+    deleted, delete_status = app_program_service.delete_finding("f1", username="ada", role="pentester")
+    assert delete_status == 400
+    assert "ended" in deleted["error"].lower()
 
 
 def test_create_finding_rejects_closed_wave(monkeypatch):
@@ -653,3 +656,54 @@ def test_get_applications_redacts_sensitive_fields_and_filters_envs(monkeypatch)
     assert "roe_link" not in app
     assert "idp" not in app
     assert "token_audience" not in app
+
+
+def test_delete_finding_allows_reporter(monkeypatch):
+    monkeypatch.setattr(app_program_service, "user_has_permission", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {"id": "f1", "created_by": "ada", "collaborators": [], "source": "human"},
+    )
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "delete_finding",
+        lambda finding_id: {"id": finding_id},
+    )
+    payload, status = app_program_service.delete_finding("f1", username="ada", role="pentester")
+    assert status == 200
+    assert payload["deleted"] is True
+
+
+def test_delete_finding_rejects_unrelated_tester(monkeypatch):
+    monkeypatch.setattr(app_program_service, "user_has_permission", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {"id": "f1", "created_by": "bob", "collaborators": [], "source": "human"},
+    )
+    payload, status = app_program_service.delete_finding("f1", username="ada", role="pentester")
+    assert status == 403
+    assert "reporter" in payload["error"].lower()
+
+
+def test_delete_finding_allows_scanner_source_for_testers(monkeypatch):
+    monkeypatch.setattr(app_program_service, "user_has_permission", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "get_finding",
+        lambda *_a, **_k: {
+            "id": "f1",
+            "created_by": "RAPTOR-Scanner",
+            "collaborators": [],
+            "source": "scanner",
+        },
+    )
+    monkeypatch.setattr(
+        app_program_service.pentest_findings_repository,
+        "delete_finding",
+        lambda finding_id: {"id": finding_id},
+    )
+    payload, status = app_program_service.delete_finding("f1", username="ada", role="pentester")
+    assert status == 200
+    assert payload["id"] == "f1"

@@ -110,6 +110,7 @@ export const Combo = ({
         onChange={handleChange}
         renderOption={renderOption}
         size="small"
+        fullWidth={fullWidth}
         filterSelectedOptions={multiple}
         slotProps={{
           popper: {
@@ -121,6 +122,7 @@ export const Combo = ({
         sx={
           multiple
             ? {
+                width: fullWidth ? '100%' : undefined,
                 '& .MuiOutlinedInput-root': {
                   height: 'auto',
                   minHeight: 32,
@@ -129,10 +131,13 @@ export const Combo = ({
                 }
               }
             : {
-                '& .MuiOutlinedInput-root': { height: 32 }
+                width: fullWidth ? '100%' : undefined,
+                '& .MuiOutlinedInput-root': { height: 32, width: '100%' }
               }
         }
-        renderInput={(params) => <TextField {...params} size="small" placeholder={placeholder} />}
+        renderInput={(params) => (
+          <TextField {...params} size="small" placeholder={placeholder} fullWidth={fullWidth} />
+        )}
         {...rest}
       />
       {hint ? (

@@ -277,9 +277,35 @@ _META_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 _SECTION_HEAD_RE = re.compile(
-    r"^\s*(?:#{1,6}\s+|\*\*)(impact|evidence|remediation)(?:\*\*)?\s*$",
+    r"^\s*(?:#{1,6}\s+|\*\*)(impact|evidence|remediation|description|proof of concept|proof-of-concept|poc)(?:\*\*)?\s*$",
     re.IGNORECASE,
 )
+_SECTION_ALIASES = {
+    "impact": "impact",
+    "evidence": "evidence",
+    "remediation": "remediation",
+    "description": "description",
+    "proof of concept": "evidence",
+    "proof-of-concept": "evidence",
+    "poc": "evidence",
+}
+_LEADING_TITLE_RE = re.compile(r"^#\s+(.+)$")
+
+
+def strip_leading_title(text: str) -> Tuple[str, str]:
+    """Pull a markdown H1 off the top of a description blob."""
+    lines = str(text or "").splitlines()
+    index = 0
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    if index >= len(lines):
+        return "", str(text or "").strip()
+    match = _LEADING_TITLE_RE.match(lines[index].strip())
+    if not match:
+        return "", str(text or "").strip()
+    title = match.group(1).strip()
+    rest = "\n".join(lines[:index] + lines[index + 1 :]).strip()
+    return title, rest
 
 
 def split_finding_narrative(finding: Dict[str, Any]) -> Tuple[str, str, str, str]:
@@ -296,7 +322,7 @@ def split_finding_narrative(finding: Dict[str, Any]) -> Tuple[str, str, str, str
             continue
         heading = _SECTION_HEAD_RE.match(stripped)
         if heading:
-            current = heading.group(1).lower()
+            current = _SECTION_ALIASES.get(heading.group(1).lower(), "description")
             continue
         buckets[current].append(raw_line)
 
@@ -320,6 +346,23 @@ def split_finding_narrative(finding: Dict[str, Any]) -> Tuple[str, str, str, str
         extras = "\n".join(extra_notes)
         evidence = f"{evidence}\n\n{extras}".strip() if evidence else extras
     return description, impact, evidence, remediation
+
+
+def hydrate_finding_fields(finding: Dict[str, Any]) -> Dict[str, Any]:
+    """Move a tutorial-style description blob into RAPTOR's separate columns."""
+    out = dict(finding or {})
+    description, impact, evidence, remediation = split_finding_narrative(out)
+    extracted_title, description = strip_leading_title(description)
+    if extracted_title and not str(out.get("title") or "").strip():
+        out["title"] = extracted_title
+    out["description"] = description
+    if not str(out.get("impact") or "").strip():
+        out["impact"] = impact
+    if not str(out.get("evidence") or "").strip():
+        out["evidence"] = evidence
+    if not str(out.get("remediation") or "").strip():
+        out["remediation"] = remediation
+    return out
 
 
 def normalize_finding(raw: Any) -> Optional[Dict[str, Any]]:
@@ -788,7 +831,9 @@ __all__ = [
     "lint_template_tokens",
     "normalize_finding",
     "collect_involved_people",
+    "hydrate_finding_fields",
     "split_finding_narrative",
+    "strip_leading_title",
     "format_report_date",
     "resolve_placeholders_strict",
     "sample_report_context",

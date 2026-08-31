@@ -178,6 +178,11 @@ def get_wave(app_id: int, wave_id: int, username: str = "", role: str = "") -> T
         offset=0,
         env_ids=allowed,
     )
+    from app.repositories.integrations_repository import latest_export_urls
+
+    dojo_urls = latest_export_urls([item.get("id") for item in findings], "defectdojo")
+    for item in findings:
+        item["defectdojo_url"] = dojo_urls.get(str(item.get("id") or ""), "")
     current_scan_job = None
     try:
         from app.repositories.scan_jobs_repository import latest_job_for_wave, scan_jobs_table_ready

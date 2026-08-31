@@ -62,6 +62,7 @@ services:
       - RAPTOR_SERVICE_API_KEY=${RAPTOR_SERVICE_API_KEY:?RAPTOR_SERVICE_API_KEY must be set}
       - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
       - KALI_CLIENT_PATH=${KALI_CLIENT_PATH:-/usr/app/src/scanner/mcp-kali-server/client.py}
+      - KALI_INTERNAL_TOKEN=${KALI_INTERNAL_TOKEN:-}
       - KEYCLOAK_URL=${KEYCLOAK_URL:-http://keycloak:8080}
       - KEYCLOAK_PUBLIC_URL=${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}
       - RAPTOR_PUBLIC_URL=${RAPTOR_PUBLIC_URL:-http://localhost:1337}
@@ -106,6 +107,8 @@ services:
       - DATA_PATH=${DATA_PATH:-/appdata/data}
       - SECRET_KEY
       - APP_PORT
+      - KALI_SERVER_URL=${KALI_SERVER_URL:-http://kali:5000}
+      - KALI_INTERNAL_TOKEN=${KALI_INTERNAL_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy

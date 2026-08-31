@@ -114,20 +114,15 @@ async def get_or_create_vuln_category(name: str) -> Any:
 @mcp.tool(
     name="add_pentest_vulnerability",
     description=(
-        "Append a new vulnerability to a pentest record. "
+        "File a confirmed finding on a pentest record. Write like a pentester, not a tutor. "
         "Provide CVSS v3.1 vector metrics individually. "
         "Always resolve category_id first with get_or_create_vuln_category — never pass an empty string. "
-        "The description field MUST be a markdown document using this exact template:\n\n"
-        "# <Vulnerability Title>\n\n"
-        "## Description\n"
-        "<What the issue is and why it exists.>\n\n"
-        "## Proof of Concept\n"
-        "<Step-by-step reproduction or tool output snippet that confirms the issue.>\n\n"
-        "## Impact\n"
-        "<What an attacker can achieve; business/technical consequence.>\n\n"
-        "## Remediation\n"
-        "<Specific, actionable fix — not generic advice.>\n\n"
-        "All four sections are mandatory. Keep total description under 500 words."
+        "title: short name. description: 1–2 sentences on what is wrong. "
+        "impact: attacker outcome. remediation: the fix. "
+        "evidence: one flow with no headings. For each action, put the exact command, request, or payload, "
+        "then immediately the proof (command output fence, screenshot markdown image, or HTTP exchange). "
+        "HTTP exchanges use a single ```http fence: request, a line containing only ===, then response. "
+        "Do not narrate RAPTOR, do not explain how you tested, do not use Proof of Concept headings."
     ),
 )
 async def add_pentest_vulnerability(
@@ -142,10 +137,29 @@ async def add_pentest_vulnerability(
     c: str,
     i: str,
     a: str,
+    title: str = "",
+    impact: str = "",
+    evidence: str = "",
+    remediation: str = "",
 ) -> Any:
     settings = load_settings()
     return await do_add_pentest_vulnerability(
-        record_id, description, category_id, av, ac, pr, ui, s, c, i, a, settings
+        record_id,
+        description,
+        category_id,
+        av,
+        ac,
+        pr,
+        ui,
+        s,
+        c,
+        i,
+        a,
+        settings,
+        title=title,
+        impact=impact,
+        evidence=evidence,
+        remediation=remediation,
     )
 
 

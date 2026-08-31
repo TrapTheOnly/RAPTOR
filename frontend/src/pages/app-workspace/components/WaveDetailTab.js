@@ -1,7 +1,20 @@
 import React, { useState } from 'react';
-import { Alert, Checkbox } from '@mui/material';
+import { Alert, Checkbox, Tooltip } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { ArrowBack, DeleteOutline, Flag, Monitor, RestartAlt, SmartToy } from '@mui/icons-material';
+import {
+  Add,
+  ArrowBack,
+  BugReport,
+  ConfirmationNumber,
+  DeleteOutline,
+  FileDownload,
+  Flag,
+  Monitor,
+  PlayArrow,
+  RestartAlt,
+  SmartToy,
+  StopCircle
+} from '@mui/icons-material';
 import {
   Button,
   Combo,
@@ -20,7 +33,9 @@ import {
 } from '../../../design/primitives';
 import { hostNotebookPath } from '../../../design/navigation';
 import { SPACE } from '../../../design/tokens';
-import FindingCard from './FindingCard';
+import { kindHasReadyTemplate } from '../../admin-settings/integrations-utils';
+import FindingCard, { isHttpUrl } from './FindingCard';
+import BurpLiveSection from './BurpLiveSection';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -61,7 +76,9 @@ const WaveDetailTab = ({
   canLaunchScan,
   onLaunchScan,
   onRestartScan,
-  scanBusy
+  scanBusy,
+  readyIntegrations,
+  onReportToIntegration
 }) => {
   const navigate = useNavigate();
   const [section, setSection] = useState('overview');
@@ -107,6 +124,8 @@ const WaveDetailTab = ({
   const scanRunning = scopedHosts.some((host) => (host.scan_status || 'idle') === 'running')
     || wave.current_scan_job?.status === 'running';
   const scanFinished = !scanRunning && scopedHosts.some((host) => ['completed', 'failed'].includes(host.scan_status));
+  const jiraReportable = findings.some((item) => item.status !== 'draft' && !isHttpUrl(item.ticket_url));
+  const dojoReportable = findings.some((item) => item.status !== 'draft' && !isHttpUrl(item.defectdojo_url));
 
   const toggle = (id) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
@@ -179,22 +198,52 @@ const WaveDetailTab = ({
               </Button>
             ) : null}
             {canCreateFinding && isOpen && isStarted ? (
-              <Button size="small" variant="outlined" onClick={onCreateFinding}>
+              <Button size="small" variant="outlined" startIcon={<Add sx={{ fontSize: 16 }} />} onClick={onCreateFinding}>
                 New finding
               </Button>
             ) : null}
+            {canModify && findings.length > 0 && kindHasReadyTemplate(readyIntegrations, 'jira') && onReportToIntegration ? (
+              <Tooltip title="Every finding already has a Jira ticket" disableHoverListener={jiraReportable}>
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<ConfirmationNumber sx={{ fontSize: 16 }} />}
+                    disabled={!jiraReportable}
+                    onClick={() => onReportToIntegration('jira')}
+                  >
+                    Report to Jira
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
+            {canModify && findings.length > 0 && kindHasReadyTemplate(readyIntegrations, 'defectdojo') && onReportToIntegration ? (
+              <Tooltip title="Every finding already has a DefectDojo finding" disableHoverListener={dojoReportable}>
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<BugReport sx={{ fontSize: 16 }} />}
+                    disabled={!dojoReportable}
+                    onClick={() => onReportToIntegration('defectdojo')}
+                  >
+                    Report to DefectDojo
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
             {canModify && isOpen && !isStarted ? (
-              <Button size="small" variant="contained" onClick={() => onStartWave(wave.id)}>
+              <Button size="small" variant="contained" startIcon={<PlayArrow sx={{ fontSize: 16 }} />} onClick={() => onStartWave(wave.id)}>
                 Start wave
               </Button>
             ) : null}
             {canExport ? (
-              <Button size="small" variant="contained" onClick={() => onExportWave(wave)}>
+              <Button size="small" variant="contained" startIcon={<FileDownload sx={{ fontSize: 16 }} />} onClick={() => onExportWave(wave)}>
                 Export
               </Button>
             ) : null}
             {canModify && isOpen ? (
-              <Button size="small" onClick={() => setEnding(true)}>
+              <Button size="small" startIcon={<StopCircle sx={{ fontSize: 16 }} />} onClick={() => setEnding(true)}>
                 End wave
               </Button>
             ) : null}
@@ -331,6 +380,13 @@ const WaveDetailTab = ({
               </div>
             ) : null}
           </section>
+
+          <BurpLiveSection
+            appId={appId}
+            waveId={wave.id}
+            canMint={canModify || isWaveTester}
+            isOpen={isOpen}
+          />
         </div>
       ) : null}
 
@@ -443,7 +499,7 @@ const WaveDetailTab = ({
             hint="File a finding against a host in this wave after you start it. Earlier waves keep their own findings."
             actions={
               canCreateFinding && isOpen && isStarted ? (
-                <Button size="small" variant="contained" onClick={onCreateFinding}>
+                <Button size="small" variant="contained" startIcon={<Add sx={{ fontSize: 16 }} />} onClick={onCreateFinding}>
                   New finding
                 </Button>
               ) : null

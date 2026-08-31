@@ -8,6 +8,7 @@ import {
   Dns as DnsIcon,
   Email as EmailIcon,
   FactCheck as FactCheckIcon,
+  Hub as HubIcon,
   People as PeopleIcon,
   Security as SecurityIcon,
   SmartToy as SmartToyIcon
@@ -58,6 +59,7 @@ import SsoConnectionsPanel from './admin-settings/components/users/SsoConnection
 import UserManagementSection from './admin-settings/components/users/UserManagementSection';
 import EmailSettingsPanel from './admin-settings/components/EmailSettingsPanel';
 import AiScannerSection from './admin-settings/components/AiScannerSection';
+import IntegrationsSection from './admin-settings/components/IntegrationsSection';
 
 const REQUIRED_RESET_PHRASE = 'RESET NOTEBOOKS KEEP FINDINGS';
 const EMPTY_CHECKLIST_TEMPLATE_FORM = {
@@ -151,6 +153,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
   const canManageIpSources = hasPermission('manage_ip_sources');
   const canManageVulnCategories = hasPermission('manage_vuln_categories');
   const canManageReportTemplates = hasPermission('manage_report_templates');
+  const canManageIntegrations = userRole === 'admin' || userRole === 'manager';
 
   const sections = useMemo(
     () => [
@@ -197,6 +200,13 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
         visible: canManageReportTemplates
       },
       {
+        key: 'integrations',
+        label: 'Integrations',
+        description: 'Connect Jira and DefectDojo, then map RAPTOR fields onto their ticket templates.',
+        icon: HubIcon,
+        visible: canManageIntegrations
+      },
+      {
         key: 'maintenance',
         label: 'Maintenance',
         description: 'Manage pentest resets.',
@@ -225,6 +235,7 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
       canManageVulnCategories,
       canManageChecklistTemplates,
       canManageReportTemplates,
+      canManageIntegrations,
       canRunMaintenance
     ]
   );
@@ -1605,6 +1616,8 @@ const AdminSettings = ({ userRole, userPermissions = [] }) => {
             onOpenResetDialog={handleOpenResetDialog}
           />
         );
+      case 'integrations':
+        return <IntegrationsSection showMessage={showMessage} />;
       case 'notifications':
         return <EmailSettingsPanel showMessage={showMessage} />;
       case 'ai-scanner':

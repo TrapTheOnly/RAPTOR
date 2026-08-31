@@ -7,6 +7,9 @@ from app.integrations.db.connection import ROW_AS_DICT, get_db_connection, get_t
 logger = logging.getLogger(__name__)
 
 
+_JOB_STATUSES = {"running", "naming", "pending", "queued", "failed", "completed"}
+
+
 def create_scan_job(
     application_id: int,
     wave_id: int,
@@ -14,28 +17,57 @@ def create_scan_job(
     launched_by: str,
     provider_type: str = "",
     model_id: str = "",
+    title: str = "",
+    status: str = "running",
 ) -> Dict[str, Any]:
+    job_status = str(status or "running")
+    if job_status not in _JOB_STATUSES:
+        job_status = "running"
     with get_db_connection() as conn:
         conn.row_factory = ROW_AS_DICT
         c = conn.cursor()
-        c.execute(
-            """
-            INSERT INTO scan_jobs (
-                application_id, wave_id, status, record_ids, launched_by,
-                provider_type, model_id
+        columns = get_table_columns(c, "scan_jobs")
+        if "title" in columns:
+            c.execute(
+                """
+                INSERT INTO scan_jobs (
+                    application_id, wave_id, status, record_ids, launched_by,
+                    provider_type, model_id, title
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING *
+                """,
+                (
+                    int(application_id),
+                    int(wave_id),
+                    job_status,
+                    json.dumps([int(item) for item in record_ids]),
+                    launched_by or "",
+                    provider_type or "",
+                    model_id or "",
+                    str(title or ""),
+                ),
             )
-            VALUES (?, ?, 'running', ?, ?, ?, ?)
-            RETURNING *
-            """,
-            (
-                int(application_id),
-                int(wave_id),
-                json.dumps([int(item) for item in record_ids]),
-                launched_by or "",
-                provider_type or "",
-                model_id or "",
-            ),
-        )
+        else:
+            c.execute(
+                """
+                INSERT INTO scan_jobs (
+                    application_id, wave_id, status, record_ids, launched_by,
+                    provider_type, model_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                RETURNING *
+                """,
+                (
+                    int(application_id),
+                    int(wave_id),
+                    job_status,
+                    json.dumps([int(item) for item in record_ids]),
+                    launched_by or "",
+                    provider_type or "",
+                    model_id or "",
+                ),
+            )
         row = c.fetchone()
         conn.commit()
     return _hydrate(row)
@@ -74,7 +106,7 @@ def running_job_for_wave(wave_id: int) -> Optional[Dict[str, Any]]:
         c.execute(
             """
             SELECT * FROM scan_jobs
-            WHERE wave_id = ? AND status = 'running'
+            WHERE wave_id = ? AND status IN ('running', 'naming', 'pending', 'queued')
             ORDER BY id DESC
             LIMIT 1
             """,
@@ -96,15 +128,33 @@ def list_running_scan_jobs() -> List[Dict[str, Any]]:
 def count_running_scan_jobs() -> int:
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) AS cnt FROM scan_jobs WHERE status = 'running'")
+        c.execute(
+            "SELECT COUNT(*) AS cnt FROM scan_jobs WHERE status IN ('running', 'naming', 'pending', 'queued')"
+        )
         row = c.fetchone()
     if row is None:
         return 0
     return int(row[0] if not isinstance(row, dict) else row["cnt"])
 
 
+def list_jobs_for_wave(wave_id: int) -> List[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        conn.row_factory = ROW_AS_DICT
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT * FROM scan_jobs
+            WHERE wave_id = ?
+            ORDER BY id DESC
+            """,
+            (int(wave_id),),
+        )
+        rows = c.fetchall() or []
+    return [_hydrate(row) for row in rows]
+
+
 def update_scan_job(job_id: int, fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    allowed = {"status", "last_error"}
+    allowed = {"status", "last_error", "title"}
     updates = {k: v for k, v in (fields or {}).items() if k in allowed}
     if not updates:
         return get_scan_job(job_id)
@@ -149,6 +199,7 @@ def scan_jobs_table_ready() -> bool:
 __all__ = [
     "count_running_scan_jobs",
     "create_scan_job",
+    "list_jobs_for_wave",
     "list_running_scan_jobs",
     "get_scan_job",
     "latest_job_for_wave",

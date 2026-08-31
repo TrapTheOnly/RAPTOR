@@ -1,0 +1,234 @@
+name: raptor-integrations
+
+services:
+  jira-db:
+    image: postgres:16-alpine
+    container_name: raptor-jira-db
+    environment:
+      POSTGRES_DB: jira
+      POSTGRES_USER: jira
+      POSTGRES_PASSWORD: jira
+    volumes:
+      - jira_postgres:/var/lib/postgresql/data
+    networks:
+      - integrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jira -d jira"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  jira:
+    image: atlassian/jira-software:9.12.24
+    container_name: raptor-jira
+    ports:
+      - "${JIRA_PORT:-8090}:8080"
+    environment:
+      ATL_JDBC_URL: jdbc:postgresql://jira-db:5432/jira
+      ATL_JDBC_USER: jira
+      ATL_JDBC_PASSWORD: jira
+      ATL_DB_DRIVER: org.postgresql.Driver
+      ATL_DB_TYPE: postgres72
+      ATL_DB_SCHEMA_NAME: public
+      JVM_MINIMUM_MEMORY: ${JIRA_JVM_MIN:-1024m}
+      JVM_MAXIMUM_MEMORY: ${JIRA_JVM_MAX:-2048m}
+      ATL_PROXY_NAME: ${JIRA_PROXY_NAME:-localhost}
+      ATL_PROXY_PORT: ${JIRA_PORT:-8090}
+      ATL_TOMCAT_PORT: 8080
+      ATL_TOMCAT_SCHEME: http
+      ATL_TOMCAT_SECURE: "false"
+    volumes:
+      - jira_home:/var/atlassian/application-data/jira
+    networks:
+      integrations:
+        aliases:
+          - jira
+      raptor:
+        aliases:
+          - jira
+    depends_on:
+      jira-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://127.0.0.1:8080/status | grep -Eq 'SETUP|RUNNING|FIRST_RUN' || wget -qO- http://127.0.0.1:8080/status | grep -Eq 'SETUP|RUNNING|FIRST_RUN'
+      interval: 20s
+      timeout: 10s
+      retries: 40
+      start_period: 420s
+    restart: unless-stopped
+
+  jira-seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.seed
+    image: raptor-integrations-seed
+    container_name: raptor-jira-seed
+    command: ["jira_seed.py"]
+    environment:
+      JIRA_URL: http://jira:8080
+      JIRA_PUBLIC_URL: ${JIRA_PUBLIC_URL:-http://localhost:8090}
+      JIRA_ADMIN_USER: ${JIRA_ADMIN_USER:-admin}
+      JIRA_ADMIN_PASSWORD: ${JIRA_ADMIN_PASSWORD:-RaptoR!jira1}
+      JIRA_ADMIN_EMAIL: ${JIRA_ADMIN_EMAIL:-admin@raptor.local}
+      JIRA_LICENSE_FILE: /license/jira-timebomb.lic
+      JIRA_LICENSE: ${JIRA_LICENSE:-}
+      JIRA_DB_HOST: jira-db
+      JIRA_DB_PORT: "5432"
+      JIRA_DB_NAME: jira
+      JIRA_DB_USER: jira
+      JIRA_DB_PASSWORD: jira
+      SEED_OUT_DIR: /out
+    volumes:
+      - ./jira-timebomb.lic:/license/jira-timebomb.lic:ro
+      - ./generated:/out
+    networks:
+      - integrations
+    depends_on:
+      jira:
+        condition: service_healthy
+    restart: on-failure
+
+  dojo-db:
+    image: postgres:16-alpine
+    container_name: raptor-dojo-db
+    environment:
+      POSTGRES_DB: defectdojo
+      POSTGRES_USER: defectdojo
+      POSTGRES_PASSWORD: defectdojo
+    volumes:
+      - dojo_postgres:/var/lib/postgresql/data
+    networks:
+      - integrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U defectdojo -d defectdojo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  dojo-redis:
+    image: redis:7-alpine
+    container_name: raptor-dojo-redis
+    volumes:
+      - dojo_redis:/data
+    networks:
+      - integrations
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  dojo-initializer:
+    image: defectdojo/defectdojo-django:2.51.1
+    container_name: raptor-dojo-initializer
+    depends_on:
+      dojo-db:
+        condition: service_healthy
+      dojo-redis:
+        condition: service_healthy
+    entrypoint: ["/wait-for-it.sh", "dojo-db:5432", "--", "/entrypoint-initializer.sh"]
+    environment: &dojo-env
+      DD_DATABASE_URL: postgresql://defectdojo:defectdojo@dojo-db:5432/defectdojo
+      DD_CELERY_BROKER_URL: redis://dojo-redis:6379/0
+      DD_CACHE_URL: redis://dojo-redis:6379/1
+      DD_SECRET_KEY: raptor-dojo-lab-secret-key-not-for-production-please-rotate-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      DD_CREDENTIAL_AES_256_KEY: raptor-dojo-aes-256-key-lab-only!!
+      DD_ALLOWED_HOSTS: "*"
+      DD_ADMIN_USER: ${DOJO_ADMIN_USER:-admin}
+      DD_ADMIN_PASSWORD: ${DOJO_ADMIN_PASSWORD:-RaptoR!dojo1}
+      DD_ADMIN_MAIL: ${DOJO_ADMIN_MAIL:-admin@raptor.local}
+      DD_ADMIN_FIRST_NAME: RAPTOR
+      DD_ADMIN_LAST_NAME: Admin
+      DD_INITIALIZE: "true"
+      DD_DATABASE_READINESS_TIMEOUT: "60"
+    networks:
+      - integrations
+    restart: on-failure
+
+  dojo-uwsgi:
+    image: defectdojo/defectdojo-django:2.51.1
+    container_name: raptor-dojo
+    depends_on:
+      dojo-initializer:
+        condition: service_completed_successfully
+      dojo-db:
+        condition: service_healthy
+      dojo-redis:
+        condition: service_healthy
+    entrypoint: ["/wait-for-it.sh", "dojo-db:5432", "-t", "30", "--", "/entrypoint-uwsgi.sh"]
+    environment:
+      <<: *dojo-env
+      DD_DEBUG: "False"
+    networks:
+      - integrations
+    restart: unless-stopped
+
+  dojo-nginx:
+    image: defectdojo/defectdojo-nginx:2.51.1
+    container_name: raptor-dojo-nginx
+    depends_on:
+      - dojo-uwsgi
+    environment:
+      DD_UWSGI_HOST: dojo-uwsgi
+      DD_UWSGI_PORT: "3031"
+      DD_UWSGI_PASS: dojo-uwsgi:3031
+    ports:
+      - "${DOJO_PORT:-8088}:8080"
+    networks:
+      integrations:
+        aliases:
+          - defectdojo
+          - dojo
+      raptor:
+        aliases:
+          - defectdojo
+          - dojo
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://127.0.0.1:8080/login >/dev/null || wget -qO- http://127.0.0.1:8080/login >/dev/null
+      interval: 15s
+      timeout: 8s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  dojo-seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.seed
+    image: raptor-integrations-seed
+    container_name: raptor-dojo-seed
+    command: ["dojo_seed.py"]
+    environment:
+      DOJO_URL: http://dojo-nginx:8080
+      DOJO_PUBLIC_URL: ${DOJO_PUBLIC_URL:-http://localhost:8088}
+      DOJO_ADMIN_USER: ${DOJO_ADMIN_USER:-admin}
+      DOJO_ADMIN_PASSWORD: ${DOJO_ADMIN_PASSWORD:-RaptoR!dojo1}
+      SEED_OUT_DIR: /out
+    volumes:
+      - ./generated:/out
+    networks:
+      - integrations
+    depends_on:
+      dojo-nginx:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  jira_postgres:
+  jira_home:
+  dojo_postgres:
+  dojo_redis:
+
+networks:
+  integrations:
+    name: raptor_integrations
+  raptor:
+    name: raptor_app_network
+    external: true

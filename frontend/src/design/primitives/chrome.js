@@ -157,7 +157,7 @@ export const Field = ({
         helperText={message || undefined}
         sx={{
           width: fullWidth ? '100%' : undefined,
-          '& .MuiInputBase-root': { width: '100%', minHeight: 40, boxSizing: 'border-box' },
+          '& .MuiInputBase-root': { width: '100%', minHeight: 32, boxSizing: 'border-box' },
           '& .MuiInputBase-input': { minWidth: 0, flex: 1 }
         }}
       />

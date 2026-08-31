@@ -61,6 +61,24 @@ def process_due_jobs() -> None:
     try:
         if kind == "dns_sync":
             _run_dns_sync(_job_payload(job))
+        elif kind == "burp_jwt":
+            from app.services.burp_jwt import run_jwt_job
+
+            burp_job_id = int(_job_payload(job).get("burp_job_id") or 0)
+            if not burp_job_id:
+                raise RuntimeError("burp_jwt job missing burp_job_id")
+            result = run_jwt_job(burp_job_id)
+            if result.get("error") and result.get("status") != "completed":
+                raise RuntimeError(str(result.get("error")))
+        elif kind == "burp_analyze":
+            from app.services.burp_analyze import run_analyze_job
+
+            burp_job_id = int(_job_payload(job).get("burp_job_id") or 0)
+            if not burp_job_id:
+                raise RuntimeError("burp_analyze job missing burp_job_id")
+            result = run_analyze_job(burp_job_id)
+            if result.get("error") and result.get("status") != "completed":
+                raise RuntimeError(str(result.get("error")))
         else:
             raise RuntimeError(f"Unknown job kind: {kind}")
         complete_job(job_id)

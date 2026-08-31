@@ -423,6 +423,26 @@ test('hosts tab is inventory; wave header launches scans', () => {
   expect(wavePage).not.toContain('Archive pack');
   expect(wavePage).not.toContain('Close wave');
   expect(wavePage).toContain('New finding');
+  expect(wavePage).toContain('startIcon={<Add');
+  expect(wavePage).toContain('FileDownload');
+  expect(wavePage).toContain('StopCircle');
+  expect(wavePage).toContain('jiraReportable');
+  expect(wavePage).toContain('disabled={!jiraReportable}');
+  expect(wavePage).toContain('dojoReportable');
+  expect(wavePage).toContain('disabled={!dojoReportable}');
+  expect(wavePage).toContain('Report to Jira');
+  expect(wavePage).toContain('Report to DefectDojo');
+  expect(wavePage).toContain('onReportToIntegration');
+  expect(wavePage).toContain('BurpLiveSection');
+  expect(readSource('./BurpLiveSection.js')).toContain('Burp Live');
+  expect(readSource('./BurpLiveSection.js')).toContain('Mint wave token');
+  expect(readSource('./BurpLiveSection.js')).toContain('/burp/v1/download/raptor-burp.jar');
+  expect(readSource('./BurpLiveSection.js')).toContain('Start happens in Burp');
+  expect(readSource('../services.js')).toContain('burp-token');
+  expect(readSource('../services.js')).toContain('/engagements');
+  expect(readSource('./BurpLiveSection.js')).toContain('Summarize Burp traffic');
+  expect(readSource('./BurpLiveSection.js')).toContain('startBurpAnalyze');
+  expect(readSource('../services.js')).toContain('/burp/analyze');
   const header = readSource('../../pentest-record/components/PentestRecordHeader.js');
   expect(header).not.toContain('Launch AI Scan');
   expect(header).not.toContain('launchAiScan');
@@ -509,6 +529,8 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(findingPage).toContain('title="Impact"');
   expect(findingPage).toContain('title="Evidence"');
   expect(findingPage).toContain('title="Remediation"');
+  expect(findingPage).toContain('Delete finding');
+  expect(findingPage).toContain('deleteFinding');
   expect(findingPage).not.toContain('Found here ·');
   expect(readSource('./CvssCalculator.js')).toContain('CVSS 3.1');
   const hostFindings = readSource('../../pentest-record/components/FindingsTab.js');
@@ -529,6 +551,10 @@ test('host notebook uses Operator Console primitives and does not edit findings'
   expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('max-width: 100%');
   expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('.raptor-md-preview blockquote');
   expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('width: 100%');
+  expect(readSource('../../pentest-record/components/MarkdownEditorCard.js')).toContain('HttpExchange');
+  expect(readSource('../../pentest-record/components/HttpExchange.js')).toContain('raptor-http-exchange');
+  expect(readSource('../../pentest-record/components/HttpExchange.js')).toContain("split(/^\\s*===\\s*$/m)");
+  expect(readSource('../../pentest-record/components/HttpExchange.js')).toContain('twoCol');
   expect(readSource('./HostsTab.js')).toContain('Add hosts');
   expect(readSource('./HostsTab.js')).not.toContain('Assign tester');
   expect(readSource('./HostsTab.js')).not.toContain('allInScope');
@@ -594,7 +620,8 @@ test('workspace screens share Field, Combo, and Panel instead of mixed MUI menus
     'HostPicker.js',
     'FindingCard.js',
     'FindingPage.js',
-    'CvssCalculator.js'
+    'CvssCalculator.js',
+    'ExportIntegrationWizard.js'
   ];
   files.forEach((file) => {
     const source = readSource(`./${file}`);
@@ -812,4 +839,28 @@ test('environment settings show RoE to managers and load ACL', async () => {
   expect(vault).toBeTruthy();
   expect(vault.value).toBe('vault://secret-pointer');
   view.unmount();
+});
+
+test('finding page and workspace open the integration wizard', () => {
+  const findingPage = readSource('./FindingPage.js');
+  expect(findingPage).toContain('Report to Jira');
+  expect(findingPage).toContain('Report to DefectDojo');
+  expect(findingPage).toContain('Open ticket');
+  expect(findingPage).toContain('Open in DefectDojo');
+  expect(findingPage).toContain('defectdojo_url');
+  expect(findingPage).toContain('isHttpUrl');
+  expect(findingPage).not.toContain('Edit ticket');
+  expect(findingPage).not.toContain('Link ticket');
+  expect(findingPage).toContain('onReportToIntegration');
+  const workspace = readSource('../../AppWorkspace.js');
+  expect(workspace).toContain('ExportIntegrationWizard');
+  expect(workspace).toContain('listReadyIntegrations');
+  const wizard = readSource('./ExportIntegrationWizard.js');
+  expect(wizard).toContain('previewIntegrationExport');
+  expect(wizard).toContain('exportToIntegration');
+  expect(wizard).toContain('Filled from RAPTOR');
+  expect(wizard).toContain('already_exported');
+  expect(wizard).toContain('flexDirection: \'column\'');
+  expect(wizard).not.toContain('will create another ticket');
+  expect(wizard).toContain('!waveId && (data.findings || []).length === 1');
 });

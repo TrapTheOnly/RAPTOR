@@ -7,7 +7,8 @@ test('routeShellKey keeps app and env drill-down on one surface', () => {
   expect(routeShellKey('/apps/12')).toBe('apps/12');
   expect(routeShellKey('/apps/12/envs/4')).toBe('apps/12');
   expect(routeShellKey('/apps/12/envs/4/')).toBe('apps/12');
-  expect(routeShellKey('/apps/12/waves/3/scan-live')).toBe('apps/12');
+  expect(routeShellKey('/apps/12/waves/3/scan-live')).toBe('apps/12/scan-live');
+  expect(routeShellKey('/apps/12/findings/abc')).toBe('apps/12');
 });
 
 test('routeShellKey treats docs as one surface and leaves other products distinct', () => {

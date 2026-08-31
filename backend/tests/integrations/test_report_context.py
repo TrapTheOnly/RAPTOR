@@ -257,6 +257,45 @@ def test_split_finding_narrative_strips_host_wave_auth_and_keeps_sections():
     assert remediation == "Raise the password floor."
 
 
+def test_split_finding_narrative_maps_proof_of_concept_and_title():
+    from app.integrations.reporting.report_context import hydrate_finding_fields, split_finding_narrative
+
+    description, impact, evidence, remediation = split_finding_narrative(
+        {
+            "description": (
+                "# Weak JWT secret\n\n"
+                "## Description\n"
+                "HS256 secret is on a wordlist.\n\n"
+                "## Proof of Concept\n"
+                "```shell\njwt_tool -C\n```\n\n"
+                "## Impact\n"
+                "Token forgery.\n\n"
+                "## Remediation\n"
+                "Rotate the key."
+            )
+        }
+    )
+    assert "HS256 secret is on a wordlist." in description
+    assert "jwt_tool -C" in evidence
+    assert impact == "Token forgery."
+    assert remediation == "Rotate the key."
+    hydrated = hydrate_finding_fields(
+        {
+            "description": (
+                "# Weak JWT secret\n\n"
+                "## Description\n"
+                "HS256 secret is on a wordlist.\n\n"
+                "## Proof of Concept\n"
+                "```shell\njwt_tool -C\n```\n"
+            )
+        }
+    )
+    assert hydrated["title"] == "Weak JWT secret"
+    assert hydrated["description"] == "HS256 secret is on a wordlist."
+    assert "jwt_tool -C" in hydrated["evidence"]
+    assert "#" not in hydrated["description"]
+
+
 def test_sheet_prepared_by_lists_finding_people_not_exporter():
     context = build_sheet_context(
         scope="wave",

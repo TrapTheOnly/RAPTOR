@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Alert } from '@mui/material';
-import { Add, DeleteOutline, Flag } from '@mui/icons-material';
+import { Add, DeleteOutline, FileDownload, Flag, StopCircle } from '@mui/icons-material';
 import {
   Button,
   Combo,
@@ -65,12 +65,12 @@ const WaveRow = ({ wave, environments, canExport, canModify, canDelete, onEnd, o
       trailing={
         <div style={{ display: 'flex', gap: 8 }} onClick={(event) => event.stopPropagation()}>
           {canExport ? (
-            <Button size="small" variant="contained" onClick={() => onExport(wave)}>
+            <Button size="small" variant="contained" startIcon={<FileDownload sx={{ fontSize: 16 }} />} onClick={() => onExport(wave)}>
               Export
             </Button>
           ) : null}
           {canModify && isOpen ? (
-            <Button size="small" onClick={() => onEnd(wave)}>
+            <Button size="small" startIcon={<StopCircle sx={{ fontSize: 16 }} />} onClick={() => onEnd(wave)}>
               End wave
             </Button>
           ) : null}

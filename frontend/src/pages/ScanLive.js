@@ -20,11 +20,15 @@ import {
 } from '../design/primitives';
 import { FONTS, RADIUS, SPACE } from '../design/tokens';
 import { usePalette } from '../design/usePalette';
-import { getWave, launchWaveScan, resetWaveScan, stopWaveScan } from './app-workspace/services';
+import { getWave, launchWaveScan, listWaveEngagements, resetWaveScan, startBurpAnalyze, stopWaveScan } from './app-workspace/services';
 import { fetchPentestRecord } from './pentest-record/services';
+import EngagementRail from './scan-live/EngagementRail';
+import AnalyzeEngagementPane from './scan-live/AnalyzeEngagementPane';
+import BurpEngagementPane from './scan-live/BurpEngagementPane';
 
 const MAX_FEED_EVENTS = 200;
 const DETAIL_CHARS = 220;
+const ACTIVE_ENGAGEMENT = new Set(['running', 'naming', 'pending', 'queued']);
 
 const HIDDEN_TOOLS = new Set([
   'log_scan_event',
@@ -100,6 +104,25 @@ function clip(text, max = DETAIL_CHARS) {
   const value = String(text || '').replace(/\s+/g, ' ').trim();
   if (!value) return '';
   return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function sameEngagements(prev, next) {
+  if (prev === next) return true;
+  if (!Array.isArray(prev) || !Array.isArray(next) || prev.length !== next.length) return false;
+  return prev.every((item, index) => {
+    const other = next[index];
+    return (
+      item.id === other.id &&
+      item.status === other.status &&
+      item.title === other.title &&
+      item.error === other.error &&
+      (item.proposal?.id || 0) === (other.proposal?.id || 0) &&
+      (item.proposal?.status || '') === (other.proposal?.status || '') &&
+      (item.proposal?.finding_id || '') === (other.proposal?.finding_id || '') &&
+      JSON.stringify(item.result?.hits || item.result?.clusters || []) ===
+        JSON.stringify(other.result?.hits || other.result?.clusters || [])
+    );
+  });
 }
 
 function detailFromInput(snippet) {
@@ -295,6 +318,7 @@ const HostScanLiveRedirect = () => {
 
 const WaveScanLive = () => {
   const { appId, waveId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const palette = usePalette();
   const [wave, setWave] = useState(null);
   const [hosts, setHosts] = useState([]);
@@ -322,6 +346,8 @@ const WaveScanLive = () => {
   const feedRef = useRef(null);
   const lastIdRef = useRef(0);
   const [sseKey, setSseKey] = useState(0);
+  const [engagements, setEngagements] = useState([]);
+  const [burpEventCount, setBurpEventCount] = useState(0);
 
   const scopedHosts = useMemo(
     () => (hosts || []).filter((host) => host.in_scope !== false),
@@ -363,14 +389,71 @@ const WaveScanLive = () => {
         setDone(true);
       }
     } catch {
-      setWave(null);
-      setHosts([]);
+      /* Keep the last wave. A failed poll must not flash the empty launch view. */
     }
   }, [appId, waveId]);
+
+  const selectedEngagementId = searchParams.get('engagement') || '';
+  const selectedIdRef = useRef(selectedEngagementId);
+  if (selectedEngagementId) selectedIdRef.current = selectedEngagementId;
+  const selectedEngagement = useMemo(
+    () => engagements.find((item) => item.id === selectedEngagementId) || null,
+    [engagements, selectedEngagementId]
+  );
+  const viewingBurp =
+    selectedEngagement?.source === 'burp' ||
+    String(selectedEngagementId).startsWith('burp:') ||
+    String(selectedEngagementId).startsWith('proposal:');
+
+  const selectEngagement = useCallback(
+    (id) => {
+      if (!window.location.pathname.includes('/scan-live')) return;
+      const current = new URLSearchParams(window.location.search).get('engagement');
+      if (String(current || '') === String(id || '')) return;
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (id) params.set('engagement', id);
+          else params.delete('engagement');
+          return params;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const loadEngagements = useCallback(async (signal) => {
+    try {
+      const response = await listWaveEngagements(appId, waveId, signal ? { signal } : undefined);
+      if (signal?.aborted) return;
+      if (!window.location.pathname.includes('/scan-live')) return;
+      const rows = response.data?.engagements || [];
+      setEngagements((prev) => (sameEngagements(prev, rows) ? prev : rows));
+      setBurpEventCount(Number(response.data?.burp_event_count) || 0);
+      const current =
+        new URLSearchParams(window.location.search).get('engagement') || selectedIdRef.current;
+      if (current) return;
+      const active = rows.find((item) => ACTIVE_ENGAGEMENT.has(item.status)) || rows[0];
+      if (active && !signal?.aborted) selectEngagement(active.id);
+    } catch {
+      /* Keep the last list. A failed poll must not flash the AI empty state. */
+    }
+  }, [appId, waveId, selectEngagement]);
 
   useEffect(() => {
     loadWave();
   }, [loadWave]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    loadEngagements(ac.signal);
+    const iv = setInterval(() => loadEngagements(ac.signal), 3000);
+    return () => {
+      ac.abort();
+      clearInterval(iv);
+    };
+  }, [loadEngagements]);
 
   const applyEvent = useCallback((ev) => {
     const { event_type, payload = {}, ts, id } = ev;
@@ -426,7 +509,8 @@ const WaveScanLive = () => {
   }, []);
 
   useEffect(() => {
-    if (done) return undefined;
+    if (done || viewingBurp) return undefined;
+    if (stats.scan_status !== 'running' && !scanStarted) return undefined;
     const url = `/api/apps/${appId}/waves/${waveId}/scan-events/stream?after=${lastIdRef.current}`;
     const es = new EventSource(url);
     es.onmessage = (e) => {
@@ -442,12 +526,16 @@ const WaveScanLive = () => {
         /* heartbeat */
       }
     };
+    let reconnect;
     es.onerror = () => {
       es.close();
-      if (!done) setTimeout(() => setSseKey((k) => k + 1), 3000);
+      if (!done) reconnect = setTimeout(() => setSseKey((k) => k + 1), 3000);
     };
-    return () => es.close();
-  }, [appId, waveId, done, applyEvent, sseKey]);
+    return () => {
+      es.close();
+      if (reconnect) clearTimeout(reconnect);
+    };
+  }, [appId, waveId, done, applyEvent, sseKey, viewingBurp, stats.scan_status, scanStarted]);
 
   useEffect(() => {
     if (done || !scanStarted) return undefined;
@@ -518,6 +606,13 @@ const WaveScanLive = () => {
       startTimeRef.current = Date.now();
       setSseKey((k) => k + 1);
       await loadWave();
+      const listed = await listWaveEngagements(appId, waveId);
+      const rows = listed.data?.engagements || [];
+      setEngagements(rows);
+      const launched = rows.find(
+        (item) => item.kind === 'ai_scan' && ['running', 'naming'].includes(item.status)
+      );
+      if (launched) selectEngagement(launched.id);
       setToast({ open: true, message: 'Wave scan launched.', severity: 'success' });
     } catch (error) {
       failWith(error, 'Failed to launch scan.');
@@ -538,9 +633,35 @@ const WaveScanLive = () => {
       startTimeRef.current = Date.now();
       setSseKey((k) => k + 1);
       await loadWave();
+      const listed = await listWaveEngagements(appId, waveId);
+      const rows = listed.data?.engagements || [];
+      setEngagements(rows);
+      const launched = rows.find(
+        (item) => item.kind === 'ai_scan' && ['running', 'naming'].includes(item.status)
+      );
+      if (launched) selectEngagement(launched.id);
       setToast({ open: true, message: 'Scan restarted with current notes.', severity: 'success' });
     } catch (error) {
       failWith(error, 'Failed to restart scan.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAnalyzeBurp = async () => {
+    setBusy(true);
+    try {
+      const response = await startBurpAnalyze(appId, waveId);
+      const engagementId = response.data?.engagement_id;
+      await loadEngagements();
+      if (engagementId) selectEngagement(engagementId);
+      if (response.data?.unchanged) {
+        setToast({ open: true, message: 'Same Burp traffic as the last analyze pass.', severity: 'success' });
+      } else if (response.data?.coalesced) {
+        setToast({ open: true, message: 'Analyze already running.', severity: 'success' });
+      }
+    } catch (error) {
+      failWith(error, 'Could not summarize Burp traffic.');
     } finally {
       setBusy(false);
     }
@@ -554,6 +675,7 @@ const WaveScanLive = () => {
       setCurrentTool(null);
       setDone(true);
       await loadWave();
+      await loadEngagements();
       setToast({ open: true, message: 'Scan stop requested.', severity: 'success' });
     } catch (error) {
       failWith(error, 'Failed to stop scan.');
@@ -599,8 +721,7 @@ const WaveScanLive = () => {
   const launchForm = canLaunch && (idle || finished) ? (
     <Surface
       style={{
-        maxWidth: 720,
-        margin: `0 auto ${SPACE.x24}px`,
+        margin: `0 0 ${SPACE.x24}px`,
         padding: SPACE.x16
       }}
     >
@@ -668,29 +789,53 @@ const WaveScanLive = () => {
           { label: 'Applications', to: '/pentest' },
           { label: appName || 'Application', to: `/apps/${appId}` },
           { label: wave?.name || 'Wave', to: waveTo },
-          { label: 'AI scan' }
+          { label: 'Live' }
         ]}
         leading={
           <Button size="small" component={RouterLink} to={waveTo} startIcon={<ArrowBack sx={{ fontSize: 16 }} />}>
             Wave
           </Button>
         }
-        title="AI scan"
-        subtitle={wave?.name || ''}
+        title="Live"
+        subtitle={selectedEngagement?.title || wave?.name || ''}
         meta={
-          <>
-            <Tag emphasized={running}>{status}</Tag>
-            {stats.provider ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <ProviderMark type={stats.provider} size={14} />
-                <Tag>{stats.provider}</Tag>
-              </span>
-            ) : null}
-            {scanStarted ? <Tag>{elapsedStr}</Tag> : null}
-          </>
+          selectedEngagement ? (
+            <>
+              <Tag
+                emphasized={['running', 'naming', 'pending', 'queued'].includes(
+                  selectedEngagement.status
+                )}
+              >
+                {selectedEngagement.status}
+              </Tag>
+              <Tag>
+                {selectedEngagement.kind === 'ai_scan'
+                  ? 'AI scan'
+                  : selectedEngagement.kind === 'jwt'
+                    ? 'JWT'
+                    : selectedEngagement.kind}
+              </Tag>
+            </>
+          ) : (
+            <>
+              <Tag emphasized={running}>{status}</Tag>
+              {stats.provider ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <ProviderMark type={stats.provider} size={14} />
+                  <Tag>{stats.provider}</Tag>
+                </span>
+              ) : null}
+              {scanStarted ? <Tag>{elapsedStr}</Tag> : null}
+            </>
+          )
         }
         actions={
           <>
+            {isOpen && burpEventCount > 0 ? (
+              <Button size="small" onClick={handleAnalyzeBurp} disabled={busy}>
+                Summarize Burp traffic
+              </Button>
+            ) : null}
             {canLaunch && running ? (
               <Button
                 size="small"
@@ -726,6 +871,33 @@ const WaveScanLive = () => {
         }
       />
 
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, minHeight: 560 }}>
+        <EngagementRail
+          engagements={engagements}
+          selectedId={selectedEngagementId}
+          onSelect={selectEngagement}
+        />
+        <div style={{ flex: 1, minWidth: 0, paddingLeft: SPACE.x24 }}>
+          {viewingBurp && selectedEngagement?.kind === 'analyze' ? (
+            <AnalyzeEngagementPane
+              appId={appId}
+              waveId={waveId}
+              engagement={selectedEngagement}
+              onFiled={() => loadEngagements()}
+              onProposed={(engagementId) => {
+                loadEngagements();
+                if (engagementId) selectEngagement(engagementId);
+              }}
+            />
+          ) : viewingBurp ? (
+            <BurpEngagementPane
+              appId={appId}
+              waveId={waveId}
+              engagement={selectedEngagement}
+              onAccepted={() => loadEngagements()}
+            />
+          ) : (
+            <>
       {!(idle && events.length === 0) ? (
         <MetricStrip
           items={[
@@ -771,7 +943,7 @@ const WaveScanLive = () => {
       ) : null}
 
       {currentTool ? (
-        <Surface raised style={{ maxWidth: 880, margin: `0 auto ${SPACE.x16}px`, padding: `${SPACE.x12}px ${SPACE.x16}px` }}>
+        <Surface raised style={{ margin: `0 0 ${SPACE.x16}px`, padding: `${SPACE.x12}px ${SPACE.x16}px` }}>
           <Text variant="meta" tone="secondary">
             Running <Mono style={{ fontWeight: 600 }}>{toolLabel(currentTool.name)}</Mono>
             {currentTool.recordId ? (
@@ -808,7 +980,7 @@ const WaveScanLive = () => {
           }
         />
       ) : idle && events.length === 0 ? null : (
-        <Surface style={{ maxWidth: 880, margin: '0 auto', overflow: 'hidden' }}>
+        <Surface style={{ overflow: 'hidden' }}>
           <div
             style={{
               display: 'flex',
@@ -878,6 +1050,10 @@ const WaveScanLive = () => {
           </div>
         </Surface>
       )}
+            </>
+          )}
+        </div>
+      </div>
 
       <Toast
         open={toast.open}
