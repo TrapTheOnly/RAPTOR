@@ -5,6 +5,8 @@
 # some of the code here was inspired from https://github.com/whit3rabbit0/project_astro , be sure to check them out
 
 import argparse
+import base64
+import configparser
 import json
 import logging
 import os
@@ -15,7 +17,7 @@ import subprocess
 import sys
 import traceback
 import threading
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from flask import Flask, request, jsonify
 
 # Configure logging
@@ -42,6 +44,7 @@ DESTRUCTIVE_PATHS = {
     "/api/tools/metasploit",
     "/api/tools/hydra",
     "/api/tools/john",
+    "/api/tools/jwt",
 }
 
 
@@ -70,9 +73,10 @@ def require_kali_token():
 class CommandExecutor:
     """Class to handle command execution with better timeout management"""
 
-    def __init__(self, command, timeout: int = COMMAND_TIMEOUT):
+    def __init__(self, command, timeout: int = COMMAND_TIMEOUT, log_label: Optional[str] = None):
         self.command = command
         self.timeout = timeout
+        self.log_label = log_label
         # Determine if we should use shell mode based on command type
         self.use_shell = isinstance(command, str)
         self.process = None
@@ -95,7 +99,7 @@ class CommandExecutor:
     
     def execute(self) -> Dict[str, Any]:
         """Execute the command and handle timeout gracefully"""
-        logger.info(f"Executing command: {self.command}")
+        logger.info("Executing command: %s", self.log_label or self.command)
         
         try:
             self.process = subprocess.Popen(
@@ -163,17 +167,18 @@ class CommandExecutor:
             }
 
 
-def execute_command(command) -> Dict[str, Any]:
+def execute_command(command, log_label: Optional[str] = None) -> Dict[str, Any]:
     """
     Execute a command and return the result.
 
     Args:
         command: The command to execute (list for safe mode, string for shell mode)
+        log_label: Optional log text that must not contain secrets (JWTs, keys)
 
     Returns:
         A dictionary containing the stdout, stderr, and return code
     """
-    executor = CommandExecutor(command)
+    executor = CommandExecutor(command, log_label=log_label)
     return executor.execute()
 
 
@@ -498,6 +503,246 @@ def john():
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_JWT_RE = re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*")
+_CORRECT_KEY_LONG = re.compile(r"\[\+\] CORRECT key found:\s*(.+)", re.I)
+_CORRECT_KEY_SHORT = re.compile(r"\[\+\] (.+) is the CORRECT key!", re.I)
+JWT_TOOL_PY = "/opt/jwt_tool/jwt_tool.py"
+JWT_WORDLIST = "/opt/jwt_tool/jwt-secrets.txt"
+JWT_STEPS = (
+    ("decode", []),
+    ("none_alg", ["-X", "a"]),
+    ("key_confusion", ["-X", "k"]),
+    ("weak_secret", ["-C", "-d", JWT_WORDLIST]),
+    ("claim_tamper", ["-I", "-pc", "role", "-pv", "admin"]),
+)
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text or "")
+
+
+def _redact_jwts(text: str) -> str:
+    return _JWT_RE.sub("[jwt]", text or "")
+
+
+def _jwt_tool_version() -> str:
+    try:
+        with open(JWT_TOOL_PY, encoding="utf-8", errors="ignore") as handle:
+            blob = handle.read(8000)
+        match = re.search(r'jwttoolvers\s*=\s*["\']([^"\']+)["\']', blob)
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+    return "2.3.0"
+
+
+def _rsa_module():
+    try:
+        from Cryptodome.PublicKey import RSA
+        return RSA
+    except ImportError:
+        from Crypto.PublicKey import RSA
+        return RSA
+
+
+def _write_jwks(pub_path: str, jwks_path: str) -> None:
+    try:
+        RSA = _rsa_module()
+    except ImportError:
+        with open(jwks_path, "w", encoding="utf-8") as handle:
+            json.dump({"keys": []}, handle)
+        return
+    key = RSA.importKey(open(pub_path, "rb").read())
+    n_len = (key.n.bit_length() + 7) // 8
+    e_len = (key.e.bit_length() + 7) // 8
+    n = base64.urlsafe_b64encode(key.n.to_bytes(n_len, "big")).decode().rstrip("=")
+    e = base64.urlsafe_b64encode(key.e.to_bytes(e_len, "big")).decode().rstrip("=")
+    with open(jwks_path, "w", encoding="utf-8") as handle:
+        json.dump({"keys": [{"kty": "RSA", "kid": "jwt_tool", "use": "sig", "n": n, "e": e}]}, handle)
+
+
+def ensure_jwt_tool_config() -> str:
+    """Write a jwt_tool ini that Python 3.14 can load. Comment-as-keys crash ConfigParser."""
+    home = os.path.expanduser("~/.jwt_tool")
+    os.makedirs(home, exist_ok=True)
+    rsa_priv = os.path.join(home, "jwttool_custom_private_RSA.pem")
+    rsa_pub = os.path.join(home, "jwttool_custom_public_RSA.pem")
+    ec_priv = os.path.join(home, "jwttool_custom_private_EC.pem")
+    ec_pub = os.path.join(home, "jwttool_custom_public_EC.pem")
+    jwks_path = os.path.join(home, "jwttool_custom_jwks.json")
+    conf_path = os.path.join(home, "jwtconf.ini")
+    if not (os.path.isfile(rsa_priv) and os.path.isfile(rsa_pub)):
+        subprocess.check_call(
+            ["openssl", "genrsa", "-out", rsa_priv, "2048"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            ["openssl", "rsa", "-in", rsa_priv, "-pubout", "-out", rsa_pub],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    if not (os.path.isfile(ec_priv) and os.path.isfile(ec_pub)):
+        subprocess.check_call(
+            ["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", ec_priv],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            ["openssl", "ec", "-in", ec_priv, "-pubout", "-out", ec_pub],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    if not os.path.isfile(jwks_path):
+        _write_jwks(rsa_pub, jwks_path)
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.optionxform = str
+    parser["crypto"] = {
+        "pubkey": rsa_pub,
+        "privkey": rsa_priv,
+        "ecpubkey": ec_pub,
+        "ecprivkey": ec_priv,
+        "jwks": jwks_path,
+    }
+    parser["customising"] = {
+        "useragent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) jwt_tool",
+        "jwks_kid": "jwt_tool",
+    }
+    parser["services"] = {
+        "jwt_tool_version": _jwt_tool_version(),
+        "proxy": "False",
+        "redir": "False",
+        "jwksloc": "",
+        "jwksdynamic": "",
+        "httplistener": "",
+    }
+    parser["input"] = {
+        "wordlist": "jwt-common.txt",
+        "commonHeaders": "common-headers.txt",
+        "commonPayloads": "common-payloads.txt",
+    }
+    parser["argvals"] = {
+        "sigType": "",
+        "targetUrl": "",
+        "rate": "999999999",
+        "cookies": "",
+        "key": "",
+        "keyList": "",
+        "keyFile": "",
+        "headerLoc": "",
+        "payloadclaim": "",
+        "headerclaim": "",
+        "payloadvalue": "",
+        "headervalue": "",
+        "canaryvalue": "",
+        "header": "",
+        "exploitType": "",
+        "scanMode": "",
+        "reqMode": "",
+        "postData": "",
+        "resCode": "",
+        "resSize": "",
+        "resContent": "",
+    }
+    with open(conf_path, "w", encoding="utf-8") as handle:
+        parser.write(handle)
+    return conf_path
+
+
+def _jwt_step_ran(stdout: str, stderr: str) -> bool:
+    blob = f"{stdout or ''}\n{stderr or ''}"
+    if "Traceback (most recent call last)" in blob or "InvalidWriteError" in blob:
+        return False
+    if "Configuration file built" in blob:
+        return False
+    return any(
+        marker in blob
+        for marker in (
+            "Original JWT",
+            "Decoded Token Values",
+            "CORRECT key",
+            "not the correct key",
+            "Exploit:",
+        )
+    )
+
+
+def _jwt_hits_from_text(step: str, stdout: str) -> list:
+    plain = _strip_ansi(stdout or "")
+    hits = []
+    match = _CORRECT_KEY_LONG.search(plain)
+    if match:
+        hits.append({"step": step, "kind": "weak_secret", "detail": match.group(1).strip()[:200]})
+    match = _CORRECT_KEY_SHORT.search(plain)
+    if match:
+        hits.append({"step": step, "kind": "weak_secret", "detail": match.group(1).strip()[:200]})
+    return hits
+
+
+@app.route("/api/tools/jwt", methods=["POST"])
+def jwt_attacks():
+    """Fixed jwt_tool suite: decode, none alg, key confusion, weak secret, claim tamper."""
+    try:
+        params = request.json or {}
+        token = str(params.get("token") or params.get("jwt") or "").strip()
+        if not token:
+            return jsonify({"error": "token is required", "success": False}), 400
+        if not re.match(r"^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$", token):
+            return jsonify({"error": "token is not a compact JWT", "success": False}), 400
+        if not os.path.isfile(JWT_TOOL_PY):
+            return jsonify({"error": "jwt_tool is not installed on this Kali image.", "success": False}), 503
+        try:
+            ensure_jwt_tool_config()
+        except Exception as exc:
+            logger.error("jwt_tool config setup failed: %s", exc)
+            return jsonify({"error": "jwt_tool config could not be written.", "success": False}), 500
+        combined = []
+        hits = []
+        for step_name, extra in JWT_STEPS:
+            command = ["python3", JWT_TOOL_PY, token, "-np", *extra]
+            display_cmd = " ".join(["python3", JWT_TOOL_PY, "[jwt]", "-np", *extra])
+            result = execute_command(command, log_label=f"jwt_tool {step_name}")
+            stdout_plain = _strip_ansi(result.get("stdout") or "")
+            stderr_plain = _strip_ansi(result.get("stderr") or "")
+            step_hits = _jwt_hits_from_text(step_name, stdout_plain)
+            hits.extend(step_hits)
+            ran = bool(step_hits) or _jwt_step_ran(stdout_plain, stderr_plain)
+            combined.append(
+                {
+                    "step": step_name,
+                    "command": display_cmd,
+                    "stdout": _redact_jwts(stdout_plain)[:4000],
+                    "stderr": _redact_jwts(stderr_plain)[:1500],
+                    "return_code": result.get("return_code"),
+                    "success": ran,
+                }
+            )
+        ran_any = any(step.get("success") for step in combined)
+        error = ""
+        if not ran_any:
+            error = next(
+                (step.get("stderr") or "" for step in combined if step.get("stderr")),
+                "jwt_tool failed on every step.",
+            )
+            error = error.strip().splitlines()[-1][:300] if error else "jwt_tool failed on every step."
+        return jsonify(
+            {
+                "success": ran_any,
+                "suite": combined,
+                "hits": hits,
+                "error": error,
+                "host": params.get("host") or "",
+                "path": params.get("path") or "",
+            }
+        )
+    except Exception as e:
+        logger.error("Error in jwt endpoint: %s", e)
+        logger.error(traceback.format_exc())
+        return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
+
 
 @app.route("/api/tools/wpscan", methods=["POST"])
 def wpscan():

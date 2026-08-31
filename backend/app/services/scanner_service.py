@@ -264,6 +264,7 @@ def launch_wave_scan_payload(
         }
         for host in hosts
     ]
+    scan_title = ""
     job_row = None
     if scan_jobs_table_ready():
         job_row = create_scan_job(
@@ -273,7 +274,31 @@ def launch_wave_scan_payload(
             launched_by=actor or "",
             provider_type=str(cfg.get("active_connection_id") or ""),
             model_id=str(cfg.get("active_model_id") or ""),
+            title="",
+            status="naming",
         )
+    try:
+        from app.services.engagement_namer import app_and_wave_names, name_engagement
+
+        names = app_and_wave_names(wave)
+        scan_title = name_engagement(
+            kind="ai_scan",
+            wave_name=names["wave_name"],
+            app_name=names["app_name"],
+            host_count=len(record_ids),
+            extra=str(option_extra.get("operator_brief") or ""),
+        )
+    except Exception as exc:
+        logger.info("AI scan naming fell back: %s", exc)
+        from app.services.engagement_namer import fallback_title
+
+        scan_title = fallback_title(
+            kind="ai_scan",
+            host_count=len(record_ids),
+            wave_name=str(wave.get("name") or ""),
+        )
+    if job_row:
+        update_scan_job(int(job_row["id"]), {"title": scan_title, "status": "running"})
 
     for record_id in record_ids:
         try:

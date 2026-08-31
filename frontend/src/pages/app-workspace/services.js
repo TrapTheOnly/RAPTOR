@@ -37,6 +37,8 @@ export const getFinding = (findingId) => axios.get(`/api/findings/${findingId}`)
 
 export const patchFinding = (findingId, payload) => axios.patch(`/api/findings/${findingId}`, payload);
 
+export const deleteFinding = (findingId) => axios.delete(`/api/findings/${findingId}`);
+
 export const addFindingOccurrences = (findingId, payload) =>
   axios.post(`/api/findings/${findingId}/occurrences`, payload);
 
@@ -122,3 +124,36 @@ export const fetchChecklistTemplates = () => axios.get('/checklist-templates');
 export const fetchReportTemplates = () => axios.get('/report-templates');
 
 export const fetchPentestUsers = () => axios.get('/pentest_users');
+
+export const listReadyIntegrations = (kind) =>
+  axios.get('/api/integrations/ready', { params: kind ? { kind } : {} });
+
+export const previewIntegrationExport = (payload) => axios.post('/api/integrations/preview', payload);
+
+export const exportToIntegration = (payload) => axios.post('/api/integrations/export', payload);
+
+export const getWaveBurp = (appId, waveId) => axios.get(`/api/apps/${appId}/waves/${waveId}/burp`);
+
+export const mintBurpToken = (appId, waveId) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/burp-token`);
+
+export const revokeBurpToken = (appId, waveId) =>
+  axios.delete(`/api/apps/${appId}/waves/${waveId}/burp-token`);
+
+export const listWaveEngagements = (appId, waveId, config) =>
+  axios.get(`/api/apps/${appId}/waves/${waveId}/engagements`, config);
+
+export const acceptBurpEngagement = (appId, waveId, jobId) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/engagements/burp/${jobId}/accept`);
+
+export const acceptBurpProposal = (appId, waveId, proposalId) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/engagements/proposals/${proposalId}/accept`);
+
+export const startBurpAnalyze = (appId, waveId) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/burp/analyze`);
+
+export const fileBurpEvidence = (appId, waveId, payload) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/burp/evidence`, payload);
+
+export const proposeBurpScanner = (appId, waveId, payload) =>
+  axios.post(`/api/apps/${appId}/waves/${waveId}/burp/propose`, payload);

@@ -1,0 +1,5 @@
+FROM python:3.12-alpine
+RUN pip install --no-cache-dir httpx==0.28.1 "psycopg[binary]==3.2.9"
+WORKDIR /seed
+COPY jira_seed.py dojo_seed.py ./
+ENTRYPOINT ["python"]

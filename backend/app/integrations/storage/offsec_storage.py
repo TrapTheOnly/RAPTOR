@@ -111,6 +111,9 @@ def extract_image_filenames_from_vulnerabilities(raw_value):
         if not isinstance(vulnerability, dict):
             continue
         filenames.update(extract_image_filenames(vulnerability.get("description", "")))
+        filenames.update(extract_image_filenames(vulnerability.get("evidence", "")))
+        filenames.update(extract_image_filenames(vulnerability.get("impact", "")))
+        filenames.update(extract_image_filenames(vulnerability.get("remediation", "")))
     return filenames
 
 
@@ -140,6 +143,24 @@ def is_image_referenced_anywhere(filename):
             """,
             (like_value, like_value),
         )
+        if c.fetchone():
+            return True
+
+        try:
+            c.execute(
+                """
+                SELECT 1
+                FROM pentest_findings
+                WHERE description LIKE ?
+                   OR evidence LIKE ?
+                   OR impact LIKE ?
+                   OR remediation LIKE ?
+                LIMIT 1
+                """,
+                (like_value, like_value, like_value, like_value),
+            )
+        except Exception:
+            return False
         return c.fetchone() is not None
 
 
@@ -219,6 +240,52 @@ def can_user_access_image(filename):
             if vulnerability_owner == str(username).strip() and filename in str(vulnerability.get("description") or ""):
                 return True
 
+    if _user_can_view_finding_image(filename, username, role):
+        return True
+    return False
+
+
+def _user_can_view_finding_image(filename, username, role):
+    """Finding evidence images live on pentest_findings, not pentest_data notes."""
+    like_value = f"%{filename}%"
+    try:
+        with get_db_connection(DB_PATH) as conn:
+            conn.row_factory = ROW_AS_DICT
+            c = conn.cursor()
+            c.execute(
+                """
+                SELECT f.created_by, f.record_id, r.application_id, r.environment_id
+                FROM pentest_findings f
+                LEFT JOIN records r ON r.id = f.record_id
+                WHERE f.description LIKE ?
+                   OR f.evidence LIKE ?
+                   OR f.impact LIKE ?
+                   OR f.remediation LIKE ?
+                """,
+                (like_value, like_value, like_value, like_value),
+            )
+            rows = c.fetchall()
+    except Exception:
+        return False
+    if not rows:
+        return False
+    if user_has_permission(username, role, "view_pentest_page"):
+        try:
+            from app.services.phase2b_service import visible_env_ids
+        except Exception:
+            visible_env_ids = None
+        for row in rows:
+            if str(row.get("created_by") or "").strip() == str(username).strip():
+                return True
+            app_id = row.get("application_id")
+            env_id = row.get("environment_id")
+            if visible_env_ids is None or not app_id:
+                continue
+            allowed = visible_env_ids(int(app_id), username, role)
+            if allowed is None:
+                return True
+            if env_id is not None and int(env_id) in {int(item) for item in allowed}:
+                return True
     return False
 
 

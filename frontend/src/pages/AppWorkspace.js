@@ -27,6 +27,7 @@ import NewFindingDialog from './app-workspace/components/NewFindingDialog';
 import AttachHostsDialog from './app-workspace/components/AttachHostsDialog';
 import MergeFindingsDialog from './app-workspace/components/MergeFindingsDialog';
 import TicketDialog from './app-workspace/components/TicketDialog';
+import ExportIntegrationWizard from './app-workspace/components/ExportIntegrationWizard';
 import ShareHostDialog from './app-workspace/components/ShareHostDialog';
 import {
   addFindingOccurrences,
@@ -52,6 +53,7 @@ import {
   listAppHosts,
   listDnsZones,
   listSharedHosts,
+  listReadyIntegrations,
   listWaves,
   mergeFindings,
   patchFinding,
@@ -138,6 +140,9 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
   const [newFindingOpen, setNewFindingOpen] = useState(false);
   const [mergeTarget, setMergeTarget] = useState(null);
   const [ticketTarget, setTicketTarget] = useState(null);
+  const [integrationExport, setIntegrationExport] = useState(null);
+  const [exportedTicket, setExportedTicket] = useState(null);
+  const [readyIntegrations, setReadyIntegrations] = useState({ connections: [] });
   const [shareTarget, setShareTarget] = useState(null);
   const [attachTarget, setAttachTarget] = useState(null);
   const [waveDetail, setWaveDetail] = useState(null);
@@ -280,6 +285,12 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
       setActiveTab(location.state.tab);
     }
   }, [location.state, waveId, findingId, envId]);
+
+  useEffect(() => {
+    listReadyIntegrations()
+      .then((response) => setReadyIntegrations(response.data || { connections: [] }))
+      .catch(() => setReadyIntegrations({ connections: [] }));
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -848,6 +859,32 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
         onClose={() => setTicketTarget(null)}
         onSave={handleSaveTicket}
       />
+      <ExportIntegrationWizard
+        open={Boolean(integrationExport)}
+        kind={integrationExport?.kind}
+        appId={appId}
+        waveId={integrationExport?.waveId}
+        waveName={integrationExport?.waveName}
+        findings={integrationExport?.findings || []}
+        ready={readyIntegrations}
+        onClose={() => setIntegrationExport(null)}
+        onDone={async (data) => {
+          const row = (data?.results || []).find(
+            (item) => item?.external_url && String(item.id) === String(findingId)
+          );
+          if (row?.external_url) {
+            setExportedTicket({
+              id: String(row.id),
+              url: row.external_url,
+              kind: integrationExport?.kind || ''
+            });
+          }
+          await loadFindings();
+          if (waveId) await loadWave();
+        }}
+        failWith={failWith}
+        notify={notify}
+      />
       <ShareHostDialog
         open={Boolean(shareTarget)}
         host={shareTarget}
@@ -892,13 +929,17 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
           canModify={canModify}
           pentestUsers={pentestUsers}
           onAttachHosts={handleAttachHosts}
-          onOpenTicket={setTicketTarget}
           onOpenMerge={setMergeTarget}
           onPromote={handlePromote}
           onOccurrenceStatusChange={handleOccurrenceStatus}
           busyFinding={busyFinding}
           failWith={failWith}
           notify={notify}
+          readyIntegrations={readyIntegrations}
+          exportedTicket={exportedTicket}
+          onReportToIntegration={(kind, targetFindings) =>
+            setIntegrationExport({ kind, findings: targetFindings || [] })
+          }
         />
         {dialogs}
       </>
@@ -932,6 +973,15 @@ const AppWorkspace = ({ userRole, userPermissions, username = '' }) => {
           onPromote={handlePromote}
           onAttachHosts={handleAttachHosts}
           onCreateFinding={() => setNewFindingOpen(true)}
+          readyIntegrations={readyIntegrations}
+          onReportToIntegration={(kind) =>
+            setIntegrationExport({
+              kind,
+              waveId,
+              waveName: waveDetail?.wave?.name,
+              findings: waveDetail?.findings || []
+            })
+          }
           onSaveMembers={handleSaveWaveMembers}
           onSaveEnvironments={handleSaveWaveEnvironments}
           username={username}

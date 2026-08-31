@@ -26,6 +26,14 @@ test('ScanLive is the wave Operator Console', () => {
   expect(source).toContain('ProviderMark');
   expect(source).toContain('All hosts');
   expect(source).toContain('foldEvents');
+  expect(source).toContain('listWaveEngagements');
+  expect(source).toContain('EngagementRail');
+  expect(source).toContain('BurpEngagementPane');
+  expect(source).toContain('title="Live"');
+  expect(source).toContain("params.set('engagement'");
+  expect(source).toContain("pathname.includes('/scan-live')");
+  expect(source).toContain('if (done || viewingBurp)');
+  expect(source).not.toContain('setEngagements([])');
   expect(source).toContain('/apps/${appId}/waves/${waveId}/scan-events/stream');
   expect(source).not.toContain('In-scope hosts');
   expect(source).not.toContain('--with-scanner');
@@ -44,4 +52,42 @@ test('host notebook links to wave ScanLive but does not POST launch', () => {
   expect(header).toContain('/scan-live');
   expect(header).not.toContain('launchAiScan');
   expect(header).not.toContain('launchWaveScan');
+});
+
+test('Live page lists named engagements in a left rail', () => {
+  const rail = readSource('./scan-live/EngagementRail.js');
+  expect(rail).toContain('aria-label="Engagements"');
+  expect(rail).toContain('names each job before work starts');
+  const pane = readSource('./scan-live/BurpEngagementPane.js');
+  expect(pane).toContain('Open finding');
+  expect(pane).toContain('findingId || hits.length > 0');
+  expect(pane).toContain('acceptBurpEngagement');
+  expect(pane).toContain('acceptBurpProposal');
+  expect(pane).toContain('RAPTOR is naming the job…');
+  expect(pane).toContain('No JWT weakness to file');
+  expect(pane).toContain("kind === 'scanner'");
+  expect(pane).not.toContain('jwt_tool steps');
+  expect(pane).not.toContain('This page updates as the worker reports');
+});
+
+test('Live analyze pane clusters Burp traffic instead of listing raw events', () => {
+  const pane = readSource('./scan-live/AnalyzeEngagementPane.js');
+  expect(pane).toContain('What you tried');
+  expect(pane).toContain('RAPTOR is naming the job…');
+  expect(pane).toContain('Attach HTTP to a draft');
+  expect(pane).toContain('you decide what is proof');
+  expect(pane).toContain('clusterKey');
+  expect(pane).toContain('row.tool');
+  expect(pane).toContain('Send JWT from Burp');
+  expect(pane).toContain('Propose');
+  expect(pane).toContain('HttpExchange');
+  expect(pane).toContain('onToggle');
+  expect(pane).not.toContain('jwt_tool');
+  const live = readSource('./ScanLive.js');
+  expect(live).toContain('startBurpAnalyze');
+  expect(live).toContain('Summarize Burp traffic');
+  expect(live).toContain('AnalyzeEngagementPane');
+  expect(live).toContain("startsWith('proposal:')");
+  expect(live).not.toContain('maxWidth: 720');
+  expect(live).not.toContain('maxWidth: 880');
 });

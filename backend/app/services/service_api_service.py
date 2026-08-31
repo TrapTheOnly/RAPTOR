@@ -223,6 +223,9 @@ def append_vulnerability_payload(
     record_id: int, vulnerability: Dict[str, Any]
 ) -> Tuple[Dict[str, Any], int]:
     try:
+        from app.integrations.reporting.report_context import hydrate_finding_fields
+
+        vulnerability = hydrate_finding_fields(vulnerability if isinstance(vulnerability, dict) else {})
         found = append_pentest_vulnerability(record_id, vulnerability)
     except Exception as exc:
         logger.error(f"Failed to append vulnerability for pentest {record_id}: {exc}")

@@ -282,11 +282,29 @@ def test_add_pentest_vulnerability_posts_to_dedicated_endpoint(monkeypatch):
 
     asyncio.run(
         write_tools_module.do_add_pentest_vulnerability(
-            3, "XSS in login", "", "N", "L", "N", "N", "U", "N", "L", "N", _settings()
+            3,
+            "XSS in login",
+            "",
+            "N",
+            "L",
+            "N",
+            "N",
+            "U",
+            "N",
+            "L",
+            "N",
+            _settings(),
+            title="Reflected XSS",
+            impact="Session theft.",
+            evidence="```http\nGET /login?q=<script>\n\n===\n\nHTTP/1.1 200\n```\n",
+            remediation="Encode output.",
         )
     )
     assert post_captured["url"].endswith("/pentests/3/vulnerabilities")
     assert post_captured["body"]["description"] == "XSS in login"
+    assert post_captured["body"]["title"] == "Reflected XSS"
+    assert post_captured["body"]["impact"] == "Session theft."
+    assert "```http" in post_captured["body"]["evidence"]
     assert post_captured["body"]["created_by"] == "RAPTOR-Scanner"
     assert post_captured["body"]["baseScore"] > 0
     assert post_captured["headers"].get("X-RAPTOR-Scanner") == "1"

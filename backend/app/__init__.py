@@ -18,6 +18,8 @@ def create_app():
     from app.routes.notifications import notifications_bp
     from app.routes.offsec_routes import register_offsec_routes
     from app.routes.app_program import app_program_bp
+    from app.routes.burp import burp_bp
+    from app.routes.integrations import integrations_bp
     from app.routes.records import records_bp
     from app.routes.llm import llm_bp
     from app.routes.scanner import scanner_bp
@@ -64,6 +66,8 @@ def create_app():
 
     app.register_blueprint(records_bp)
     app.register_blueprint(app_program_bp)
+    app.register_blueprint(burp_bp)
+    app.register_blueprint(integrations_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(collector_bp)
     app.register_blueprint(cloud_dns_bp)

@@ -1,0 +1,24 @@
+{
+  "window": true,
+  "theme": "nord",
+  "border": {
+    "radius": 8,
+    "width": 1,
+    "color": "#515151"
+  },
+  "shadow": {
+    "blur": 24,
+    "x": 0,
+    "y": 12
+  },
+  "padding": [20, 40, 20, 20],
+  "margin": [0],
+  "background": "#171717",
+  "font": {
+    "family": "DejaVu Sans Mono",
+    "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "size": 14,
+    "ligatures": false
+  },
+  "line_height": 1.2
+}

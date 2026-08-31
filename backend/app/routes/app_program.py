@@ -135,6 +135,16 @@ def patch_finding(finding_id: str):
     return jsonify(payload), status_code
 
 
+@app_program_bp.route("/api/findings/<finding_id>", methods=["DELETE"])
+@permission_required("modify_pentests")
+def delete_finding(finding_id: str):
+    username, role = _session_actor()
+    payload, status_code = app_program_service.delete_finding(
+        finding_id, username=username, role=role
+    )
+    return jsonify(payload), status_code
+
+
 @app_program_bp.route("/api/findings/<finding_id>/occurrences", methods=["POST"])
 @permission_required("modify_pentests")
 def add_occurrences(finding_id: str):
@@ -240,6 +250,63 @@ def list_waves(app_id: int):
 def get_wave(app_id: int, wave_id: int):
     username, role = _session_actor()
     payload, status_code = phase2b_service.get_wave(app_id, wave_id, username=username, role=role)
+    return jsonify(payload), status_code
+
+
+@app_program_bp.route("/api/apps/<int:app_id>/waves/<int:wave_id>/engagements", methods=["GET"])
+@permission_required("view_pentest_page")
+def list_wave_engagements(app_id: int, wave_id: int):
+    from app.services import engagements_service
+
+    username, role = _session_actor()
+    payload, status_code = engagements_service.list_engagements(
+        app_id, wave_id, username=username, role=role
+    )
+    return jsonify(payload), status_code
+
+
+@app_program_bp.route(
+    "/api/apps/<int:app_id>/waves/<int:wave_id>/engagements/<engagement_id>",
+    methods=["GET"],
+)
+@permission_required("view_pentest_page")
+def get_wave_engagement(app_id: int, wave_id: int, engagement_id: str):
+    from app.services import engagements_service
+
+    username, role = _session_actor()
+    payload, status_code = engagements_service.get_engagement(
+        app_id, wave_id, engagement_id, username=username, role=role
+    )
+    return jsonify(payload), status_code
+
+
+@app_program_bp.route(
+    "/api/apps/<int:app_id>/waves/<int:wave_id>/engagements/burp/<int:job_id>/accept",
+    methods=["POST"],
+)
+@permission_required("modify_pentests")
+def accept_burp_engagement(app_id: int, wave_id: int, job_id: int):
+    from app.services import engagements_service
+
+    username, role = _session_actor()
+    payload, status_code = engagements_service.accept_proposal(
+        app_id, wave_id, job_id, username=username, role=role
+    )
+    return jsonify(payload), status_code
+
+
+@app_program_bp.route(
+    "/api/apps/<int:app_id>/waves/<int:wave_id>/engagements/proposals/<int:proposal_id>/accept",
+    methods=["POST"],
+)
+@permission_required("modify_pentests")
+def accept_burp_proposal(app_id: int, wave_id: int, proposal_id: int):
+    from app.services import engagements_service
+
+    username, role = _session_actor()
+    payload, status_code = engagements_service.accept_scanner_proposal(
+        app_id, wave_id, proposal_id, username=username, role=role
+    )
     return jsonify(payload), status_code
 
 

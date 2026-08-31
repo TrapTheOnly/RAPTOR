@@ -112,13 +112,21 @@ async def do_add_pentest_vulnerability(
     i: str,
     a: str,
     settings: MCPSettings,
+    title: str = "",
+    impact: str = "",
+    evidence: str = "",
+    remediation: str = "",
 ) -> Any:
     metrics = {"AV": av, "AC": ac, "PR": pr, "UI": ui, "S": s, "C": c, "I": i, "A": a}
     base_score = _calculate_cvss_base(metrics)
     vulnerability = {
         "id": int(time.time() * 1000),
+        "title": title,
         "categoryId": category_id,
         "description": description,
+        "impact": impact,
+        "evidence": evidence,
+        "remediation": remediation,
         "created_by": "RAPTOR-Scanner",
         "metrics": metrics,
         "baseScore": base_score,

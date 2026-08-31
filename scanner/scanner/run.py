@@ -605,6 +605,7 @@ _KALI_DESTRUCTIVE_TOOLS = {
     "metasploit_run",
     "hydra_attack",
     "john_crack",
+    "jwt_attacks",
 }
 
 
@@ -927,10 +928,13 @@ def _extract_existing_finding_titles(raw: Any) -> list[str]:
 
 
 def _extract_finding_title(tool_input: dict) -> str:
-    description = str(tool_input.get("description") or "")
-    title = _extract_markdown_title(description)
+    title = str(tool_input.get("title") or "").strip()
     if title:
         return title
+    description = str(tool_input.get("description") or "")
+    heading = _extract_markdown_title(description)
+    if heading:
+        return heading
     category_id = tool_input.get("category_id")
     return f"category_id={category_id}" if category_id else ""
 

@@ -488,8 +488,15 @@ def get_finding(finding_id: str, username: str = "", role: str = "") -> Tuple[Di
             "ip_address": found_here.get("ip_address"),
             "environment_id": found_here.get("environment_id"),
         }
+    from app.integrations.reporting.report_context import hydrate_finding_fields
+    from app.repositories.integrations_repository import latest_export_urls
+
+    hydrated = hydrate_finding_fields(finding)
+    hydrated["defectdojo_url"] = latest_export_urls([hydrated.get("id")], "defectdojo").get(
+        str(hydrated.get("id") or ""), ""
+    )
     return {
-        "finding": finding,
+        "finding": hydrated,
         "found_here": host,
         "environment": environment,
         "wave": wave,
@@ -512,6 +519,31 @@ def patch_finding(
     if not finding:
         return {"error": "Finding not found."}, 404
     return {"finding": finding}, 200
+
+
+def delete_finding(
+    finding_id: str, username: str = "", role: str = ""
+) -> Tuple[Dict[str, Any], int]:
+    current = pentest_findings_repository.get_finding(finding_id)
+    if not current:
+        return {"error": "Finding not found."}, 404
+    denied = _finding_host_access_error(current, username, role, "delete")
+    if denied:
+        return denied
+    blocked = _reject_closed_finding_wave(current)
+    if blocked:
+        return blocked
+    reporter = str(current.get("created_by") or "").strip()
+    collaborators = {str(name).strip() for name in (current.get("collaborators") or []) if str(name).strip()}
+    actor = str(username or "").strip()
+    admin = user_has_permission(username, role, "modify_others_pentests_admin")
+    scanner_junk = str(current.get("source") or "") == "scanner"
+    if not admin and actor != reporter and actor not in collaborators and not scanner_junk:
+        return {"error": "Only the reporter can delete this finding."}, 403
+    removed = pentest_findings_repository.delete_finding(finding_id)
+    if not removed:
+        return {"error": "Finding not found."}, 404
+    return {"deleted": True, "id": finding_id}, 200
 
 
 def add_occurrences(

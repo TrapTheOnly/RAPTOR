@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { Alert } from '@mui/material';
-import { ArrowBack, CallMerge, ConfirmationNumber, PlaylistAdd, Save, TrendingUp } from '@mui/icons-material';
+import { ArrowBack, BugReport, CallMerge, ConfirmationNumber, DeleteOutline, Launch, PlaylistAdd, Save, TrendingUp } from '@mui/icons-material';
 import {
   Button,
   Combo,
@@ -9,6 +9,7 @@ import {
   Mono,
   Page,
   PageHeader,
+  Panel,
   Progress,
   StatusGlyph,
   Tag,
@@ -21,9 +22,10 @@ import { DEFAULT_CVSS_METRICS } from '../../pentest-record/constants';
 import { calculateCvssBase } from '../../pentest-record/cvss';
 import { fetchVulnerabilityCategories, uploadPentestImage } from '../../pentest-record/services';
 import MarkdownEditorCard from '../../pentest-record/components/MarkdownEditorCard';
-import { getFinding, patchFinding } from '../services';
+import { kindHasReadyTemplate } from '../../admin-settings/integrations-utils';
+import { getFinding, patchFinding, deleteFinding } from '../services';
 import CvssCalculator from './CvssCalculator';
-import FindingCard from './FindingCard';
+import FindingCard, { isHttpUrl } from './FindingCard';
 
 const AUTH_OPTIONS = [
   { value: '', label: 'Not specified' },
@@ -75,13 +77,15 @@ const FindingPage = ({
   canModify,
   pentestUsers = [],
   onAttachHosts,
-  onOpenTicket,
   onOpenMerge,
   onPromote,
   onOccurrenceStatusChange,
   busyFinding,
   failWith,
-  notify
+  notify,
+  readyIntegrations,
+  onReportToIntegration,
+  exportedTicket
 }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -94,6 +98,7 @@ const FindingPage = ({
   const [remediation, setRemediation] = useState('');
   const [authContext, setAuthContext] = useState('');
   const [ticketUrl, setTicketUrl] = useState('');
+  const [dojoUrl, setDojoUrl] = useState('');
   const [category, setCategory] = useState(null);
   const [categories, setCategories] = useState([]);
   const [metrics, setMetrics] = useState(DEFAULT_CVSS_METRICS);
@@ -101,6 +106,8 @@ const FindingPage = ({
   const [editingSection, setEditingSection] = useState('');
   const [imageUploading, setImageUploading] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     const [findingRes, categoriesRes] = await Promise.all([
@@ -117,6 +124,7 @@ const FindingPage = ({
     setRemediation(finding.remediation || '');
     setAuthContext(finding.auth_context || '');
     setTicketUrl(finding.ticket_url || '');
+    setDojoUrl(finding.defectdojo_url || '');
     setMetrics({ ...DEFAULT_CVSS_METRICS, ...(finding.metrics || {}) });
     setCollaborators(finding.collaborators || []);
     const cats = Array.isArray(categoriesRes.data)
@@ -129,6 +137,16 @@ const FindingPage = ({
     setCategory(match);
     setDirty(false);
   }, [findingId]);
+
+  useEffect(() => {
+    if (!exportedTicket?.url) return;
+    if (String(exportedTicket.id) !== String(findingId)) return;
+    if (exportedTicket.kind === 'defectdojo') {
+      setDojoUrl(exportedTicket.url);
+      return;
+    }
+    setTicketUrl(exportedTicket.url);
+  }, [exportedTicket, findingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,6 +167,7 @@ const FindingPage = ({
   const foundHere = payload?.found_here;
   const waveIsOpen = !wave || wave.status === 'open';
   const canEdit = Boolean(canModify && waveIsOpen);
+  const backTo = `/apps/${appId}`;
   const score = useMemo(() => calculateCvssBase(metrics), [metrics]);
 
   const markDirty = (updater) => {
@@ -180,6 +199,20 @@ const FindingPage = ({
       failWith(error, 'Failed to save finding.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!finding || !canEdit) return;
+    setDeleting(true);
+    try {
+      await deleteFinding(finding.id);
+      notify('success', 'Finding deleted.');
+      navigate(backTo, { state: { tab: 'findings' } });
+    } catch (error) {
+      failWith(error, 'Failed to delete finding.');
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -221,8 +254,6 @@ const FindingPage = ({
       }
     }
   };
-
-  const backTo = `/apps/${appId}`;
 
   if (loading && !finding) {
     return (
@@ -274,38 +305,83 @@ const FindingPage = ({
           </>
         }
         actions={
-          canEdit ? (
-            <>
+          <>
+            {canEdit ? (
+              <>
+                <Button
+                  variant="contained"
+                  startIcon={<Save sx={{ fontSize: 16 }} />}
+                  onClick={handleSave}
+                  disabled={!dirty || saving}
+                >
+                  {saving ? 'Saving…' : 'Save'}
+                </Button>
+                {finding.status === 'draft' && onPromote ? (
+                  <Button variant="outlined" startIcon={<TrendingUp />} onClick={() => onPromote(finding)}>
+                    Promote to open
+                  </Button>
+                ) : null}
+                {onAttachHosts ? (
+                  <Button variant="outlined" startIcon={<PlaylistAdd />} onClick={() => onAttachHosts(finding)}>
+                    Attach hosts
+                  </Button>
+                ) : null}
+                {onOpenMerge ? (
+                  <Button variant="outlined" startIcon={<CallMerge />} onClick={() => onOpenMerge(finding)}>
+                    Merge into this
+                  </Button>
+                ) : null}
+                <Button
+                  variant="outlined"
+                  startIcon={<DeleteOutline sx={{ fontSize: 16 }} />}
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={deleting}
+                >
+                  Delete finding
+                </Button>
+              </>
+            ) : null}
+            {isHttpUrl(ticketUrl) ? (
               <Button
                 variant="contained"
-                startIcon={<Save sx={{ fontSize: 16 }} />}
-                onClick={handleSave}
-                disabled={!dirty || saving}
+                component="a"
+                href={String(ticketUrl).trim()}
+                target="_blank"
+                rel="noreferrer"
+                startIcon={<Launch sx={{ fontSize: 16 }} />}
               >
-                {saving ? 'Saving…' : 'Save'}
+                Open ticket
               </Button>
-              {finding.status === 'draft' && onPromote ? (
-                <Button variant="outlined" startIcon={<TrendingUp />} onClick={() => onPromote(finding)}>
-                  Promote to open
-                </Button>
-              ) : null}
-              {onAttachHosts ? (
-                <Button variant="outlined" startIcon={<PlaylistAdd />} onClick={() => onAttachHosts(finding)}>
-                  Attach hosts
-                </Button>
-              ) : null}
-              {onOpenTicket ? (
-                <Button variant="outlined" startIcon={<ConfirmationNumber />} onClick={() => onOpenTicket(finding)}>
-                  {ticketUrl ? 'Edit ticket' : 'Link ticket'}
-                </Button>
-              ) : null}
-              {onOpenMerge ? (
-                <Button variant="outlined" startIcon={<CallMerge />} onClick={() => onOpenMerge(finding)}>
-                  Merge into this
-                </Button>
-              ) : null}
-            </>
-          ) : null
+            ) : canModify && kindHasReadyTemplate(readyIntegrations, 'jira') && onReportToIntegration ? (
+              <Button
+                variant="outlined"
+                startIcon={<ConfirmationNumber />}
+                onClick={() => onReportToIntegration('jira', [finding])}
+              >
+                Report to Jira
+              </Button>
+            ) : null}
+            {isHttpUrl(dojoUrl) ? (
+              <Button
+                variant="contained"
+                component="a"
+                href={String(dojoUrl).trim()}
+                target="_blank"
+                rel="noreferrer"
+                startIcon={<Launch sx={{ fontSize: 16 }} />}
+              >
+                Open in DefectDojo
+              </Button>
+            ) : canModify && kindHasReadyTemplate(readyIntegrations, 'defectdojo') && onReportToIntegration ? (
+              <Button
+                variant="outlined"
+                startIcon={<BugReport />}
+                onClick={() => onReportToIntegration('defectdojo', [finding])}
+              >
+                Report to DefectDojo
+              </Button>
+            ) : null}
+          </>
         }
       />
 
@@ -419,7 +495,7 @@ const FindingPage = ({
             onChange={(value) => markDirty(() => setDescription(value))}
             onUploadImage={handleImageUpload}
             onPasteImage={handlePasteImage}
-            placeholder="What you found. Markdown is kept: headings, lists, tables, code, quotes, and images."
+            placeholder="What you found. One or two sentences. No process narration."
             emptyText="No write-up yet. Edit to add markdown."
             minRows={10}
             canEdit={canEdit}
@@ -449,8 +525,8 @@ const FindingPage = ({
             onChange={(value) => markDirty(() => setEvidence(value))}
             onUploadImage={handleImageUpload}
             onPasteImage={handlePasteImage}
-            placeholder="Proof, requests, and screenshots. Paste or upload images."
-            emptyText="No evidence yet. Edit to add markdown and screenshots."
+            placeholder="Command or request, then its screenshot or response. HTTP: one ```http fence, request, a line with only ===, then response."
+            emptyText="No evidence yet. Pair each payload with its proof."
             minRows={8}
             canEdit={canEdit}
             canUploadImages={Boolean(foundHere?.id) && canEdit}
@@ -494,6 +570,29 @@ const FindingPage = ({
           </Text>
         ) : null}
       </section>
+
+      <Panel
+        open={confirmDelete}
+        onClose={() => {
+          if (!deleting) setConfirmDelete(false);
+        }}
+        maxWidth="xs"
+        title="Delete this finding?"
+        actions={
+          <>
+            <Button onClick={() => setConfirmDelete(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Delete'}
+            </Button>
+          </>
+        }
+      >
+        <Text as="p" variant="body" style={{ margin: 0 }}>
+          Removes it from the wave. Screenshots that nothing else uses are deleted too.
+        </Text>
+      </Panel>
     </Page>
   );
 };

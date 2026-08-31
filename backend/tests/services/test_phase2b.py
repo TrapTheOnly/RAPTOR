@@ -597,7 +597,9 @@ def test_get_wave_findings_are_only_stamped_on_this_wave(monkeypatch):
     monkeypatch.setattr("app.repositories.pentest_findings_repository.fetch_app_findings", fake_fetch)
     payload, status = svc.get_wave(1, 4)
     assert status == 200
-    assert payload["findings"] == [{"id": "this-wave", "discovered_wave_id": 4}]
+    assert payload["findings"][0]["id"] == "this-wave"
+    assert payload["findings"][0]["discovered_wave_id"] == 4
+    assert payload["findings"][0]["defectdojo_url"] == ""
     assert len(calls) == 1
     assert calls[0]["wave_id"] == 4
     assert "record_ids" not in calls[0]
